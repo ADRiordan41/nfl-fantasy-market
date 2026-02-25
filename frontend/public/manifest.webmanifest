@@ -1,0 +1,16 @@
+{
+  "name": "MatchupMarket",
+  "short_name": "Matchup",
+  "description": "Sandbox player market for fantasy sports trading.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef4ff",
+  "theme_color": "#2f7fff",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}
