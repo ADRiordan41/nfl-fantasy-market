@@ -1,124 +1,243 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiGet, getAuthToken } from "@/lib/api";
+import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
+import type { ForumPostSummary, Player } from "@/lib/types";
 
-type Player = {
-  id: number;
-  name: string;
-  team: string;
-  position: string;
-  spot_price: number;
-};
-
-const API_BASE = "http://localhost:8000";
-
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
-  return res.json();
+function toMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
-async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+function formatStamp(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`POST ${path} failed: ${res.status} ${text}`);
-  }
-  return res.json();
 }
 
-export default function MarketPage() {
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [error, setError] = useState<string>("");
-  const [buyShares, setBuyShares] = useState<Record<number, string>>({});
-  const [busyId, setBusyId] = useState<number | null>(null);
+function getSignedPercent(base: number, spot: number): number {
+  if (!base) return 0;
+  return ((spot - base) / base) * 100;
+}
 
-  async function load() {
+export default function HomePage() {
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [posts, setPosts] = useState<ForumPostSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [communityLocked, setCommunityLocked] = useState(false);
+  const [error, setError] = useState("");
+  const [authResolved, setAuthResolved] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const loadSnapshots = useCallback(async () => {
+    setLoading(true);
     setError("");
     try {
-      const data = await apiGet<Player[]>("/players");
-      setPlayers(data);
-    } catch (e: any) {
-      setError(e?.message || String(e));
+      let locked = false;
+      const [nextPlayers, nextPosts] = await Promise.all([
+        apiGet<Player[]>("/players"),
+        apiGet<ForumPostSummary[]>("/forum/posts?limit=4").catch((err: unknown) => {
+          const message = toMessage(err);
+          if (message.includes("401")) {
+            locked = true;
+            return [];
+          }
+          throw err;
+        }),
+      ]);
+      setPlayers(nextPlayers);
+      setPosts(nextPosts);
+      setCommunityLocked(locked);
+    } catch (err: unknown) {
+      setError(toMessage(err));
+    } finally {
+      setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    load();
   }, []);
 
-  async function buy(playerId: number) {
-    setBusyId(playerId);
-    setError("");
-    try {
-      const shares = Number(buyShares[playerId] || 0);
-      if (!shares || shares <= 0) throw new Error("Enter shares > 0");
-      await apiPost("/trade/buy", { player_id: playerId, shares });
-      await load(); // refresh prices
-      setBuyShares((m) => ({ ...m, [playerId]: "" }));
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusyId(null);
-    }
-  }
+  useEffect(() => {
+    void loadSnapshots();
+    const intervalId = window.setInterval(() => {
+      void loadSnapshots();
+    }, 60000);
+    return () => window.clearInterval(intervalId);
+  }, [loadSnapshots]);
+
+  useEffect(() => {
+    setIsLoggedIn(Boolean(getAuthToken()));
+    setAuthResolved(true);
+  }, []);
+
+  const sportsCount = useMemo(
+    () => new Set(players.map((player) => player.sport)).size,
+    [players],
+  );
+
+  const averageSpot = useMemo(() => {
+    if (!players.length) return 0;
+    const total = players.reduce((sum, player) => sum + Number(player.spot_price || 0), 0);
+    return total / players.length;
+  }, [players]);
+
+  const marketLeaders = useMemo(
+    () => [...players].sort((a, b) => b.spot_price - a.spot_price).slice(0, 6),
+    [players],
+  );
+
+  const totalComments = useMemo(
+    () => posts.reduce((sum, post) => sum + Number(post.comment_count || 0), 0),
+    [posts],
+  );
 
   return (
-    <main style={{ fontFamily: "system-ui", padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <h1>NFL Fantasy Market (Sandbox)</h1>
-
-      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-        <Link href="/portfolio">Portfolio</Link>
-        <button onClick={load}>Refresh</button>
-      </div>
-
-      {error && (
-        <div style={{ background: "#fee", padding: 12, border: "1px solid #f99", marginBottom: 16 }}>
-          {error}
+    <main className="page-shell">
+      <section className={`hero-panel home-hero${authResolved && isLoggedIn ? " home-hero-logged-in" : ""}`}>
+        <div>
+          <p className="eyebrow">Welcome</p>
+          <h1 className="home-headline">Trade Pro Athletes Like Stocks in a Live Market</h1>
+          <p className="subtle">
+            MatchupMarket is a fantasy trading exchange where each player has a live price. Start from preseason projections,
+            trade long or short during the season, and settle positions against final fantasy production.
+          </p>
         </div>
-      )}
+        {authResolved && !isLoggedIn && (
+          <div className="hero-actions hero-actions-single">
+            <Link href="/auth" className="primary-btn ghost-link home-create-account-cta">
+              Create Account
+            </Link>
+          </div>
+        )}
+      </section>
 
-      <table width="100%" cellPadding={10} style={{ borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-            <th>Player</th>
-            <th>Team</th>
-            <th>Pos</th>
-            <th>Spot Price</th>
-            <th>Buy</th>
-          </tr>
-        </thead>
-        <tbody>
-          {players.map((p) => (
-            <tr key={p.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td>
-  <Link href={`/player/${p.id}`}>{p.name}</Link>
-</td>
+      {error && <p className="error-box">{error}</p>}
 
-              <td>{p.team}</td>
-              <td>{p.position}</td>
-              <td>${Number(p.spot_price).toFixed(2)}</td>
-              <td style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  value={buyShares[p.id] || ""}
-                  onChange={(e) => setBuyShares((m) => ({ ...m, [p.id]: e.target.value }))}
-                  placeholder="shares"
-                  style={{ width: 90 }}
-                />
-                <button disabled={busyId === p.id} onClick={() => buy(p.id)}>
-                  {busyId === p.id ? "Buying..." : "Buy"}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <section className="metrics-grid">
+        <article className="kpi-card">
+          <span>Players Listed</span>
+          <strong>{formatNumber(players.length)}</strong>
+        </article>
+        <article className="kpi-card">
+          <span>Sports Live</span>
+          <strong>{formatNumber(sportsCount)}</strong>
+        </article>
+        <article className="kpi-card">
+          <span>Average Spot Price</span>
+          <strong>{formatCurrency(averageSpot)}</strong>
+        </article>
+        <article className="kpi-card">
+          <span>Community Activity</span>
+          <strong>{communityLocked ? "Sign in" : `${formatNumber(posts.length)} posts`}</strong>
+        </article>
+      </section>
+
+      <section className="table-panel home-explainer">
+        <h3>How MatchupMarket Works</h3>
+        <div className="home-steps">
+          <article className="home-step">
+            <h4>1. IPO Opens Each Sport</h4>
+            <p className="subtle">Players list at preseason projection-based prices before each season starts.</p>
+          </article>
+          <article className="home-step">
+            <h4>2. Prices Move Live</h4>
+            <p className="subtle">Spot prices react to order flow and in-season fantasy performance updates.</p>
+          </article>
+          <article className="home-step">
+            <h4>3. Final Season Settlement</h4>
+            <p className="subtle">At season close, positions settle against each player&apos;s final fantasy points total.</p>
+          </article>
+        </div>
+      </section>
+
+      <section className="home-snapshot-grid">
+        <article className="table-panel">
+          <div className="home-snapshot-head">
+            <h3>Market Snapshot</h3>
+            <Link href="/market" className="ghost-link">
+              Open Market
+            </Link>
+          </div>
+          {loading ? (
+            <p className="subtle">Loading market snapshot...</p>
+          ) : marketLeaders.length === 0 ? (
+            <p className="subtle">No listed players yet. IPO controls are managed in Admin.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Player</th>
+                    <th>Sport</th>
+                    <th>Spot</th>
+                    <th>Move vs Base</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marketLeaders.map((player) => {
+                    const changePct = getSignedPercent(player.base_price, player.spot_price);
+                    return (
+                      <tr key={player.id}>
+                        <td>
+                          <Link href={`/player/${player.id}`} className="community-user-link">
+                            {player.name}
+                          </Link>
+                          <div className="subtle">{player.team} {player.position}</div>
+                        </td>
+                        <td>{player.sport}</td>
+                        <td>{formatCurrency(player.spot_price)}</td>
+                        <td className={changePct >= 0 ? "up" : "down"}>{formatSignedPercent(changePct)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <article className="table-panel">
+          <div className="home-snapshot-head">
+            <h3>Community Snapshot</h3>
+            <Link href="/community" className="ghost-link">
+              Open Community
+            </Link>
+          </div>
+          {loading ? (
+            <p className="subtle">Loading forum snapshot...</p>
+          ) : communityLocked ? (
+            <p className="subtle">Sign in to view community posts.</p>
+          ) : posts.length === 0 ? (
+            <p className="subtle">No posts yet. Start the first discussion in Community.</p>
+          ) : (
+            <>
+              <p className="subtle">{formatNumber(totalComments)} comments across latest threads.</p>
+              <div className="home-post-list">
+                {posts.map((post) => (
+                  <article className="community-post-card" key={post.id}>
+                    <Link href={`/community/${post.id}`} className="community-post-title">
+                      {post.title}
+                    </Link>
+                    <p className="community-post-preview">{post.body_preview}</p>
+                    <p className="community-meta">
+                      By {" "}
+                      <Link href={`/profile/${post.author_username}`} className="community-user-link">
+                        {post.author_username}
+                      </Link>{" "}
+                      | {formatStamp(post.updated_at)} | {formatNumber(post.view_count)} views |{" "}
+                      {formatNumber(post.comment_count)} comments
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </article>
+      </section>
     </main>
   );
 }
-

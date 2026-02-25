@@ -1,0 +1,12 @@
+# Python caches
+__pycache__/
+*.pyc
+
+# Log files
+*.log
+*.out.log
+*.err.log
+
+# Local frontend runtime/build artifacts used during troubleshooting
+frontend/.next-mm*/
+frontend/.next-runtime/
