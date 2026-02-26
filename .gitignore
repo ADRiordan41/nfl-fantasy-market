@@ -2,6 +2,11 @@
 __pycache__/
 *.pyc
 
+# Local env (do not commit secrets)
+.env
+.env.*
+!.env.example
+
 # Log files
 *.log
 *.out.log
@@ -10,3 +15,6 @@ __pycache__/
 # Local frontend runtime/build artifacts used during troubleshooting
 frontend/.next-mm*/
 frontend/.next-runtime/
+
+# Local design/layout scratch files
+frontend/*-layout-preview.png
