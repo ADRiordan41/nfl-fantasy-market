@@ -1,6 +1,12 @@
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:8000";
 const AUTH_TOKEN_STORAGE_KEY = "fsm_access_token";
+const AUTH_TOKEN_CHANGED_EVENT = "fsm-auth-token-changed";
+
+function emitAuthTokenChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(AUTH_TOKEN_CHANGED_EVENT));
+}
 
 export class ApiHttpError extends Error {
   readonly status: number;
@@ -44,11 +50,13 @@ export function setAuthToken(token: string): void {
   const trimmed = token.trim();
   if (!trimmed) return;
   window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, trimmed);
+  emitAuthTokenChanged();
 }
 
 export function clearAuthToken(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  emitAuthTokenChanged();
 }
 
 export function isUnauthorizedError(err: unknown): err is ApiHttpError {
