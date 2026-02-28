@@ -23,6 +23,20 @@ concurrency:
 jobs:
   backend-checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fantasy
+          POSTGRES_PASSWORD: fantasy
+          POSTGRES_DB: fantasy_market
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U fantasy -d fantasy_market"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,3 +53,9 @@ jobs:
 
       - name: Compile backend modules
         run: python -m compileall backend/app backend/scripts
+
+      - name: Smoke test create_all + seed (fresh DB)
+        env:
+          PYTHONPATH: backend
+          DATABASE_URL: postgresql+psycopg://fantasy:fantasy@localhost:5432/fantasy_market
+        run: python backend/scripts/ci_smoke.py

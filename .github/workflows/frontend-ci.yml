@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   frontend-checks:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browser
-        run: npx playwright install chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Lint
         run: npm run lint
