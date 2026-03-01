@@ -19,7 +19,6 @@ type HoldingRow = {
   spot: number;
   basisNotional: number;
   marketValue: number;
-  maintenanceMargin: number;
   pnl: number;
   pnlPct: number;
   allocationPct: number;
@@ -92,7 +91,6 @@ export default function PortfolioPage() {
         const spot = Number(holding.spot_price || player.spot_price);
         const basisNotional = Math.abs(shares) * base;
         const marketValue = Number(holding.market_value || shares * spot);
-        const maintenanceMargin = Number(holding.maintenance_margin_required || 0);
         const pnl = shares >= 0 ? marketValue - basisNotional : basisNotional + marketValue;
         const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
         return {
@@ -106,7 +104,6 @@ export default function PortfolioPage() {
           spot,
           basisNotional,
           marketValue,
-          maintenanceMargin,
           pnl,
           pnlPct,
           allocationPct: 0,
@@ -250,7 +247,7 @@ export default function PortfolioPage() {
 
       {marginCall && (
         <p className="error-box">
-          Margin call active. Positions may be auto-liquidated until maintenance requirements are satisfied.
+          Margin call active. Positions may be auto-liquidated until requirements are satisfied.
         </p>
       )}
 
@@ -342,7 +339,8 @@ export default function PortfolioPage() {
                             </span>
                           </div>
                           <p className="muted-line">
-                            {formatNumber(row.shares, 4)} shares | Spot {formatCurrency(row.spot)} | Base {formatCurrency(row.base)}
+                            {formatNumber(row.shares, 0)} shares | Current Price {formatCurrency(row.spot)} | Purchase Price{" "}
+                            {formatCurrency(row.base)}
                           </p>
                           <div className="holding-metrics">
                             <span>Value: {formatCurrency(row.marketValue)}</span>
@@ -350,7 +348,6 @@ export default function PortfolioPage() {
                               {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})
                             </span>
                           </div>
-                          <p className="subtle">Maintenance margin {formatCurrency(row.maintenanceMargin)}</p>
                           <div className="allocation-track">
                             <div style={{ width: `${Math.max(3, row.allocationPct)}%` }} />
                           </div>
@@ -377,10 +374,9 @@ export default function PortfolioPage() {
                           <tr>
                             <th>Player</th>
                             <th>Shares</th>
-                            <th>Base</th>
-                            <th>Spot</th>
+                            <th>Purchase Price</th>
+                            <th>Current Price</th>
                             <th>Market Value</th>
-                            <th>Maint. Margin</th>
                             <th>Unrealized P/L</th>
                             <th>Allocation</th>
                           </tr>
@@ -393,11 +389,10 @@ export default function PortfolioPage() {
                                   {row.name}
                                 </Link>
                               </td>
-                              <td>{formatNumber(row.shares, 4)}</td>
+                              <td>{formatNumber(row.shares, 0)}</td>
                               <td>{formatCurrency(row.base)}</td>
                               <td>{formatCurrency(row.spot)}</td>
                               <td>{formatCurrency(row.marketValue)}</td>
-                              <td>{formatCurrency(row.maintenanceMargin)}</td>
                               <td className={row.pnl >= 0 ? "up" : "down"}>
                                 {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})
                               </td>

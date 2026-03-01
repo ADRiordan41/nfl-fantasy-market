@@ -81,7 +81,7 @@ export default function LivePage() {
           <p className="eyebrow">Live</p>
           <h1>Live Game Center</h1>
           <p className="subtle">
-            Active games, player-level live production, and current spot prices. Auto-refreshes every 30 seconds.
+            Active games. Live stats. Place your orders.
           </p>
         </div>
         <div className="hero-metrics">
@@ -152,7 +152,7 @@ export default function LivePage() {
                         <th>Live Stat Line</th>
                         <th>Game Pts</th>
                         <th>Season Pts</th>
-                        <th>Spot</th>
+                        <th>Current Price</th>
                       </tr>
                     </thead>
                     <tbody>

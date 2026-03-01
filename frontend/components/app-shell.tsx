@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement, type SVGProps } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactElement,
+  type SVGProps,
+} from "react";
 import { apiGet, apiPost, clearAuthToken, getAuthToken, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatSignedPercent } from "@/lib/format";
 import type { MarketMover, MarketMovers, Player, SearchResult, UserAccount } from "@/lib/types";
@@ -128,6 +138,24 @@ function SettingsIcon(props: SVGProps<SVGSVGElement>) {
     >
       <circle cx="12" cy="12" r="3.2" />
       <path d="M19 12a7 7 0 0 0-.08-1l2.03-1.58-1.7-2.95-2.45 1a7.1 7.1 0 0 0-1.73-1l-.37-2.62h-3.4L10.92 6.5a7.1 7.1 0 0 0-1.73 1l-2.45-1-1.7 2.95L7.07 11a7 7 0 0 0 0 2l-2.03 1.58 1.7 2.95 2.45-1a7.1 7.1 0 0 0 1.73 1l.37 2.62h3.4l.37-2.62a7.1 7.1 0 0 0 1.73-1l2.45 1 1.7-2.95L18.92 13c.05-.33.08-.66.08-1Z" />
+    </svg>
+  );
+}
+
+function AccountIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M4 20c1.4-3.1 4.2-4.7 8-4.7s6.6 1.6 8 4.7" />
+      <circle cx="12" cy="8.4" r="3.4" />
     </svg>
   );
 }
@@ -397,6 +425,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }),
     [currentUser?.is_admin],
   );
+  const mobileDockColumns = useMemo(() => 2 + visibleNavItems.length, [visibleNavItems.length]);
+  const mobileDockStyle = useMemo(
+    () => ({ "--mobile-dock-columns": mobileDockColumns } as CSSProperties),
+    [mobileDockColumns],
+  );
   const tickerEntries: MarketMover[] = useMemo(() => {
     if (!movers) {
       return process.env.NODE_ENV !== "production" ? DEV_TICKER_PREVIEW_ROWS : [];
@@ -574,7 +607,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {showNav && (
-        <nav className="mobile-nav">
+        <nav className="mobile-nav" style={mobileDockStyle}>
           <div className="mobile-home-menu-wrap" ref={mobileHomeMenuRef}>
             <button
               type="button"
@@ -630,6 +663,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="sr-only">{item.label}</span>
             </Link>
           ))}
+          {checkingSession ? (
+            <span className="mobile-link mobile-link-disabled" aria-label="Checking session" title="Checking session">
+              <AccountIcon className="nav-icon" />
+              <span className="sr-only">Checking session</span>
+            </span>
+          ) : currentUser ? (
+            <button
+              type="button"
+              className="mobile-link mobile-link-btn"
+              onClick={() => void logout()}
+              disabled={busy}
+              aria-label="Sign out"
+              title={busy ? "Signing out..." : "Sign out"}
+            >
+              <AccountIcon className="nav-icon" />
+              <span className="sr-only">{busy ? "Signing out" : "Sign out"}</span>
+            </button>
+          ) : (
+            <Link
+              href="/auth"
+              className={`mobile-link ${pathname === "/auth" ? "active" : ""}`}
+              aria-label="Sign in"
+              title="Sign in"
+            >
+              <AccountIcon className="nav-icon" />
+              <span className="sr-only">Sign in</span>
+            </Link>
+          )}
         </nav>
       )}
     </div>

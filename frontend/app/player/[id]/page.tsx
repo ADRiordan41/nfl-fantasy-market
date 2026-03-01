@@ -368,11 +368,11 @@ export default function PlayerPage() {
       {player && (
         <section className="metrics-grid">
           <article className="kpi-card">
-            <span>Spot Price</span>
+            <span>Current Price</span>
             <strong>{formatCurrency(player.spot_price)}</strong>
           </article>
           <article className="kpi-card">
-            <span>Base Price</span>
+            <span>Purchase Price</span>
             <strong>{formatCurrency(player.base_price)}</strong>
           </article>
           <article className="kpi-card">
@@ -486,7 +486,7 @@ export default function PlayerPage() {
               <p className="subtle">Shares: {formatNumber(quote.shares, 0)}</p>
               <p className="subtle">Average price: {formatCurrency(quote.average_price, 3)}</p>
               <p className="subtle">
-                Spot shift: {formatCurrency(quote.spot_price_before)} to {formatCurrency(quote.spot_price_after)}
+                Current Price shift: {formatCurrency(quote.spot_price_before)} to {formatCurrency(quote.spot_price_after)}
               </p>
               <p className="quote-note">Quotes are point-in-time previews and can move with new trades.</p>
             </>

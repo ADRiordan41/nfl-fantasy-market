@@ -599,7 +599,7 @@ select {
   backdrop-filter: blur(14px);
   box-shadow: 0 16px 36px rgba(6, 19, 35, 0.3);
   display: grid;
-  grid-template-columns: repeat(7, var(--dock-size));
+  grid-template-columns: repeat(var(--mobile-dock-columns, 7), var(--dock-size));
   gap: 8px;
   padding: 8px;
   z-index: 30;
@@ -618,6 +618,18 @@ select {
   overflow: hidden;
   color: var(--muted);
   border: 1px solid transparent;
+}
+
+.mobile-link-btn {
+  appearance: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.mobile-link-disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 .mobile-link.active {

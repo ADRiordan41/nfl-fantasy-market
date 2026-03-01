@@ -351,7 +351,7 @@ export default function AdminStatsPage() {
                     <th>Pos</th>
                     <th>Listed</th>
                     <th>IPO Season</th>
-                    <th>Base Price</th>
+                    <th>Purchase Price</th>
                   </tr>
                 </thead>
                 <tbody>

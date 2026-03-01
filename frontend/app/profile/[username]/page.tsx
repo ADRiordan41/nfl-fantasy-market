@@ -134,7 +134,7 @@ export default function UserProfilePage() {
                       <th>Team</th>
                       <th>Pos</th>
                       <th>Shares</th>
-                      <th>Spot</th>
+                      <th>Current Price</th>
                       <th>Market Value</th>
                     </tr>
                   </thead>

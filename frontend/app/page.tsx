@@ -127,7 +127,7 @@ export default function HomePage() {
           <strong>{formatNumber(sportsCount)}</strong>
         </article>
         <article className="kpi-card">
-          <span>Average Spot Price</span>
+          <span>Average Current Price</span>
           <strong>{formatCurrency(averageSpot)}</strong>
         </article>
         <article className="kpi-card">
@@ -145,7 +145,7 @@ export default function HomePage() {
           </article>
           <article className="home-step">
             <h4>2. Prices Move Live</h4>
-            <p className="subtle">Spot prices react to order flow and in-season fantasy performance updates.</p>
+            <p className="subtle">Current prices react to order flow and in-season fantasy performance updates.</p>
           </article>
           <article className="home-step">
             <h4>3. Final Season Settlement</h4>
@@ -173,8 +173,8 @@ export default function HomePage() {
                   <tr>
                     <th>Player</th>
                     <th>Sport</th>
-                    <th>Spot</th>
-                    <th>Move vs Base</th>
+                    <th>Current Price</th>
+                    <th>Move vs Purchase Price</th>
                   </tr>
                 </thead>
                 <tbody>
