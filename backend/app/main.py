@@ -99,6 +99,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/")
+def root():
+    return {"ok": True, "service": "MatchupMarket API", "docs": "/docs", "health": "/healthz"}
+
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+
 SYNTHETIC_PLAYER_NAME = re.compile(r"^[A-Z]{2,3} (QB|RB|WR|TE)\d$")
 VALID_USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 VALID_SPORT_CODE = re.compile(r"^[A-Z0-9_-]{2,16}$")
