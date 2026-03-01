@@ -57,5 +57,6 @@ jobs:
       - name: Smoke test create_all + seed (fresh DB)
         env:
           PYTHONPATH: backend
-          DATABASE_URL: postgresql+psycopg://fantasy:fantasy@localhost:5432/fantasy_market
+          # Use 127.0.0.1 to avoid rare IPv6 localhost resolution issues in CI runners.
+          DATABASE_URL: postgresql+psycopg://fantasy:fantasy@127.0.0.1:5432/fantasy_market
         run: python backend/scripts/ci_smoke.py

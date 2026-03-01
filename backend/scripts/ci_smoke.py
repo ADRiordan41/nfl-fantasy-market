@@ -16,6 +16,15 @@ def main() -> int:
     from app.seed import init_db, seed
     from app.models import DirectThread, ForumPost, Player, User
 
+    safe_url = database_url
+    if "://" in safe_url and "@" in safe_url:
+        scheme, rest = safe_url.split("://", 1)
+        creds, host = rest.split("@", 1)
+        if ":" in creds:
+            user, _pw = creds.split(":", 1)
+            safe_url = f"{scheme}://{user}:***@{host}"
+    print("CI smoke DATABASE_URL:", safe_url)
+
     # 1) Create tables (fresh DB should be empty).
     init_db()
 
@@ -25,10 +34,13 @@ def main() -> int:
         seed(db)
         seed(db)
 
-        user_count = db.query(User).count()
-        player_count = db.query(Player).count()
-        forum_count = db.query(ForumPost).count()
-        dm_thread_count = db.query(DirectThread).count()
+        # Use 2.0-style selects so the script stays compatible as SQLAlchemy evolves.
+        from sqlalchemy import func, select
+
+        user_count = int(db.execute(select(func.count()).select_from(User)).scalar_one())
+        player_count = int(db.execute(select(func.count()).select_from(Player)).scalar_one())
+        forum_count = int(db.execute(select(func.count()).select_from(ForumPost)).scalar_one())
+        dm_thread_count = int(db.execute(select(func.count()).select_from(DirectThread)).scalar_one())
     finally:
         db.close()
 
