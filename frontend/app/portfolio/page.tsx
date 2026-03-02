@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet, isUnauthorizedError } from "@/lib/api";
+import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
-import type { Player, Portfolio, UserAccount } from "@/lib/types";
+import type { Player, Portfolio, Quote, UserAccount } from "@/lib/types";
+
+type PortfolioTradeSide = "SELL" | "COVER";
 
 type HoldingRow = {
   id: number;
@@ -38,11 +40,30 @@ function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function parseWholeShares(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return parsed > 0 ? parsed : null;
+}
+
+function isCostSide(side: PortfolioTradeSide): boolean {
+  return side === "COVER";
+}
+
+function sideForRow(row: HoldingRow): PortfolioTradeSide {
+  return row.shares < 0 ? "COVER" : "SELL";
+}
+
 export default function PortfolioPage() {
   const router = useRouter();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [playersById, setPlayersById] = useState<Record<number, Player>>({});
+  const [qtyById, setQtyById] = useState<Record<number, string>>({});
+  const [quoteById, setQuoteById] = useState<Record<number, Quote | null>>({});
+  const [previewingId, setPreviewingId] = useState<number | null>(null);
+  const [placingId, setPlacingId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const handleRequestError = useCallback(
@@ -223,6 +244,82 @@ export default function PortfolioPage() {
     return `conic-gradient(${stops.join(", ")})`;
   }, [pieSlices, pieTotal]);
 
+  function maxTradableShares(row: HoldingRow): number {
+    return Math.max(0, Math.abs(Math.trunc(row.shares)));
+  }
+
+  function clearQuote(playerId: number) {
+    setQuoteById((prev) => ({ ...prev, [playerId]: null }));
+  }
+
+  function setQuantity(playerId: number, value: string) {
+    const digitsOnly = value.replace(/\D/g, "").slice(0, 4);
+    setQtyById((prev) => ({ ...prev, [playerId]: digitsOnly }));
+    clearQuote(playerId);
+  }
+
+  function setMaxQuantity(row: HoldingRow) {
+    setQuantity(row.id, String(maxTradableShares(row)));
+  }
+
+  async function previewTrade(row: HoldingRow) {
+    const side = sideForRow(row);
+    const maxShares = maxTradableShares(row);
+    if (maxShares <= 0) {
+      setError("No shares available for this action.");
+      return;
+    }
+
+    const shares = parseWholeShares(qtyById[row.id] ?? "");
+    if (!shares) {
+      setError("Enter whole shares (1 or more) before previewing.");
+      return;
+    }
+    if (shares > maxShares) {
+      setError(`${side === "SELL" ? "Sell" : "Cover"} size cannot exceed ${formatNumber(maxShares)} shares.`);
+      return;
+    }
+
+    setPreviewingId(row.id);
+    setError("");
+    try {
+      const quote = await apiPost<Quote>(`/quote/${side.toLowerCase()}`, {
+        player_id: row.id,
+        shares,
+      });
+      setQuoteById((prev) => ({ ...prev, [row.id]: quote }));
+    } catch (err: unknown) {
+      handleRequestError(err);
+    } finally {
+      setPreviewingId(null);
+    }
+  }
+
+  async function placeTrade(row: HoldingRow) {
+    const side = sideForRow(row);
+    const quote = quoteById[row.id];
+    if (!quote) {
+      setError("Preview a quote first.");
+      return;
+    }
+
+    setPlacingId(row.id);
+    setError("");
+    try {
+      await apiPost(`/trade/${side.toLowerCase()}`, {
+        player_id: row.id,
+        shares: quote.shares,
+      });
+      setQtyById((prev) => ({ ...prev, [row.id]: "" }));
+      setQuoteById((prev) => ({ ...prev, [row.id]: null }));
+      await load();
+    } catch (err: unknown) {
+      handleRequestError(err);
+    } finally {
+      setPlacingId(null);
+    }
+  }
+
   return (
     <main className="page-shell">
       <section className="hero-panel">
@@ -342,6 +439,52 @@ export default function PortfolioPage() {
                             {formatNumber(row.shares, 0)} shares | Current Price {formatCurrency(row.spot)} | Purchase Price{" "}
                             {formatCurrency(row.base)}
                           </p>
+                          <div className="portfolio-trade-row">
+                            <button
+                              type="button"
+                              className={`chip market-mini-btn portfolio-trade-action-btn ${
+                                sideForRow(row) === "SELL" ? "portfolio-trade-sell-btn" : "portfolio-trade-cover-btn"
+                              }`}
+                              onClick={() => setMaxQuantity(row)}
+                              disabled={maxTradableShares(row) <= 0 || previewingId === row.id || placingId === row.id}
+                            >
+                              {sideForRow(row)} Max
+                            </button>
+                            <input
+                              className="market-qty-input"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={4}
+                              value={qtyById[row.id] ?? ""}
+                              onChange={(event) => setQuantity(row.id, event.target.value)}
+                              placeholder="qty"
+                            />
+                            {quoteById[row.id] ? (
+                              <button
+                                type="button"
+                                className={sideForRow(row) === "SELL" ? "primary-btn short-btn market-quote-action-btn" : "primary-btn market-quote-action-btn"}
+                                disabled={placingId === row.id}
+                                onClick={() => void placeTrade(row)}
+                              >
+                                {placingId === row.id ? "Placing..." : "Execute"}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="market-quote-action-btn market-quote-preview-btn"
+                                onClick={() => void previewTrade(row)}
+                                disabled={previewingId === row.id}
+                              >
+                                {previewingId === row.id ? "Quoting..." : "Preview"}
+                              </button>
+                            )}
+                          </div>
+                          {quoteById[row.id] && (
+                            <p className="subtle portfolio-trade-quote">
+                              {isCostSide(sideForRow(row)) ? "Cost" : "Net"}: {formatCurrency(quoteById[row.id]!.total)} | Avg{" "}
+                              {formatCurrency(quoteById[row.id]!.average_price, 3)}
+                            </p>
+                          )}
                           <div className="holding-metrics">
                             <span>Value: {formatCurrency(row.marketValue)}</span>
                             <span className={row.pnl >= 0 ? "up" : "down"}>
@@ -369,7 +512,19 @@ export default function PortfolioPage() {
                       </p>
                     </div>
                     <div className="table-wrap">
-                      <table>
+                      <table className="portfolio-table">
+                        <colgroup>
+                          <col className="portfolio-col-player" />
+                          <col className="portfolio-col-shares" />
+                          <col className="portfolio-col-purchase" />
+                          <col className="portfolio-col-current" />
+                          <col className="portfolio-col-value" />
+                          <col className="portfolio-col-pnl" />
+                          <col className="portfolio-col-allocation" />
+                          <col className="portfolio-col-action" />
+                          <col className="portfolio-col-qty" />
+                          <col className="portfolio-col-quote" />
+                        </colgroup>
                         <thead>
                           <tr>
                             <th>Player</th>
@@ -379,6 +534,9 @@ export default function PortfolioPage() {
                             <th>Market Value</th>
                             <th>Unrealized P/L</th>
                             <th>Allocation</th>
+                            <th>Action</th>
+                            <th>Qty</th>
+                            <th>Quote</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -397,6 +555,60 @@ export default function PortfolioPage() {
                                 {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})
                               </td>
                               <td>{formatPercent(row.allocationPct, 1)}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className={`chip market-mini-btn portfolio-trade-action-btn ${
+                                    sideForRow(row) === "SELL" ? "portfolio-trade-sell-btn" : "portfolio-trade-cover-btn"
+                                  }`}
+                                  onClick={() => setMaxQuantity(row)}
+                                  disabled={maxTradableShares(row) <= 0 || previewingId === row.id || placingId === row.id}
+                                >
+                                  {sideForRow(row)} Max
+                                </button>
+                              </td>
+                              <td className="market-qty-cell">
+                                <input
+                                  className="market-qty-input"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  maxLength={4}
+                                  value={qtyById[row.id] ?? ""}
+                                  onChange={(event) => setQuantity(row.id, event.target.value)}
+                                  placeholder="qty"
+                                />
+                              </td>
+                              <td className="market-quote-cell">
+                                {quoteById[row.id] ? (
+                                  <div className="market-quote-with-action">
+                                    <div className="market-quote-text">
+                                      <p className="market-quote-main">
+                                        {isCostSide(sideForRow(row)) ? "Cost" : "Net"}: {formatCurrency(quoteById[row.id]!.total)}
+                                      </p>
+                                      <p className="market-quote-sub">Avg {formatCurrency(quoteById[row.id]!.average_price, 3)}</p>
+                                    </div>
+                                    <button
+                                      className={
+                                        sideForRow(row) === "SELL"
+                                          ? "primary-btn short-btn market-quote-action-btn"
+                                          : "primary-btn market-quote-action-btn"
+                                      }
+                                      disabled={placingId === row.id}
+                                      onClick={() => void placeTrade(row)}
+                                    >
+                                      {placingId === row.id ? "Placing..." : "Execute"}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    className="market-quote-action-btn market-quote-preview-btn"
+                                    onClick={() => void previewTrade(row)}
+                                    disabled={previewingId === row.id}
+                                  >
+                                    {previewingId === row.id ? "Quoting..." : "Preview"}
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

@@ -629,7 +629,7 @@ export default function MarketPage() {
                           <div className="market-quote-with-action">
                             <div className="market-quote-text">
                               <p className="market-quote-main">
-                                {isCostSide(side) ? "Cost" : "Proceeds"}: {formatCurrency(quote.total)}
+                                {isCostSide(side) ? "Cost" : "Net"}: {formatCurrency(quote.total)}
                               </p>
                               <p className="market-quote-sub">Avg {formatCurrency(quote.average_price, 3)}</p>
                             </div>

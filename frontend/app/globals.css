@@ -1818,6 +1818,69 @@ button.segment.danger-segment.danger-active {
   gap: 10px;
 }
 
+.portfolio-table col.portfolio-col-shares {
+  width: 84px;
+}
+
+.portfolio-table col.portfolio-col-purchase,
+.portfolio-table col.portfolio-col-current,
+.portfolio-table col.portfolio-col-value {
+  width: 112px;
+}
+
+.portfolio-table col.portfolio-col-pnl {
+  width: 138px;
+}
+
+.portfolio-table col.portfolio-col-allocation {
+  width: 96px;
+}
+
+.portfolio-table col.portfolio-col-action {
+  width: 112px;
+}
+
+.portfolio-table col.portfolio-col-qty {
+  width: 72px;
+}
+
+.portfolio-table col.portfolio-col-quote {
+  width: 188px;
+}
+
+.portfolio-table .market-quote-cell {
+  width: 188px;
+  min-width: 188px;
+  max-width: 188px;
+}
+
+.portfolio-table .market-quote-with-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.portfolio-table .market-quote-text {
+  min-width: 0;
+}
+
+.portfolio-table .market-quote-main,
+.portfolio-table .market-quote-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portfolio-table .market-quote-action-btn {
+  min-height: 28px;
+  height: 28px;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 11px;
+  width: auto;
+  flex: 0 0 auto;
+}
+
 .portfolio-sport-group-head {
   display: flex;
   justify-content: space-between;
@@ -1839,6 +1902,51 @@ button.segment.danger-segment.danger-active {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+
+.portfolio-trade-row {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.portfolio-trade-row .market-qty-input {
+  margin: 0;
+}
+
+.portfolio-trade-row .market-quote-action-btn {
+  min-height: 32px;
+  height: 32px;
+}
+
+.portfolio-trade-action-btn {
+  width: 100%;
+  min-height: 32px;
+  height: 32px;
+  border-radius: 10px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.portfolio-trade-sell-btn {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
+  box-shadow: 0 8px 16px rgba(212, 108, 16, 0.22);
+}
+
+.portfolio-trade-cover-btn {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #1f5fa4 0%, #2f7ccf 100%);
+  box-shadow: 0 8px 16px rgba(31, 95, 164, 0.22);
+}
+
+.portfolio-trade-quote {
+  margin: 4px 0 0;
 }
 
 .allocation-track {

@@ -481,7 +481,7 @@ export default function PlayerPage() {
           {quote ? (
             <>
               <p className="quote-main">
-                {isCostSide(side) ? "Estimated Cost" : "Estimated Proceeds"}: {formatCurrency(quote.total)}
+                {isCostSide(side) ? "Estimated Cost" : "Estimated Net"}: {formatCurrency(quote.total)}
               </p>
               <p className="subtle">Shares: {formatNumber(quote.shares, 0)}</p>
               <p className="subtle">Average price: {formatCurrency(quote.average_price, 3)}</p>
