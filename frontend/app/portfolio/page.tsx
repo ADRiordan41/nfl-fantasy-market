@@ -35,7 +35,21 @@ type SportGroup = {
   allocationPct: number;
 };
 
+type AccountMixSlice = {
+  key: string;
+  label: string;
+  color: string;
+  value: number;
+};
+
+type AccountMixSegment = AccountMixSlice & {
+  pct: number;
+  startAngle: number;
+  endAngle: number;
+};
+
 const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
+const MAX_ACCOUNT_MIX_HOLDINGS = 8;
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -69,6 +83,38 @@ function sideForRow(row: HoldingRow): PortfolioTradeSide {
   return row.shares < 0 ? "COVER" : "SELL";
 }
 
+function polarToCartesian(cx: number, cy: number, radius: number, angleDeg: number) {
+  const angleRad = ((angleDeg - 90) * Math.PI) / 180;
+  return {
+    x: cx + radius * Math.cos(angleRad),
+    y: cy + radius * Math.sin(angleRad),
+  };
+}
+
+function describeDonutSegment(
+  cx: number,
+  cy: number,
+  innerRadius: number,
+  outerRadius: number,
+  startAngle: number,
+  endAngle: number,
+): string {
+  if (endAngle <= startAngle) return "";
+  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+  const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle);
+  const outerEnd = polarToCartesian(cx, cy, outerRadius, endAngle);
+  const innerStart = polarToCartesian(cx, cy, innerRadius, endAngle);
+  const innerEnd = polarToCartesian(cx, cy, innerRadius, startAngle);
+
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerStart.x} ${innerStart.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerEnd.x} ${innerEnd.y}`,
+    "Z",
+  ].join(" ");
+}
+
 export default function PortfolioPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -81,6 +127,7 @@ export default function PortfolioPage() {
   const [placingId, setPlacingId] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
+  const [activeAccountMixSliceKey, setActiveAccountMixSliceKey] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const handleRequestError = useCallback(
@@ -218,30 +265,48 @@ export default function PortfolioPage() {
   const totalAccount = portfolio?.equity ?? cash + holdings;
   const pnl = rows.reduce((sum, row) => sum + row.pnl, 0);
   const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
-  const pieSlices = useMemo(() => {
-    const slices: { key: string; label: string; color: string; value: number }[] = [];
+  const pieSlices = useMemo<AccountMixSlice[]>(() => {
     const cashValue = Math.max(0, cash);
-    slices.push({
-      key: "cash",
-      label: "Cash",
-      color: "#11774c",
-      value: cashValue,
-    });
-
-    for (const row of rowsWithAllocation) {
-      const value = Math.max(0, row.marketValue);
-      if (value <= 0) continue;
-      slices.push({
+    const holdingSlices = rowsWithAllocation
+      .map((row) => ({
         key: `player-${row.id}`,
         label: `${row.name} (${row.team})`,
         color: teamPrimaryColor(row.team, row.sport),
-        value,
+        value: Math.max(0, row.marketValue),
+      }))
+      .filter((slice) => slice.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    const topHoldings = holdingSlices.slice(0, MAX_ACCOUNT_MIX_HOLDINGS);
+    const otherValue = holdingSlices
+      .slice(MAX_ACCOUNT_MIX_HOLDINGS)
+      .reduce((sum, slice) => sum + slice.value, 0);
+
+    const slices: AccountMixSlice[] = [];
+    if (cashValue > 0 || (topHoldings.length === 0 && otherValue <= 0)) {
+      slices.push({
+        key: "cash",
+        label: "Cash",
+        color: "#15784d",
+        value: cashValue,
+      });
+    }
+    slices.push(...topHoldings);
+    if (otherValue > 0) {
+      slices.push({
+        key: "other",
+        label: "Other Holdings",
+        color: "#8ea5bf",
+        value: otherValue,
       });
     }
     return slices;
   }, [cash, rowsWithAllocation]);
 
-  const pieTotal = useMemo(() => pieSlices.reduce((sum, slice) => sum + slice.value, 0), [pieSlices]);
+  const pieTotal = useMemo(
+    () => pieSlices.reduce((sum, slice) => sum + slice.value, 0),
+    [pieSlices],
+  );
   const globalHalt = tradingStatus?.global_halt?.halted ? tradingStatus.global_halt : null;
   const haltBySport = useMemo(() => {
     const map = new Map<string, TradingHaltState>();
@@ -250,30 +315,31 @@ export default function PortfolioPage() {
     }
     return map;
   }, [tradingStatus]);
-  const pieBackground = useMemo(() => {
-    if (pieTotal <= 0) return "conic-gradient(#deebf5 0 100%)";
-    const separatorColor = "rgba(247, 251, 255, 0.96)";
-    const hasMultipleSlices = pieSlices.length > 1;
-    const baseSeparatorPct = hasMultipleSlices ? Math.min(0.42, 100 / (pieSlices.length * 18)) : 0;
-    let cursor = 0;
-    const stops: string[] = [];
-    for (const slice of pieSlices) {
-      const pct = (slice.value / pieTotal) * 100;
-      const separatorPct = hasMultipleSlices ? Math.min(baseSeparatorPct, pct * 0.16) : 0;
-      const colorStart = cursor;
-      const colorEnd = cursor + Math.max(0, pct - separatorPct);
-      const sliceEnd = cursor + pct;
-      stops.push(`${slice.color} ${colorStart.toFixed(4)}% ${colorEnd.toFixed(4)}%`);
-      if (separatorPct > 0.0001) {
-        stops.push(`${separatorColor} ${colorEnd.toFixed(4)}% ${sliceEnd.toFixed(4)}%`);
-      }
-      cursor = sliceEnd;
-    }
-    if (cursor < 100) {
-      stops.push(`${separatorColor} ${cursor.toFixed(4)}% 100%`);
-    }
-    return `conic-gradient(${stops.join(", ")})`;
+  const pieSegments = useMemo<AccountMixSegment[]>(() => {
+    if (pieTotal <= 0) return [];
+    const sliceGapDeg = pieSlices.length > 1 ? 1.3 : 0;
+    let cursor = -90;
+    return pieSlices
+      .map((slice) => {
+        const sweep = (slice.value / pieTotal) * 360;
+        const adjustedGap = Math.min(sliceGapDeg, sweep * 0.45);
+        const startAngle = cursor + adjustedGap / 2;
+        const endAngle = cursor + sweep - adjustedGap / 2;
+        cursor += sweep;
+        return {
+          ...slice,
+          pct: (slice.value / pieTotal) * 100,
+          startAngle,
+          endAngle,
+        };
+      })
+      .filter((slice) => slice.endAngle - slice.startAngle > 0.05);
   }, [pieSlices, pieTotal]);
+  const activeAccountMixSlice = useMemo(() => {
+    if (!pieSegments.length) return null;
+    if (!activeAccountMixSliceKey) return pieSegments[0];
+    return pieSegments.find((slice) => slice.key === activeAccountMixSliceKey) ?? pieSegments[0];
+  }, [activeAccountMixSliceKey, pieSegments]);
 
   function maxTradableShares(row: HoldingRow): number {
     return Math.max(0, Math.abs(Math.trunc(row.shares)));
@@ -429,23 +495,73 @@ export default function PortfolioPage() {
 
           <section className="table-panel account-mix-panel">
             <div className="account-mix-layout">
-              <div className="account-mix-chart-wrap">
-                <div
-                  className="account-mix-pie"
+              <div
+                className="account-mix-chart-wrap"
+                onMouseLeave={() => setActiveAccountMixSliceKey(null)}
+              >
+                <svg
+                  className="account-mix-donut"
+                  viewBox="0 0 200 200"
                   role="img"
-                  aria-label="Pie chart showing holdings and cash composition"
-                  style={{ background: pieBackground }}
-                />
+                  aria-label="Donut chart showing account mix composition"
+                >
+                  <circle className="account-mix-donut-track" cx="100" cy="100" r="76" />
+                  {pieSegments.map((slice) => {
+                    const path = describeDonutSegment(100, 100, 47, 76, slice.startAngle, slice.endAngle);
+                    const isActive = activeAccountMixSlice?.key === slice.key;
+                    const isMuted = Boolean(activeAccountMixSlice) && !isActive;
+                    return (
+                      <path
+                        key={slice.key}
+                        d={path}
+                        fill={slice.color}
+                        className={`account-mix-segment${isActive ? " active" : ""}${isMuted ? " muted" : ""}`}
+                        tabIndex={0}
+                        onMouseEnter={() => setActiveAccountMixSliceKey(slice.key)}
+                        onFocus={() => setActiveAccountMixSliceKey(slice.key)}
+                        aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)})`}
+                      />
+                    );
+                  })}
+                </svg>
+                {activeAccountMixSlice && (
+                  <div className="account-mix-tooltip" role="status">
+                    <strong>{activeAccountMixSlice.label}</strong>
+                    <span>
+                      {formatCurrency(activeAccountMixSlice.value)} ({formatPercent(activeAccountMixSlice.pct, 1)})
+                    </span>
+                  </div>
+                )}
                 <div className="account-mix-center">
-                  <strong>{formatCurrency(totalAccount)}</strong>
+                  <span>{activeAccountMixSlice ? activeAccountMixSlice.label : "Total Account"}</span>
+                  <strong>{formatCurrency(activeAccountMixSlice ? activeAccountMixSlice.value : totalAccount)}</strong>
+                  <span>
+                    {activeAccountMixSlice
+                      ? `${formatPercent(activeAccountMixSlice.pct, 1)} allocation`
+                      : "Hover slices for details"}
+                  </span>
                 </div>
               </div>
 
-              <div className="account-mix-legend">
-                {pieSlices.map((slice) => {
-                  const pct = pieTotal > 0 ? (slice.value / pieTotal) * 100 : 0;
+              <div
+                className="account-mix-legend"
+                onMouseLeave={() => setActiveAccountMixSliceKey(null)}
+              >
+                <p className="subtle account-mix-caption">
+                  Top {MAX_ACCOUNT_MIX_HOLDINGS} holdings, cash, and grouped remainder.
+                </p>
+                {pieSegments.map((slice) => {
+                  const isActive = activeAccountMixSlice?.key === slice.key;
+                  const isMuted = Boolean(activeAccountMixSlice) && !isActive;
                   return (
-                    <div className="account-mix-row" key={slice.key}>
+                    <div
+                      className={`account-mix-row${isActive ? " active" : ""}${isMuted ? " muted" : ""}`}
+                      key={slice.key}
+                      tabIndex={0}
+                      onMouseEnter={() => setActiveAccountMixSliceKey(slice.key)}
+                      onFocus={() => setActiveAccountMixSliceKey(slice.key)}
+                      aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)})`}
+                    >
                       <span className="account-mix-label">
                         <span className="account-mix-swatch" style={{ background: slice.color }} />
                         <span className="account-mix-name" title={slice.label}>
@@ -453,7 +569,7 @@ export default function PortfolioPage() {
                         </span>
                       </span>
                       <strong>{formatCurrency(slice.value)}</strong>
-                      <span>{formatPercent(pct, 1)}</span>
+                      <span>{formatPercent(slice.pct, 1)}</span>
                     </div>
                   );
                 })}
