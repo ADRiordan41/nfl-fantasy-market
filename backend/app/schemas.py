@@ -45,6 +45,47 @@ class AuthPasswordUpdateOut(BaseModel):
     ok: bool = True
 
 
+class TradingHaltStateOut(BaseModel):
+    sport: str
+    halted: bool
+    reason: str | None = None
+    updated_at: datetime
+
+
+class TradingStatusOut(BaseModel):
+    global_halt: TradingHaltStateOut
+    sport_halts: list[TradingHaltStateOut]
+
+
+class AdminTradingHaltUpdateIn(BaseModel):
+    halted: bool
+    reason: str | None = Field(default=None, max_length=280)
+
+
+class AdminSportTradingHaltUpdateIn(BaseModel):
+    sport: str = Field(min_length=2, max_length=16)
+    halted: bool
+    reason: str | None = Field(default=None, max_length=280)
+
+
+class FeedbackCreateIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    page_path: str | None = Field(default=None, max_length=256)
+
+
+class FeedbackOut(BaseModel):
+    id: int
+    page_path: str | None = None
+    message: str
+    status: str
+    created_at: datetime
+
+
+class AdminFeedbackOut(FeedbackOut):
+    user_id: int
+    username: str
+
+
 class ForumPostCreateIn(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     body: str = Field(min_length=1, max_length=10000)

@@ -19,6 +19,7 @@ class User(Base):
     sessions: Mapped[list["UserSession"]] = relationship(back_populates="user")
     forum_posts: Mapped[list["ForumPost"]] = relationship(back_populates="user")
     forum_comments: Mapped[list["ForumComment"]] = relationship(back_populates="user")
+    feedback_messages: Mapped[list["FeedbackMessage"]] = relationship(back_populates="user")
 
 
 class UserSession(Base):
@@ -80,6 +81,31 @@ class ForumPostView(Base):
     post_id: Mapped[int] = mapped_column(ForeignKey("forum_posts.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class TradingControl(Base):
+    __tablename__ = "trading_controls"
+    __table_args__ = (UniqueConstraint("sport", name="uq_trading_control_sport"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sport: Mapped[str] = mapped_column(String(16), index=True)
+    halted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    reason: Mapped[str | None] = mapped_column(String(280), nullable=True)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class FeedbackMessage(Base):
+    __tablename__ = "feedback_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    page_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    message: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="NEW", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    user: Mapped["User"] = relationship(back_populates="feedback_messages")
 
 class Player(Base):
     __tablename__ = "players"

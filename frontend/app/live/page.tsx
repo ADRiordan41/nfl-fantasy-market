@@ -27,12 +27,14 @@ export default function LivePage() {
   const router = useRouter();
   const [payload, setPayload] = useState<LiveGames | null>(null);
   const [sportFilter, setSportFilter] = useState("ALL");
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
       const next = await apiGet<LiveGames>("/live/games");
       setPayload(next);
+      setLastUpdated(new Date().toISOString());
       setError("");
     } catch (err: unknown) {
       if (isUnauthorizedError(err)) {
@@ -109,6 +111,7 @@ export default function LivePage() {
           ))}
         </select>
         <button onClick={load}>Refresh</button>
+        <p className="subtle toolbar-last-updated">Last refreshed {formatStamp(lastUpdated)}</p>
       </section>
 
       {error && <p className="error-box">{error}</p>}

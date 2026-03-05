@@ -230,6 +230,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileHomeMenuOpen, setMobileHomeMenuOpen] = useState(false);
   const [movers, setMovers] = useState<MarketMovers | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackSuccess, setFeedbackSuccess] = useState("");
 
   const loadCurrentUser = useCallback(async () => {
     const token = getAuthToken();
@@ -414,6 +419,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const firstResult = searchResults[0];
     if (!firstResult) return;
     navigateToSearchResult(firstResult.href);
+  }
+
+  async function submitFeedback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const message = feedbackMessage.trim();
+    if (!message) {
+      setFeedbackError("Enter feedback before submitting.");
+      return;
+    }
+    setFeedbackBusy(true);
+    setFeedbackError("");
+    setFeedbackSuccess("");
+    try {
+      await apiPost("/feedback", {
+        message,
+        page_path: pathname,
+      });
+      setFeedbackMessage("");
+      setFeedbackSuccess("Feedback sent. Thank you.");
+    } catch (err: unknown) {
+      if (isUnauthorizedError(err)) {
+        setFeedbackOpen(false);
+        clearAuthToken();
+        setCurrentUser(null);
+        router.replace("/auth");
+        return;
+      }
+      setFeedbackError(toMessage(err));
+    } finally {
+      setFeedbackBusy(false);
+    }
   }
 
   const showNav = pathname !== "/auth";
@@ -692,6 +728,55 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           )}
         </nav>
+      )}
+
+      {showNav && currentUser && (
+        <>
+          <button
+            type="button"
+            className="feedback-fab"
+            onClick={() => {
+              setFeedbackOpen(true);
+              setFeedbackSuccess("");
+              setFeedbackError("");
+            }}
+          >
+            Feedback
+          </button>
+          {feedbackOpen && (
+            <div className="feedback-modal-backdrop" role="presentation" onClick={() => setFeedbackOpen(false)}>
+              <section
+                className="feedback-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Send feedback"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <h3>Send Feedback</h3>
+                <p className="subtle">Share bugs, friction, or feature requests for this page.</p>
+                <form onSubmit={submitFeedback} className="feedback-form">
+                  <textarea
+                    value={feedbackMessage}
+                    onChange={(event) => setFeedbackMessage(event.target.value)}
+                    placeholder="What should we improve?"
+                    maxLength={2000}
+                  />
+                  <p className="subtle">Page: {pathname}</p>
+                  {feedbackError && <p className="error-box">{feedbackError}</p>}
+                  {feedbackSuccess && <p className="success-box">{feedbackSuccess}</p>}
+                  <div className="feedback-actions">
+                    <button type="button" onClick={() => setFeedbackOpen(false)} disabled={feedbackBusy}>
+                      Close
+                    </button>
+                    <button type="submit" className="primary-btn" disabled={feedbackBusy}>
+                      {feedbackBusy ? "Sending..." : "Send Feedback"}
+                    </button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

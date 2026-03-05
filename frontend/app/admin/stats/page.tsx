@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedNumber } from "@/lib/format";
 import type {
+  AdminFeedbackMessage,
   AdminIpoActionResult,
   AdminIpoPlayers,
   AdminIpoSport,
   AdminStatsPreview,
   AdminStatsPublishResult,
+  TradingStatus,
 } from "@/lib/types";
 
 function toMessage(err: unknown): string {
@@ -43,6 +45,13 @@ export default function AdminStatsPage() {
   const [ipoSeasonBySport, setIpoSeasonBySport] = useState<Record<string, string>>({});
   const [busyIpoAction, setBusyIpoAction] = useState("");
   const [ipoMessage, setIpoMessage] = useState("");
+  const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
+  const [globalHaltReason, setGlobalHaltReason] = useState("");
+  const [sportHaltReasonBySport, setSportHaltReasonBySport] = useState<Record<string, string>>({});
+  const [busyTradingAction, setBusyTradingAction] = useState("");
+  const [feedbackRows, setFeedbackRows] = useState<AdminFeedbackMessage[]>([]);
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState("ALL");
+  const [busyFeedback, setBusyFeedback] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -103,14 +112,56 @@ export default function AdminStatsPage() {
     [handleApiError],
   );
 
+  const applyTradingStatus = useCallback((status: TradingStatus) => {
+    setTradingStatus(status);
+    setGlobalHaltReason(status.global_halt.halted ? status.global_halt.reason ?? "" : "");
+    setSportHaltReasonBySport((previous) => {
+      const next = { ...previous };
+      for (const row of status.sport_halts) {
+        next[row.sport] = row.halted ? row.reason ?? "" : "";
+      }
+      return next;
+    });
+  }, []);
+
+  const loadTradingStatus = useCallback(async () => {
+    try {
+      const status = await apiGet<TradingStatus>("/admin/trading/halt");
+      applyTradingStatus(status);
+    } catch (err: unknown) {
+      handleApiError(err);
+    }
+  }, [applyTradingStatus, handleApiError]);
+
+  const loadFeedback = useCallback(async () => {
+    setBusyFeedback(true);
+    try {
+      const query =
+        feedbackStatusFilter === "ALL"
+          ? "/admin/feedback?limit=200"
+          : `/admin/feedback?limit=200&status=${encodeURIComponent(feedbackStatusFilter)}`;
+      const rows = await apiGet<AdminFeedbackMessage[]>(query);
+      setFeedbackRows(rows);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyFeedback(false);
+    }
+  }, [feedbackStatusFilter, handleApiError]);
+
   useEffect(() => {
     void loadIpoSports();
-  }, [loadIpoSports]);
+    void loadTradingStatus();
+  }, [loadIpoSports, loadTradingStatus]);
 
   useEffect(() => {
     if (!reviewSport) return;
     void loadIpoReview(reviewSport);
   }, [loadIpoReview, reviewSport]);
+
+  useEffect(() => {
+    void loadFeedback();
+  }, [loadFeedback]);
 
   function buildPayload(): { csv_text: string; week_override: number | null } | null {
     const trimmed = csvText.trim();
@@ -222,6 +273,41 @@ export default function AdminStatsPage() {
     }
   }
 
+  async function updateGlobalTradingHalt(halted: boolean) {
+    setBusyTradingAction("global");
+    setError("");
+    try {
+      const status = await apiPost<TradingStatus>("/admin/trading/halt/global", {
+        halted,
+        reason: halted ? (globalHaltReason.trim() || null) : null,
+      });
+      applyTradingStatus(status);
+      setIpoMessage(halted ? "Trading paused globally." : "Trading resumed globally.");
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyTradingAction("");
+    }
+  }
+
+  async function updateSportTradingHalt(sport: string, halted: boolean) {
+    setBusyTradingAction(`sport:${sport}`);
+    setError("");
+    try {
+      const status = await apiPost<TradingStatus>("/admin/trading/halt/sport", {
+        sport,
+        halted,
+        reason: halted ? (sportHaltReasonBySport[sport]?.trim() || null) : null,
+      });
+      applyTradingStatus(status);
+      setIpoMessage(halted ? `${sport} trading paused.` : `${sport} trading resumed.`);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyTradingAction("");
+    }
+  }
+
   async function onFilePicked(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -309,6 +395,43 @@ export default function AdminStatsPage() {
                     Review Players
                   </button>
                 </div>
+                <div className="admin-trading-card-controls">
+                  <div className="admin-trading-status-line">
+                    <span className={summary.sport && tradingStatus?.sport_halts.find((row) => row.sport === summary.sport)?.halted ? "admin-status error" : "admin-status ready"}>
+                      {tradingStatus?.sport_halts.find((row) => row.sport === summary.sport)?.halted ? "Trading Paused" : "Trading Live"}
+                    </span>
+                  </div>
+                  <label className="field-label" htmlFor={`halt-reason-${summary.sport}`}>
+                    Halt Reason (optional)
+                  </label>
+                  <input
+                    id={`halt-reason-${summary.sport}`}
+                    value={sportHaltReasonBySport[summary.sport] ?? ""}
+                    onChange={(event) =>
+                      setSportHaltReasonBySport((previous) => ({
+                        ...previous,
+                        [summary.sport]: event.target.value,
+                      }))
+                    }
+                    placeholder={`Reason for ${summary.sport} halt`}
+                  />
+                  <div className="admin-actions">
+                    <button
+                      className="danger-btn"
+                      onClick={() => void updateSportTradingHalt(summary.sport, true)}
+                      disabled={busyTradingAction.length > 0}
+                    >
+                      {busyTradingAction === `sport:${summary.sport}` ? "Saving..." : `Pause ${summary.sport}`}
+                    </button>
+                    <button
+                      className="primary-btn"
+                      onClick={() => void updateSportTradingHalt(summary.sport, false)}
+                      disabled={busyTradingAction.length > 0}
+                    >
+                      {busyTradingAction === `sport:${summary.sport}` ? "Saving..." : `Resume ${summary.sport}`}
+                    </button>
+                  </div>
+                </div>
                 <p className="subtle">
                   {summary.ipo_open && summary.ipo_season
                     ? `Launched for season ${formatNumber(summary.ipo_season)}.`
@@ -316,6 +439,87 @@ export default function AdminStatsPage() {
                 </p>
               </article>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="table-panel">
+        <h3>Global Trading Controls</h3>
+        <div className="admin-trading-global">
+          <div className="admin-trading-status-line">
+            <span className={tradingStatus?.global_halt.halted ? "admin-status error" : "admin-status ready"}>
+              {tradingStatus?.global_halt.halted ? "Global Trading Paused" : "Global Trading Live"}
+            </span>
+          </div>
+          <label className="field-label" htmlFor="global-halt-reason">
+            Global Halt Reason (optional)
+          </label>
+          <input
+            id="global-halt-reason"
+            value={globalHaltReason}
+            onChange={(event) => setGlobalHaltReason(event.target.value)}
+            placeholder="Reason for global halt"
+          />
+          <div className="admin-actions">
+            <button
+              className="danger-btn"
+              onClick={() => void updateGlobalTradingHalt(true)}
+              disabled={busyTradingAction.length > 0}
+            >
+              {busyTradingAction === "global" ? "Saving..." : "Pause All Trading"}
+            </button>
+            <button
+              className="primary-btn"
+              onClick={() => void updateGlobalTradingHalt(false)}
+              disabled={busyTradingAction.length > 0}
+            >
+              {busyTradingAction === "global" ? "Saving..." : "Resume All Trading"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="table-panel">
+        <h3>Feedback Inbox</h3>
+        <div className="admin-review-controls">
+          <select value={feedbackStatusFilter} onChange={(event) => setFeedbackStatusFilter(event.target.value)}>
+            <option value="ALL">All Statuses</option>
+            <option value="NEW">New</option>
+            <option value="ACK">Acknowledged</option>
+            <option value="DONE">Done</option>
+          </select>
+          <button onClick={() => void loadFeedback()} disabled={busyFeedback}>
+            {busyFeedback ? "Refreshing..." : "Refresh Feedback"}
+          </button>
+        </div>
+        {!feedbackRows.length ? (
+          <p className="subtle">No feedback messages for this filter.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>User</th>
+                  <th>Page</th>
+                  <th>Status</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feedbackRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{new Date(row.created_at).toLocaleString()}</td>
+                    <td>
+                      {row.username} (#{row.user_id})
+                    </td>
+                    <td>{row.page_path ?? "--"}</td>
+                    <td>{row.status}</td>
+                    <td>{row.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

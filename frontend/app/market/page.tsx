@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
-import type { MarketMovers, Player, Portfolio, Quote, UserAccount } from "@/lib/types";
+import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
 
 type TradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
 type MarketSortColumn =
@@ -50,6 +50,19 @@ type MarketRow = {
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function formatStamp(value: string | null): string {
+  if (!value) return "--";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function getSignedPercent(base: number, spot: number): number {
@@ -99,6 +112,8 @@ export default function MarketPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [hydratedSortKey, setHydratedSortKey] = useState("");
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
   const [error, setError] = useState("");
 
   const handleRequestError = useCallback(
@@ -114,12 +129,13 @@ export default function MarketPage() {
 
   const load = useCallback(async () => {
     try {
-      const [playersData, portfolioData, moversData] = await Promise.all([
+      const [playersData, portfolioData, moversData, statusData] = await Promise.all([
         apiGet<Player[]>("/players"),
         apiGet<Portfolio>("/portfolio"),
         apiGet<MarketMovers>(`/market/movers?limit=100&window_hours=24&sport=${encodeURIComponent(activeSport)}`).catch(
           () => null,
         ),
+        apiGet<TradingStatus>("/trading/status").catch(() => null),
       ]);
       setPlayers(playersData);
       setPortfolio(portfolioData);
@@ -133,6 +149,8 @@ export default function MarketPage() {
         }
       }
       setChange24hById(next24hById);
+      setTradingStatus(statusData);
+      setLastUpdated(new Date().toISOString());
       setError("");
     } catch (err: unknown) {
       handleRequestError(err);
@@ -341,6 +359,18 @@ export default function MarketPage() {
 
     return filteredRows;
   }, [activeSport, change24hById, ownedById, players, positionFilter, query, sortColumn, sortDirection]);
+  const activeSportHalt = useMemo(() => {
+    if (!tradingStatus) return null;
+    const globalHalt = tradingStatus.global_halt;
+    if (globalHalt?.halted) return globalHalt;
+    return tradingStatus.sport_halts.find((entry) => entry.sport === activeSport && entry.halted) ?? null;
+  }, [activeSport, tradingStatus]);
+  const activeSportTradingHalted = Boolean(activeSportHalt?.halted);
+  const activeSportHaltMessage = activeSportHalt
+    ? activeSportHalt.reason
+      ? `Trading paused for ${activeSport}. ${activeSportHalt.reason}`
+      : `Trading paused for ${activeSport}.`
+    : "";
 
   const sortLabel = useCallback(
     (column: MarketSortColumn) => {
@@ -370,6 +400,7 @@ export default function MarketPage() {
   }
 
   async function executeMaxTrade(playerId: number, nextSide: "BUY" | "SHORT", maxSize: number) {
+    if (activeSportTradingHalted) return;
     if (maxSize <= 0) return;
     setSideById((prev) => ({ ...prev, [playerId]: nextSide }));
     setQtyById((prev) => ({ ...prev, [playerId]: String(maxSize) }));
@@ -397,6 +428,7 @@ export default function MarketPage() {
   }
 
   async function previewTrade(playerId: number) {
+    if (activeSportTradingHalted) return;
     const side = sideFor(playerId);
     const shares = parseWholeShares(qtyById[playerId] ?? "");
     if (!shares) {
@@ -420,6 +452,7 @@ export default function MarketPage() {
   }
 
   async function placeTrade(playerId: number) {
+    if (activeSportTradingHalted) return;
     const side = sideFor(playerId);
     const quote = quoteById[playerId];
     if (!quote) {
@@ -486,6 +519,7 @@ export default function MarketPage() {
           Margin call active. Positions may be automatically liquidated until maintenance requirements are met.
         </p>
       )}
+      {activeSportTradingHalted && <p className="error-box">{activeSportHaltMessage}</p>}
 
       <section className="toolbar">
         <input
@@ -502,6 +536,7 @@ export default function MarketPage() {
           ))}
         </select>
         <button onClick={load}>Refresh</button>
+        <p className="subtle toolbar-last-updated">Last updated {formatStamp(lastUpdated)}</p>
       </section>
 
       {error && <p className="error-box">{error}</p>}
@@ -588,14 +623,24 @@ export default function MarketPage() {
                           <button
                             className="chip market-mini-btn market-quick-buy-btn"
                             onClick={() => void executeMaxTrade(player.id, "BUY", buyRemaining)}
-                            disabled={buyRemaining <= 0 || previewingId === player.id || placingId === player.id}
+                            disabled={
+                              activeSportTradingHalted ||
+                              buyRemaining <= 0 ||
+                              previewingId === player.id ||
+                              placingId === player.id
+                            }
                           >
                             Buy Max
                           </button>
                           <button
                             className="chip market-mini-btn market-quick-short-btn"
                             onClick={() => void executeMaxTrade(player.id, "SHORT", shortRemaining)}
-                            disabled={shortRemaining <= 0 || previewingId === player.id || placingId === player.id}
+                            disabled={
+                              activeSportTradingHalted ||
+                              shortRemaining <= 0 ||
+                              previewingId === player.id ||
+                              placingId === player.id
+                            }
                           >
                             Short Max
                           </button>
@@ -606,6 +651,7 @@ export default function MarketPage() {
                           className="market-side-select"
                           value={side}
                           onChange={(event) => setSide(player.id, event.target.value as TradeSide)}
+                          disabled={activeSportTradingHalted}
                         >
                           <option value="BUY">BUY</option>
                           <option value="SELL">SELL</option>
@@ -622,6 +668,7 @@ export default function MarketPage() {
                           value={qtyById[player.id] ?? ""}
                           onChange={(event) => setQuantity(player.id, event.target.value)}
                           placeholder="qty"
+                          disabled={activeSportTradingHalted}
                         />
                       </td>
                       <td className="market-quote-cell">
@@ -639,7 +686,7 @@ export default function MarketPage() {
                                   ? "primary-btn short-btn market-quote-action-btn"
                                   : "primary-btn market-quote-action-btn"
                               }
-                              disabled={placingId === player.id}
+                              disabled={activeSportTradingHalted || placingId === player.id}
                               onClick={() => void placeTrade(player.id)}
                             >
                               {placingId === player.id ? "Placing..." : "Execute"}
@@ -649,7 +696,7 @@ export default function MarketPage() {
                           <button
                             className="market-quote-action-btn market-quote-preview-btn"
                             onClick={() => void previewTrade(player.id)}
-                            disabled={previewingId === player.id}
+                            disabled={activeSportTradingHalted || previewingId === player.id}
                           >
                             {previewingId === player.id ? "Quoting..." : "Preview"}
                           </button>

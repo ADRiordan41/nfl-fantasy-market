@@ -23,6 +23,7 @@ from .db import SessionLocal, get_db
 from .models import (
     ArchivedHolding,
     ArchivedWeeklyStat,
+    FeedbackMessage,
     ForumComment,
     ForumPost,
     ForumPostView,
@@ -31,6 +32,7 @@ from .models import (
     PricePoint,
     SeasonClose,
     SeasonReset,
+    TradingControl,
     Transaction,
     User,
     UserSession,
@@ -48,6 +50,11 @@ from .schemas import (
     AdminStatsPreviewOut,
     AdminStatsPreviewRow,
     AdminStatsPublishOut,
+    AdminFeedbackOut,
+    AdminSportTradingHaltUpdateIn,
+    AdminTradingHaltUpdateIn,
+    FeedbackCreateIn,
+    FeedbackOut,
     ForumCommentCreateIn,
     ForumCommentOut,
     ForumPostCreateIn,
@@ -75,6 +82,8 @@ from .schemas import (
     SeasonResetOut,
     SettlementOut,
     StatIn,
+    TradingHaltStateOut,
+    TradingStatusOut,
     TradeIn,
     TradeOut,
     UserProfileHoldingOut,
@@ -132,6 +141,7 @@ ADMIN_USERNAMES = {
     for name in RAW_ADMIN_USERNAMES.split(",")
     if name.strip()
 }
+GLOBAL_TRADING_CONTROL_SPORT = "ALL"
 
 
 @dataclass
@@ -230,6 +240,89 @@ def ensure_player_is_listed_or_raise(player: Player) -> None:
             "Trading is disabled until an admin launches IPO."
         ),
     )
+
+
+def ensure_trading_control_row(
+    db: Session,
+    sport: str,
+    *,
+    for_update: bool = False,
+) -> TradingControl:
+    stmt = select(TradingControl).where(TradingControl.sport == sport)
+    if for_update:
+        stmt = stmt.with_for_update()
+    row = db.execute(stmt).scalar_one_or_none()
+    if row:
+        return row
+
+    now = datetime.utcnow()
+    row = TradingControl(
+        sport=sport,
+        halted=False,
+        reason=None,
+        updated_at=now,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def trading_halt_state_to_out(row: TradingControl) -> TradingHaltStateOut:
+    return TradingHaltStateOut(
+        sport=str(row.sport),
+        halted=bool(row.halted),
+        reason=normalize_optional_profile_field(row.reason),
+        updated_at=row.updated_at or datetime.utcnow(),
+    )
+
+
+def build_trading_status_out(db: Session) -> TradingStatusOut:
+    all_rows = db.execute(select(TradingControl).order_by(TradingControl.sport.asc())).scalars().all()
+    by_sport: dict[str, TradingControl] = {str(row.sport).upper(): row for row in all_rows}
+
+    global_row = by_sport.get(GLOBAL_TRADING_CONTROL_SPORT)
+    if not global_row:
+        global_row = ensure_trading_control_row(db, GLOBAL_TRADING_CONTROL_SPORT, for_update=False)
+        db.flush()
+
+    sport_halts: list[TradingHaltStateOut] = []
+    for sport, row in sorted(by_sport.items(), key=lambda item: item[0]):
+        if sport == GLOBAL_TRADING_CONTROL_SPORT:
+            continue
+        sport_halts.append(trading_halt_state_to_out(row))
+
+    return TradingStatusOut(
+        global_halt=trading_halt_state_to_out(global_row),
+        sport_halts=sport_halts,
+    )
+
+
+def ensure_trading_allowed_or_raise(db: Session, sport: str) -> None:
+    sport_code = normalize_sport_code(sport)
+    rows = db.execute(
+        select(TradingControl).where(
+            TradingControl.halted.is_(True),
+            TradingControl.sport.in_([GLOBAL_TRADING_CONTROL_SPORT, sport_code]),
+        )
+    ).scalars().all()
+    if not rows:
+        return
+
+    global_row = next((row for row in rows if str(row.sport).upper() == GLOBAL_TRADING_CONTROL_SPORT), None)
+    if global_row:
+        reason = normalize_optional_profile_field(global_row.reason)
+        detail = "Trading is temporarily halted across all sports."
+        if reason:
+            detail += f" Reason: {reason}"
+        raise HTTPException(status_code=403, detail=detail)
+
+    sport_row = next((row for row in rows if str(row.sport).upper() == sport_code), None)
+    if sport_row:
+        reason = normalize_optional_profile_field(sport_row.reason)
+        detail = f"Trading is temporarily halted for {sport_code}."
+        if reason:
+            detail += f" Reason: {reason}"
+        raise HTTPException(status_code=403, detail=detail)
 
 
 def auth_exception(detail: str = "Authentication required.") -> HTTPException:
@@ -1766,6 +1859,126 @@ def global_search(
     return [row[2] for row in scored_results[:limit]]
 
 
+@app.get("/trading/status", response_model=TradingStatusOut)
+def trading_status(
+    db: Session = Depends(get_db),
+):
+    status_out = build_trading_status_out(db)
+    db.commit()
+    return status_out
+
+
+@app.post("/feedback", response_model=FeedbackOut)
+def create_feedback(
+    payload: FeedbackCreateIn,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    message = normalize_forum_text(payload.message, "message")
+    page_path = normalize_optional_profile_field(payload.page_path)
+    row = FeedbackMessage(
+        user_id=int(auth.user.id),
+        page_path=page_path,
+        message=message,
+        status="NEW",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return FeedbackOut(
+        id=int(row.id),
+        page_path=normalize_optional_profile_field(row.page_path),
+        message=str(row.message),
+        status=str(row.status),
+        created_at=row.created_at,
+    )
+
+
+@app.get("/admin/trading/halt", response_model=TradingStatusOut)
+def admin_trading_halt_status(
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    status_out = build_trading_status_out(db)
+    db.commit()
+    return status_out
+
+
+@app.post("/admin/trading/halt/global", response_model=TradingStatusOut)
+def admin_update_global_trading_halt(
+    payload: AdminTradingHaltUpdateIn,
+    admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    global_row = ensure_trading_control_row(
+        db=db,
+        sport=GLOBAL_TRADING_CONTROL_SPORT,
+        for_update=True,
+    )
+    global_row.halted = bool(payload.halted)
+    global_row.reason = normalize_optional_profile_field(payload.reason) if payload.halted else None
+    global_row.updated_by_user_id = int(admin.user.id)
+    global_row.updated_at = datetime.utcnow()
+    db.flush()
+    status_out = build_trading_status_out(db)
+    db.commit()
+    return status_out
+
+
+@app.post("/admin/trading/halt/sport", response_model=TradingStatusOut)
+def admin_update_sport_trading_halt(
+    payload: AdminSportTradingHaltUpdateIn,
+    admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    sport_code = normalize_sport_code(payload.sport)
+    row = ensure_trading_control_row(
+        db=db,
+        sport=sport_code,
+        for_update=True,
+    )
+    row.halted = bool(payload.halted)
+    row.reason = normalize_optional_profile_field(payload.reason) if payload.halted else None
+    row.updated_by_user_id = int(admin.user.id)
+    row.updated_at = datetime.utcnow()
+    db.flush()
+    status_out = build_trading_status_out(db)
+    db.commit()
+    return status_out
+
+
+@app.get("/admin/feedback", response_model=list[AdminFeedbackOut])
+def admin_feedback_list(
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(FeedbackMessage, User.username)
+        .join(User, FeedbackMessage.user_id == User.id)
+        .order_by(FeedbackMessage.created_at.desc(), FeedbackMessage.id.desc())
+        .limit(limit)
+    )
+    normalized_status = (status_filter or "").strip().upper()
+    if normalized_status:
+        stmt = stmt.where(FeedbackMessage.status == normalized_status)
+
+    rows = db.execute(stmt).all()
+    return [
+        AdminFeedbackOut(
+            id=int(feedback.id),
+            user_id=int(feedback.user_id),
+            username=str(username),
+            page_path=normalize_optional_profile_field(feedback.page_path),
+            message=str(feedback.message),
+            status=str(feedback.status),
+            created_at=feedback.created_at,
+        )
+        for feedback, username in rows
+    ]
+
+
 @app.get("/forum/posts", response_model=list[ForumPostSummaryOut])
 def forum_list_posts(
     limit: int = Query(default=50, ge=1, le=200),
@@ -2018,6 +2231,7 @@ def quote_buy(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     qty = Decimal(str(trade.shares))
     if qty <= 0:
@@ -2071,6 +2285,7 @@ def quote_sell(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     qty = Decimal(str(trade.shares))
     if qty <= 0:
@@ -2125,6 +2340,7 @@ def quote_short(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     qty = Decimal(str(trade.shares))
     if qty <= 0:
@@ -2184,6 +2400,7 @@ def quote_cover(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     qty = Decimal(str(trade.shares))
     if qty <= 0:
@@ -2242,6 +2459,7 @@ def buy(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
@@ -2336,6 +2554,7 @@ def sell(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     holding = db.execute(
         select(Holding)
@@ -2427,6 +2646,7 @@ def short(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     holding = db.execute(
         select(Holding)
@@ -2524,6 +2744,7 @@ def cover(
     if not player:
         raise HTTPException(404, "Player not found")
     ensure_player_is_listed_or_raise(player)
+    ensure_trading_allowed_or_raise(db, str(player.sport))
 
     holding = db.execute(
         select(Holding)

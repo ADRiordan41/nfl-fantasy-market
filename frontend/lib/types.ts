@@ -262,3 +262,28 @@ export type AdminIpoActionResult = {
   ipo_opened_at: string | null;
   message: string;
 };
+
+export type TradingHaltState = {
+  sport: string;
+  halted: boolean;
+  reason: string | null;
+  updated_at: string;
+};
+
+export type TradingStatus = {
+  global_halt: TradingHaltState;
+  sport_halts: TradingHaltState[];
+};
+
+export type FeedbackMessage = {
+  id: number;
+  page_path: string | null;
+  message: string;
+  status: string;
+  created_at: string;
+};
+
+export type AdminFeedbackMessage = FeedbackMessage & {
+  user_id: number;
+  username: string;
+};
