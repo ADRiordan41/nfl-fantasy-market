@@ -104,7 +104,8 @@ a {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -151,6 +152,49 @@ select {
   color: var(--ink);
   padding: 0 12px;
   width: 100%;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  padding: 10px 12px;
+  line-height: 1.45;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #7a8ea8;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: rgba(137, 170, 206, 0.95);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(89, 140, 207, 0.95);
+  box-shadow: 0 0 0 2px rgba(133, 176, 232, 0.26);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: rgba(236, 244, 252, 0.82);
+  color: #5f748f;
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: #d99285;
+  box-shadow: 0 0 0 2px rgba(217, 146, 133, 0.2);
 }
 
 .app-shell {
@@ -1244,7 +1288,7 @@ h1 {
 
 .community-feed {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 
 .community-controls-row {
@@ -1368,23 +1412,38 @@ h1 {
 .community-post-card,
 .community-comment-card {
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.94) 0%, rgba(244, 250, 255, 0.86) 100%);
-  padding: 12px;
-  box-shadow: 0 12px 26px rgba(6, 19, 35, 0.12);
+  border-radius: 16px;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(244, 250, 255, 0.9) 100%);
+  padding: 14px;
+  box-shadow: 0 14px 30px rgba(6, 19, 35, 0.14);
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.community-post-card:hover,
+.community-comment-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(149, 183, 219, 0.9);
+  box-shadow: 0 18px 34px rgba(6, 19, 35, 0.16);
 }
 
 .community-post-title {
   display: inline-block;
-  font-weight: 700;
-  font-size: 1.02rem;
-  margin-bottom: 6px;
+  font-weight: 800;
+  font-size: 1.08rem;
+  margin-bottom: 8px;
+  line-height: 1.24;
+}
+
+.community-post-title:hover {
+  text-decoration: underline;
+  color: #1a4169;
 }
 
 .community-post-preview,
 .community-comment-body {
-  margin: 0 0 8px;
-  line-height: 1.45;
+  margin: 0 0 10px;
+  line-height: 1.52;
   color: #1c3144;
   white-space: pre-wrap;
 }
@@ -1396,13 +1455,33 @@ h1 {
 .community-post-body {
   margin: 0;
   white-space: pre-wrap;
-  line-height: 1.55;
+  line-height: 1.62;
+  font-size: 1.01rem;
 }
 
 .community-meta {
   margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  row-gap: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(173, 199, 225, 0.75);
   font-size: 12px;
   color: var(--muted);
+}
+
+.community-comment-card {
+  border-left: 4px solid rgba(109, 150, 199, 0.62);
+}
+
+.community-comments-thread {
+  gap: 10px;
+}
+
+.community-comments-thread .community-comment-card + .community-comment-card {
+  margin-left: 10px;
 }
 
 .community-user-link {
@@ -2345,6 +2424,11 @@ button.segment.danger-segment.danger-active {
 
 .market-table thead th {
   border-top: 2px solid #c0cedc;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(247, 252, 255, 0.98) 0%, rgba(236, 246, 255, 0.96) 100%);
+  box-shadow: inset 0 -1px 0 rgba(175, 198, 223, 0.82), 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .market-table th {
@@ -2353,6 +2437,18 @@ button.segment.danger-segment.danger-active {
 
 .market-table td {
   vertical-align: middle;
+}
+
+.market-table tbody tr:nth-child(odd) td {
+  background: rgba(245, 251, 255, 0.64);
+}
+
+.market-table tbody tr:nth-child(even) td {
+  background: rgba(252, 254, 255, 0.74);
+}
+
+.market-table tbody tr:hover td {
+  background: rgba(225, 241, 255, 0.9);
 }
 
 .market-table .card-title,

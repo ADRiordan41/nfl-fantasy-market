@@ -197,7 +197,7 @@ export default function CommunityPostPage() {
             </form>
           </section>
 
-          <section className="community-feed">
+          <section className="community-feed community-comments-thread">
             {post.comments.length === 0 ? (
               <section className="empty-panel">
                 <h3>No comments yet</h3>
