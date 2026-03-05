@@ -25,12 +25,14 @@ function formatStamp(value: string | null): string {
 
 export default function LivePage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<LiveGames | null>(null);
   const [sportFilter, setSportFilter] = useState("ALL");
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const next = await apiGet<LiveGames>("/live/games");
       setPayload(next);
@@ -42,6 +44,8 @@ export default function LivePage() {
         return;
       }
       setError(toMessage(err));
+    } finally {
+      setLoading(false);
     }
   }, [router]);
 
@@ -110,13 +114,23 @@ export default function LivePage() {
             </option>
           ))}
         </select>
-        <button onClick={load}>Refresh</button>
+        <button onClick={load} disabled={loading}>
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
         <p className="subtle toolbar-last-updated">Last refreshed {formatStamp(lastUpdated)}</p>
       </section>
 
-      {error && <p className="error-box">{error}</p>}
+      {error && <p className="error-box" role="alert">{error}</p>}
 
-      {visibleGames.length === 0 ? (
+      {loading ? (
+        <section className="table-panel" aria-busy="true">
+          <div className="skeleton-stack">
+            <div className="skeleton-line lg" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+          </div>
+        </section>
+      ) : visibleGames.length === 0 ? (
         <section className="empty-panel">
           <h3>No live games right now</h3>
           <p className="subtle">

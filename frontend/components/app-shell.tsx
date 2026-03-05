@@ -15,6 +15,7 @@ import {
 } from "react";
 import { apiGet, apiPost, clearAuthToken, getAuthToken, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatSignedPercent } from "@/lib/format";
+import { getToastEventName, type ToastEventDetail } from "@/lib/toast";
 import type { MarketMover, MarketMovers, Player, SearchResult, UserAccount } from "@/lib/types";
 
 type NavItem = {
@@ -22,6 +23,12 @@ type NavItem = {
   label: string;
   Icon: (props: SVGProps<SVGSVGElement>) => ReactElement;
   requiresAdmin?: boolean;
+};
+
+type ToastItem = {
+  id: number;
+  message: string;
+  tone: "success" | "error" | "info";
 };
 
 function MarketIcon(props: SVGProps<SVGSVGElement>) {
@@ -235,6 +242,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [feedbackError, setFeedbackError] = useState("");
   const [feedbackSuccess, setFeedbackSuccess] = useState("");
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const pushToast = useCallback((detail: ToastEventDetail) => {
+    const message = (detail.message || "").trim();
+    if (!message) return;
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    const tone = detail.tone ?? "info";
+    const durationMs = detail.durationMs ?? 2800;
+    setToasts((previous) => [...previous, { id, message, tone }]);
+    window.setTimeout(() => {
+      setToasts((previous) => previous.filter((toast) => toast.id !== id));
+    }, Math.max(1200, durationMs));
+  }, []);
 
   const loadCurrentUser = useCallback(async () => {
     const token = getAuthToken();
@@ -386,6 +406,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    const eventName = getToastEventName();
+    function onToast(event: Event) {
+      const customEvent = event as CustomEvent<ToastEventDetail>;
+      if (!customEvent.detail) return;
+      pushToast(customEvent.detail);
+    }
+    window.addEventListener(eventName, onToast as EventListener);
+    return () => {
+      window.removeEventListener(eventName, onToast as EventListener);
+    };
+  }, [pushToast]);
+
   async function logout() {
     setBusy(true);
     setAuthError("");
@@ -399,6 +432,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       clearAuthToken();
       setCurrentUser(null);
       setBusy(false);
+      pushToast({ message: "Signed out.", tone: "info" });
       router.replace("/auth");
     }
   }
@@ -438,6 +472,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       });
       setFeedbackMessage("");
       setFeedbackSuccess("Feedback sent. Thank you.");
+      pushToast({ message: "Feedback submitted.", tone: "success" });
     } catch (err: unknown) {
       if (isUnauthorizedError(err)) {
         setFeedbackOpen(false);
@@ -638,7 +673,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <div className="app-content" key={`session-${currentUser?.username ?? "guest"}`}>
+      <div id="main-content" tabIndex={-1} className="app-content" key={`session-${currentUser?.username ?? "guest"}`}>
         {children}
       </div>
 
@@ -762,8 +797,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     maxLength={2000}
                   />
                   <p className="subtle">Page: {pathname}</p>
-                  {feedbackError && <p className="error-box">{feedbackError}</p>}
-                  {feedbackSuccess && <p className="success-box">{feedbackSuccess}</p>}
+                  {feedbackError && <p className="error-box" role="alert">{feedbackError}</p>}
+                  {feedbackSuccess && <p className="success-box" role="status">{feedbackSuccess}</p>}
                   <div className="feedback-actions">
                     <button type="button" onClick={() => setFeedbackOpen(false)} disabled={feedbackBusy}>
                       Close
@@ -777,6 +812,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </>
+      )}
+
+      {toasts.length > 0 && (
+        <div className="toast-viewport" aria-live="polite" aria-atomic="true">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={`toast-card ${toast.tone}`}>
+              {toast.message}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

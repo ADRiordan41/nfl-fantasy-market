@@ -72,6 +72,24 @@ a {
   text-decoration: none;
 }
 
+.skip-link {
+  position: fixed;
+  left: 12px;
+  top: -48px;
+  z-index: 80;
+  border-radius: 10px;
+  border: 1px solid rgba(171, 198, 232, 0.95);
+  background: rgba(250, 253, 255, 0.98);
+  color: #16355a;
+  padding: 8px 12px;
+  box-shadow: 0 12px 26px rgba(6, 19, 35, 0.22);
+  transition: top 120ms ease;
+}
+
+.skip-link:focus-visible {
+  top: 12px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -88,6 +106,11 @@ button,
 input,
 select {
   font: inherit;
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid rgba(47, 127, 255, 0.92);
+  outline-offset: 2px;
 }
 
 button,
@@ -1162,6 +1185,23 @@ h1 {
   padding: 10px 12px;
 }
 
+.skeleton-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(209, 224, 241, 0.85) 0%, rgba(230, 240, 250, 0.98) 50%, rgba(209, 224, 241, 0.85) 100%);
+  background-size: 220% 100%;
+  animation: skeleton-shimmer 1.35s linear infinite;
+}
+
+.skeleton-line.lg {
+  height: 28px;
+}
+
 .settings-panel {
   display: grid;
   gap: 10px;
@@ -2028,6 +2068,37 @@ button.segment.danger-segment.danger-active {
   flex-wrap: wrap;
 }
 
+.toast-viewport {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 24px));
+}
+
+.toast-card {
+  border-radius: 11px;
+  border: 1px solid rgba(171, 198, 232, 0.95);
+  background: rgba(250, 253, 255, 0.98);
+  color: #17395e;
+  padding: 10px 12px;
+  box-shadow: 0 14px 30px rgba(6, 19, 35, 0.22);
+}
+
+.toast-card.success {
+  border-color: #9ed7b6;
+  background: #e9f8ef;
+  color: #185033;
+}
+
+.toast-card.error {
+  border-color: #efb2a6;
+  background: #fff1ee;
+  color: #6f2419;
+}
+
 .portfolio-trade-quote {
   margin: 4px 0 0;
 }
@@ -2453,6 +2524,15 @@ td {
   }
   100% {
     transform: translateX(-50%);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
   }
 }
 
@@ -2905,6 +2985,11 @@ td {
 @media (max-width: 959px) {
   .app-header {
     display: none;
+  }
+
+  .toast-viewport {
+    top: auto;
+    bottom: 92px;
   }
 
   .feedback-fab {

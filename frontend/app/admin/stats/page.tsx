@@ -4,6 +4,7 @@ import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedNumber } from "@/lib/format";
+import { notifyError, notifySuccess } from "@/lib/toast";
 import type {
   AdminFeedbackMessage,
   AdminIpoActionResult,
@@ -64,9 +65,11 @@ export default function AdminStatsPage() {
       const message = toMessage(err);
       if (message.includes("403")) {
         setError("Admin access required. Sign in as an admin account to manage stats and IPO controls.");
+        notifyError("Admin access required.");
         return;
       }
       setError(message);
+      notifyError(message);
     },
     [router],
   );
@@ -211,6 +214,7 @@ export default function AdminStatsPage() {
     try {
       const result = await apiPost<AdminStatsPreview>("/admin/stats/preview", payload);
       setPreview(result);
+      notifySuccess("Stats preview loaded.");
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -229,6 +233,7 @@ export default function AdminStatsPage() {
       setPublishResult(result);
       const updatedPreview = await apiPost<AdminStatsPreview>("/admin/stats/preview", payload);
       setPreview(updatedPreview);
+      notifySuccess("Stats published.");
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -246,6 +251,7 @@ export default function AdminStatsPage() {
     try {
       const result = await apiPost<AdminIpoActionResult>("/admin/ipo/launch", { sport, season });
       setIpoMessage(result.message);
+      notifySuccess(result.message);
       setReviewSport(sport);
       await loadIpoSports();
       await loadIpoReview(sport);
@@ -263,6 +269,7 @@ export default function AdminStatsPage() {
     try {
       const result = await apiPost<AdminIpoActionResult>("/admin/ipo/hide", { sport });
       setIpoMessage(result.message);
+      notifySuccess(result.message);
       setReviewSport(sport);
       await loadIpoSports();
       await loadIpoReview(sport);
@@ -283,6 +290,7 @@ export default function AdminStatsPage() {
       });
       applyTradingStatus(status);
       setIpoMessage(halted ? "Trading paused globally." : "Trading resumed globally.");
+      notifySuccess(halted ? "Global trading paused." : "Global trading resumed.");
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -301,6 +309,7 @@ export default function AdminStatsPage() {
       });
       applyTradingStatus(status);
       setIpoMessage(halted ? `${sport} trading paused.` : `${sport} trading resumed.`);
+      notifySuccess(halted ? `${sport} trading paused.` : `${sport} trading resumed.`);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -341,7 +350,7 @@ export default function AdminStatsPage() {
 
       <section className="table-panel">
         <h3>IPO Control Center</h3>
-        {ipoMessage && <p className="success-box">{ipoMessage}</p>}
+        {ipoMessage && <p className="success-box" role="status">{ipoMessage}</p>}
         {!sportSummaries.length ? (
           <p className="subtle">No sports found in the current player catalog.</p>
         ) : (
@@ -620,7 +629,7 @@ export default function AdminStatsPage() {
           </button>
         </div>
 
-        {error && <p className="error-box">{error}</p>}
+        {error && <p className="error-box" role="alert">{error}</p>}
       </section>
 
       {preview && (

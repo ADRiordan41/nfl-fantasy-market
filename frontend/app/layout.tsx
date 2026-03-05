@@ -23,6 +23,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${aleo.variable} antialiased`}>
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
         <AppShell>{children}</AppShell>
       </body>
     </html>

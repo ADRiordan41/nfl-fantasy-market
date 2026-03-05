@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
+import { notifySuccess } from "@/lib/toast";
 import type { Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
 
 type PortfolioTradeSide = "SELL" | "COVER";
@@ -70,6 +71,7 @@ function sideForRow(row: HoldingRow): PortfolioTradeSide {
 
 export default function PortfolioPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [playersById, setPlayersById] = useState<Record<number, Player>>({});
@@ -92,7 +94,8 @@ export default function PortfolioPage() {
     [router],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     try {
       const [portfolioData, players, me, statusData] = await Promise.all([
         apiGet<Portfolio>("/portfolio"),
@@ -108,6 +111,8 @@ export default function PortfolioPage() {
       setError("");
     } catch (err: unknown) {
       handleRequestError(err);
+    } finally {
+      setLoading(false);
     }
   }, [handleRequestError]);
 
@@ -347,7 +352,8 @@ export default function PortfolioPage() {
       });
       setQtyById((prev) => ({ ...prev, [row.id]: "" }));
       setQuoteById((prev) => ({ ...prev, [row.id]: null }));
-      await load();
+      await load({ silent: true });
+      notifySuccess(`${side} executed.`);
     } catch (err: unknown) {
       handleRequestError(err);
     } finally {
@@ -376,21 +382,28 @@ export default function PortfolioPage() {
         </div>
       </section>
 
-      {error && <p className="error-box">{error}</p>}
+      {error && <p className="error-box" role="alert">{error}</p>}
 
       {marginCall && (
-        <p className="error-box">
+        <p className="error-box" role="alert">
           Margin call active. Positions may be auto-liquidated until requirements are satisfied.
         </p>
       )}
       {globalHalt && (
-        <p className="error-box">
+        <p className="error-box" role="status">
           Trading paused across all sports.{globalHalt.reason ? ` ${globalHalt.reason}` : ""}
         </p>
       )}
 
-      {!portfolio ? (
-        <p className="subtle">Loading portfolio...</p>
+      {!portfolio || loading ? (
+        <section className="table-panel" aria-busy="true">
+          <div className="skeleton-stack">
+            <div className="skeleton-line lg" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+          </div>
+        </section>
       ) : (
         <>
           <section className="metrics-grid">

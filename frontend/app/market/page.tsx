@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
+import { notifySuccess } from "@/lib/toast";
 import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
 
 type TradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
@@ -97,6 +98,7 @@ export default function MarketPage() {
   const router = useRouter();
   const marketShellRef = useRef<HTMLElement | null>(null);
   const marketTablePanelRef = useRef<HTMLElement | null>(null);
+  const [loading, setLoading] = useState(true);
   const [players, setPlayers] = useState<Player[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [sideById, setSideById] = useState<Record<number, TradeSide>>({});
@@ -127,7 +129,8 @@ export default function MarketPage() {
     [router],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     try {
       const [playersData, portfolioData, moversData, statusData] = await Promise.all([
         apiGet<Player[]>("/players"),
@@ -154,13 +157,15 @@ export default function MarketPage() {
       setError("");
     } catch (err: unknown) {
       handleRequestError(err);
+    } finally {
+      setLoading(false);
     }
   }, [activeSport, handleRequestError]);
 
   useEffect(() => {
     void load();
     const intervalId = window.setInterval(() => {
-      void load();
+      void load({ silent: true });
     }, 30000);
     return () => window.clearInterval(intervalId);
   }, [load]);
@@ -418,7 +423,8 @@ export default function MarketPage() {
       });
       setQtyById((prev) => ({ ...prev, [playerId]: "" }));
       setQuoteById((prev) => ({ ...prev, [playerId]: null }));
-      await load();
+      await load({ silent: true });
+      notifySuccess(`${nextSide === "BUY" ? "Buy" : "Short"} executed.`);
     } catch (err: unknown) {
       handleRequestError(err);
     } finally {
@@ -469,7 +475,8 @@ export default function MarketPage() {
       });
       setQtyById((prev) => ({ ...prev, [playerId]: "" }));
       setQuoteById((prev) => ({ ...prev, [playerId]: null }));
-      await load();
+      await load({ silent: true });
+      notifySuccess(`${side} executed.`);
     } catch (err: unknown) {
       handleRequestError(err);
     } finally {
@@ -515,11 +522,11 @@ export default function MarketPage() {
       </section>
 
       {marginCall && (
-        <p className="error-box">
+        <p className="error-box" role="alert">
           Margin call active. Positions may be automatically liquidated until maintenance requirements are met.
         </p>
       )}
-      {activeSportTradingHalted && <p className="error-box">{activeSportHaltMessage}</p>}
+      {activeSportTradingHalted && <p className="error-box" role="status">{activeSportHaltMessage}</p>}
 
       <section className="toolbar">
         <input
@@ -535,13 +542,25 @@ export default function MarketPage() {
             </option>
           ))}
         </select>
-        <button onClick={load}>Refresh</button>
+        <button onClick={() => void load()} disabled={loading}>
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
         <p className="subtle toolbar-last-updated">Last updated {formatStamp(lastUpdated)}</p>
       </section>
 
-      {error && <p className="error-box">{error}</p>}
+      {error && <p className="error-box" role="alert">{error}</p>}
 
-      {visibleRows.length === 0 ? (
+      {loading ? (
+        <section className="table-panel" aria-busy="true">
+          <div className="skeleton-stack">
+            <div className="skeleton-line lg" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+          </div>
+        </section>
+      ) : visibleRows.length === 0 ? (
         <section className="empty-panel">
           <h3>No players are listed yet</h3>
           <p className="subtle">
