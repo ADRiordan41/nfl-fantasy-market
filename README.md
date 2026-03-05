@@ -8,6 +8,10 @@ Core pricing model:
 - `fundamental_price` updates with in-season stats.
 - End-of-season closeout pays out final fantasy points and closes all open positions.
 
+## Self-Hosting On Windows Mini PC
+For full local hosting (replace Render), use:
+- [Windows Mini PC Deployment Guide](docs/windows-mini-pc-deployment.md)
+
 ## Prereqs
 - Docker Desktop installed and running
 - Node.js 20+ (for local frontend dev)
@@ -139,6 +143,19 @@ python backend/scripts/live_stats_poller.py --source-provider mlb-statsapi --spo
 ```
 
 The built-in `mlb-statsapi` provider pulls from public MLB StatsAPI game feeds and computes fantasy points from live/season boxscore stats. `--week 1` is recommended so each cycle upserts cumulative season points in place.
+
+### Free Auto-Run via GitHub Actions
+This repo includes `.github/workflows/live-stats-poller.yml`, which runs every 5 minutes and calls the poller once using MLB StatsAPI.
+
+Set these GitHub repository secrets:
+- `LIVE_POLLER_USERNAME` (admin username, for example `ForeverHopeful`)
+- `LIVE_POLLER_PASSWORD` (admin password)
+
+Optional GitHub repository variables:
+- `LIVE_POLLER_API_BASE` (default `https://matchupmarket.onrender.com`)
+- `LIVE_POLLER_SPORT` (default `MLB`)
+- `LIVE_POLLER_WEEK` (default `1`)
+- `LIVE_POLLER_MLB_LIVE_ONLY` (default `true`)
 
 You can also use your own provider URL:
 
