@@ -443,7 +443,7 @@ export default function AdminStatsPage() {
                 </div>
                 <p className="subtle">
                   {summary.ipo_open && summary.ipo_season
-                    ? `Launched for season ${formatNumber(summary.ipo_season)}.`
+                    ? `Launched for season ${String(summary.ipo_season)}.`
                     : "Not launched."}
                 </p>
               </article>
@@ -576,7 +576,7 @@ export default function AdminStatsPage() {
                       <td>
                         <span className={listedClass(player.listed)}>{player.listed ? "Yes" : "No"}</span>
                       </td>
-                      <td>{player.ipo_season == null ? "--" : formatNumber(player.ipo_season)}</td>
+                      <td>{player.ipo_season == null ? "--" : String(player.ipo_season)}</td>
                       <td>{formatCurrency(player.base_price, 2)}</td>
                     </tr>
                   ))}
