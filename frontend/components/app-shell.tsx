@@ -111,6 +111,26 @@ function CommunityIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function InboxIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2.4" />
+      <path d="m4.5 7.5 7.5 6 7.5-6" />
+      <path d="M9.5 12.6 4.8 17.4" />
+      <path d="m19.2 17.4-4.7-4.8" />
+    </svg>
+  );
+}
+
 function AdminIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -177,6 +197,7 @@ const NAV_ITEMS = [
   { href: "/portfolio", label: "Portfolio", Icon: PortfolioIcon },
   { href: "/market", label: "Market", Icon: MarketIcon },
   { href: "/community", label: "Community", Icon: CommunityIcon },
+  { href: "/inbox", label: "Inbox", Icon: InboxIcon },
   { href: "/live", label: "Live", Icon: LiveIcon },
   { href: "/settings", label: "Settings", Icon: SettingsIcon },
   { href: "/admin/stats", label: "Admin", Icon: AdminIcon, requiresAdmin: true },

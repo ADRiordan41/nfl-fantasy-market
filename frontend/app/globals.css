@@ -609,7 +609,7 @@ select {
 }
 
 .mobile-nav {
-  --dock-size: clamp(34px, 10vw, 46px);
+  --dock-size: clamp(30px, 9vw, 44px);
   position: fixed;
   left: 50%;
   bottom: 14px;
@@ -623,8 +623,8 @@ select {
   box-shadow: 0 16px 36px rgba(6, 19, 35, 0.3);
   display: grid;
   grid-template-columns: repeat(var(--mobile-dock-columns, 7), var(--dock-size));
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
   z-index: 30;
 }
 
