@@ -135,6 +135,14 @@ python backend/scripts/import_weekly_stats.py --file path/to/your_weekly_stats.c
 For near real-time fundamental updates during games, run the live poller:
 
 ```bash
+python backend/scripts/live_stats_poller.py --source-provider mlb-statsapi --sport MLB --week 1 --api-base http://localhost:8000 --token <admin_bearer_token> --interval-seconds 60
+```
+
+The built-in `mlb-statsapi` provider pulls from public MLB StatsAPI game feeds and computes fantasy points from live/season boxscore stats. `--week 1` is recommended so each cycle upserts cumulative season points in place.
+
+You can also use your own provider URL:
+
+```bash
 python backend/scripts/live_stats_poller.py --source-url https://your-provider-endpoint --source-format json --week 1 --api-base http://localhost:8000 --token <admin_bearer_token> --interval-seconds 60
 ```
 

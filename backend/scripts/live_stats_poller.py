@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib import error, parse, request
 
+MLB_STATS_API_BASE = "https://statsapi.mlb.com"
+MLB_STATS_API_SCHEDULE_PATH = "/api/v1/schedule"
+MLB_STATS_API_LIVE_FEED_PATH = "/api/v1.1/game/{game_pk}/feed/live"
+
 
 @dataclass
 class PlayerRef:
@@ -101,6 +105,100 @@ def parse_optional_non_negative_float(value: Any) -> float | None:
     return parsed
 
 
+def parse_float(value: Any) -> float:
+    if value is None:
+        return 0.0
+    raw = str(value).strip()
+    if not raw:
+        return 0.0
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.0
+
+
+def parse_innings_pitched(value: Any) -> float:
+    raw = str(value or "").strip()
+    if not raw:
+        return 0.0
+    if "." not in raw:
+        return parse_float(raw)
+    whole_raw, frac_raw = raw.split(".", 1)
+    whole = parse_float(whole_raw)
+    outs = 0
+    if frac_raw and frac_raw[0].isdigit():
+        outs = int(frac_raw[0])
+    outs = max(0, min(2, outs))
+    return whole + (outs / 3.0)
+
+
+def mlb_hitter_points(stats: dict[str, Any]) -> float:
+    hits = parse_float(stats.get("hits"))
+    doubles = parse_float(stats.get("doubles"))
+    triples = parse_float(stats.get("triples"))
+    homers = parse_float(stats.get("homeRuns"))
+    runs = parse_float(stats.get("runs"))
+    rbi = parse_float(stats.get("rbi"))
+    walks = parse_float(stats.get("baseOnBalls"))
+    steals = parse_float(stats.get("stolenBases"))
+    strikeouts = parse_float(stats.get("strikeOuts"))
+    singles = max(0.0, hits - doubles - triples - homers)
+    points = (
+        singles
+        + (2.0 * doubles)
+        + (3.0 * triples)
+        + (4.0 * homers)
+        + runs
+        + rbi
+        + walks
+        + (2.0 * steals)
+        - (0.25 * strikeouts)
+    )
+    return round(points, 6)
+
+
+def mlb_pitcher_points(stats: dict[str, Any]) -> float:
+    innings = parse_innings_pitched(stats.get("inningsPitched"))
+    strikeouts = parse_float(stats.get("strikeOuts"))
+    wins = parse_float(stats.get("wins"))
+    saves = parse_float(stats.get("saves"))
+    earned_runs = parse_float(stats.get("earnedRuns"))
+    hits_allowed = parse_float(stats.get("hits"))
+    walks = parse_float(stats.get("baseOnBalls"))
+    losses = parse_float(stats.get("losses"))
+    points = (
+        (3.0 * innings)
+        + strikeouts
+        + (5.0 * wins)
+        + (5.0 * saves)
+        - (2.0 * earned_runs)
+        - (0.25 * hits_allowed)
+        - (0.5 * walks)
+        - (2.0 * losses)
+    )
+    return round(points, 6)
+
+
+def format_mlb_live_stat_line(
+    game_batting: dict[str, Any],
+    game_pitching: dict[str, Any],
+) -> str | None:
+    batting_hits = parse_float(game_batting.get("hits"))
+    batting_hr = parse_float(game_batting.get("homeRuns"))
+    batting_rbi = parse_float(game_batting.get("rbi"))
+    batting_sb = parse_float(game_batting.get("stolenBases"))
+
+    pitching_ip_raw = str(game_pitching.get("inningsPitched") or "").strip()
+    pitching_k = parse_float(game_pitching.get("strikeOuts"))
+    pitching_er = parse_float(game_pitching.get("earnedRuns"))
+
+    if batting_hits > 0 or batting_hr > 0 or batting_rbi > 0 or batting_sb > 0:
+        return f"H {int(batting_hits)} | HR {int(batting_hr)} | RBI {int(batting_rbi)} | SB {int(batting_sb)}"
+    if pitching_ip_raw or pitching_k > 0 or pitching_er > 0:
+        return f"IP {pitching_ip_raw or '0.0'} | K {int(pitching_k)} | ER {int(pitching_er)}"
+    return None
+
+
 def http_get_text(url: str, timeout: float) -> str:
     req = request.Request(url, method="GET")
     with request.urlopen(req, timeout=timeout) as response:
@@ -151,6 +249,138 @@ def load_source_text(source_url: str | None, source_file: str | None, timeout: f
         file_path = Path(source_file)
         return file_path.read_text(encoding="utf-8")
     raise ValueError("Either source_url or source_file is required.")
+
+
+def fetch_mlb_statsapi_rows(
+    *,
+    timeout: float,
+    week_override: int | None,
+    schedule_date: str | None,
+    live_only: bool,
+) -> tuple[list[IncomingStat], int]:
+    target_date = (schedule_date or datetime.now(timezone.utc).date().isoformat()).strip()
+    if not target_date:
+        target_date = datetime.now(timezone.utc).date().isoformat()
+
+    params = parse.urlencode({"sportId": 1, "date": target_date})
+    schedule_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_SCHEDULE_PATH}?{params}"
+    schedule_payload = http_get_json(url=schedule_url, timeout=timeout)
+
+    dates = schedule_payload.get("dates", []) if isinstance(schedule_payload, dict) else []
+    game_rows: list[dict[str, Any]] = []
+    for date_block in dates:
+        if not isinstance(date_block, dict):
+            continue
+        games = date_block.get("games", [])
+        if not isinstance(games, list):
+            continue
+        for game in games:
+            if isinstance(game, dict):
+                game_rows.append(game)
+
+    out_rows: dict[tuple[str, str], IncomingStat] = {}
+    row_week = int(week_override) if week_override is not None else 1
+    if row_week <= 0:
+        row_week = 1
+
+    for game in game_rows:
+        game_pk = game.get("gamePk")
+        if game_pk is None:
+            continue
+        status_block = game.get("status", {}) if isinstance(game.get("status"), dict) else {}
+        abstract_state = str(status_block.get("abstractGameState") or "").strip()
+        if abstract_state.upper() == "PREVIEW":
+            continue
+        if live_only and abstract_state.upper() != "LIVE":
+            continue
+
+        feed_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_LIVE_FEED_PATH.format(game_pk=game_pk)}"
+        feed_payload = http_get_json(url=feed_url, timeout=timeout)
+        if not isinstance(feed_payload, dict):
+            continue
+
+        game_data = feed_payload.get("gameData", {}) if isinstance(feed_payload.get("gameData"), dict) else {}
+        live_data = feed_payload.get("liveData", {}) if isinstance(feed_payload.get("liveData"), dict) else {}
+        status = game_data.get("status", {}) if isinstance(game_data.get("status"), dict) else {}
+        abstract = str(status.get("abstractGameState") or abstract_state).strip()
+        detailed = str(status.get("detailedState") or "").strip() or None
+        live_now = abstract.upper() == "LIVE"
+
+        teams_meta = game_data.get("teams", {}) if isinstance(game_data.get("teams"), dict) else {}
+        home_meta = teams_meta.get("home", {}) if isinstance(teams_meta.get("home"), dict) else {}
+        away_meta = teams_meta.get("away", {}) if isinstance(teams_meta.get("away"), dict) else {}
+        home_abbr = str(home_meta.get("abbreviation") or "").strip().upper()
+        away_abbr = str(away_meta.get("abbreviation") or "").strip().upper()
+        game_label = f"{away_abbr} @ {home_abbr}".strip()
+        if not game_label or game_label == "@":
+            game_label = str(game_data.get("gameType") or "MLB Game").strip()
+
+        teams_box = (live_data.get("boxscore") or {}).get("teams")
+        if not isinstance(teams_box, dict):
+            continue
+
+        for side in ("home", "away"):
+            side_box = teams_box.get(side, {})
+            if not isinstance(side_box, dict):
+                continue
+            team_abbr = home_abbr if side == "home" else away_abbr
+            players = side_box.get("players", {})
+            if not isinstance(players, dict):
+                continue
+
+            for player_entry in players.values():
+                if not isinstance(player_entry, dict):
+                    continue
+                person = player_entry.get("person", {})
+                if not isinstance(person, dict):
+                    continue
+                name = str(person.get("fullName") or "").strip()
+                if not name:
+                    continue
+
+                game_stats = player_entry.get("stats", {})
+                if not isinstance(game_stats, dict):
+                    game_stats = {}
+                season_stats = player_entry.get("seasonStats", {})
+                if not isinstance(season_stats, dict):
+                    season_stats = {}
+
+                game_batting = game_stats.get("batting", {}) if isinstance(game_stats.get("batting"), dict) else {}
+                game_pitching = game_stats.get("pitching", {}) if isinstance(game_stats.get("pitching"), dict) else {}
+                season_batting = season_stats.get("batting", {}) if isinstance(season_stats.get("batting"), dict) else {}
+                season_pitching = season_stats.get("pitching", {}) if isinstance(season_stats.get("pitching"), dict) else {}
+
+                season_points = mlb_hitter_points(season_batting) + mlb_pitcher_points(season_pitching)
+                game_points = mlb_hitter_points(game_batting) + mlb_pitcher_points(game_pitching)
+                live_stat_line = format_mlb_live_stat_line(game_batting=game_batting, game_pitching=game_pitching)
+
+                row = IncomingStat(
+                    row_number=int(game_pk),
+                    name=name,
+                    team=team_abbr,
+                    week=row_week,
+                    fantasy_points=round(max(0.0, season_points), 6),
+                    live_now=live_now,
+                    live_week=row_week,
+                    live_game_id=str(game_pk),
+                    live_game_label=game_label,
+                    live_game_status=detailed,
+                    live_game_stat_line=live_stat_line,
+                    live_game_fantasy_points=round(max(0.0, game_points), 6),
+                )
+
+                dedupe_key = (normalize(name), normalize(team_abbr))
+                existing = out_rows.get(dedupe_key)
+                if existing is None:
+                    out_rows[dedupe_key] = row
+                    continue
+                if bool(row.live_now) and not bool(existing.live_now):
+                    out_rows[dedupe_key] = row
+                    continue
+                if (row.live_game_fantasy_points or 0.0) > (existing.live_game_fantasy_points or 0.0):
+                    out_rows[dedupe_key] = row
+
+    return list(out_rows.values()), len(game_rows)
 
 
 def parse_csv_rows(
@@ -505,9 +735,12 @@ def run_cycle(
     api_base: str,
     token: str | None,
     sport: str | None,
+    source_provider: str | None,
     source_url: str | None,
     source_file: str | None,
     source_format: str,
+    mlb_date: str | None,
+    mlb_live_only: bool,
     week_override: int | None,
     timeout: float,
     max_post_retries: int,
@@ -522,12 +755,21 @@ def run_cycle(
         return counts
     by_name_team, by_name = build_player_indexes(players)
 
-    source_text = load_source_text(source_url=source_url, source_file=source_file, timeout=timeout)
-    parsed_stats, invalid_rows, source_rows = parse_source_stats(
-        text=source_text,
-        source_format=source_format,
-        week_override=week_override,
-    )
+    if source_provider == "mlb-statsapi":
+        parsed_stats, source_rows = fetch_mlb_statsapi_rows(
+            timeout=timeout,
+            week_override=week_override,
+            schedule_date=mlb_date,
+            live_only=mlb_live_only,
+        )
+        invalid_rows = 0
+    else:
+        source_text = load_source_text(source_url=source_url, source_file=source_file, timeout=timeout)
+        parsed_stats, invalid_rows, source_rows = parse_source_stats(
+            text=source_text,
+            source_format=source_format,
+            week_override=week_override,
+        )
     counts.source_rows = source_rows
     counts.invalid_rows = invalid_rows
     counts.parsed_rows = len(parsed_stats)
@@ -604,14 +846,22 @@ def parse_args() -> argparse.Namespace:
             "Posts only changed player/week values."
         )
     )
-    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group = parser.add_mutually_exclusive_group(required=False)
     source_group.add_argument("--source-url", help="HTTP URL returning JSON or CSV rows")
     source_group.add_argument("--source-file", help="Path to local JSON/CSV file")
+    parser.add_argument(
+        "--source-provider",
+        choices=("mlb-statsapi",),
+        default=None,
+        help="Use a built-in real source provider instead of source-url/source-file.",
+    )
 
     parser.add_argument("--source-format", choices=("auto", "json", "csv"), default="auto")
     parser.add_argument("--api-base", default="http://localhost:8000", help="API base URL")
     parser.add_argument("--token", default=None, help="Admin bearer token for /stats")
     parser.add_argument("--sport", default=None, help="Optional sport filter when fetching /players")
+    parser.add_argument("--mlb-date", default=None, help="Optional date (YYYY-MM-DD) for MLB StatsAPI provider")
+    parser.add_argument("--mlb-live-only", action="store_true", help="When using MLB provider, include only games currently live")
     parser.add_argument("--week", type=int, default=None, help="Optional week override")
     parser.add_argument("--interval-seconds", type=int, default=60, help="Polling interval for continuous mode")
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit")
@@ -630,6 +880,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
+    if not args.source_provider and not args.source_url and not args.source_file:
+        print("[error] provide one source: --source-provider or one of --source-url/--source-file")
+        return 1
+    if args.source_provider and (args.source_url or args.source_file):
+        print("[error] --source-provider cannot be combined with --source-url/--source-file")
+        return 1
     if args.week is not None and args.week <= 0:
         print("[error] --week must be > 0")
         return 1
@@ -653,9 +909,12 @@ def main() -> int:
                 api_base=args.api_base,
                 token=args.token,
                 sport=args.sport,
+                source_provider=args.source_provider,
                 source_url=args.source_url,
                 source_file=args.source_file,
                 source_format=args.source_format,
+                mlb_date=args.mlb_date,
+                mlb_live_only=bool(args.mlb_live_only),
                 week_override=args.week,
                 timeout=float(args.timeout),
                 max_post_retries=int(args.max_post_retries),
