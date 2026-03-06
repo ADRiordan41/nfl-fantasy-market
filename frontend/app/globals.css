@@ -772,6 +772,16 @@ textarea[aria-invalid="true"] {
   stroke-linejoin: round;
 }
 
+.empty-state-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .nav-logo-icon {
   width: 100%;
   height: 100%;
@@ -1569,6 +1579,36 @@ h1 {
   padding: 14px;
   backdrop-filter: blur(8px);
   box-shadow: 0 18px 40px rgba(6, 19, 35, 0.2);
+}
+
+.polished-empty {
+  display: grid;
+  gap: 10px;
+}
+
+.empty-state-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-state-head h3 {
+  margin: 0;
+}
+
+.empty-state-icon-wrap {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid rgba(157, 188, 219, 0.82);
+  background: linear-gradient(155deg, rgba(232, 244, 255, 0.96) 0%, rgba(244, 250, 255, 0.9) 100%);
+  color: #204f7f;
+}
+
+.polished-empty .ghost-link {
+  width: fit-content;
 }
 
 .market-card {
@@ -2973,6 +3013,39 @@ td {
 }
 
 @media (max-width: 767px) {
+  body {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  h1 {
+    font-size: clamp(1.35rem, 6.1vw, 1.9rem);
+    line-height: 1.08;
+    letter-spacing: -0.008em;
+  }
+
+  .subtle {
+    font-size: 13px;
+    line-height: 1.42;
+  }
+
+  .community-post-preview,
+  .community-comment-body,
+  .community-post-body {
+    font-size: 0.97rem;
+    line-height: 1.6;
+  }
+
+  .kpi-card strong {
+    font-size: 1.1rem;
+  }
+
+  .table-panel,
+  .empty-panel,
+  .holding-card {
+    padding: 12px;
+  }
+
   .app-shell.with-ticker {
     --ticker-height: 38px;
   }

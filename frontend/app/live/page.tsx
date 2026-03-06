@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, isUnauthorizedError } from "@/lib/api";
+import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { LiveGames } from "@/lib/types";
 
@@ -131,12 +132,13 @@ export default function LivePage() {
           </div>
         </section>
       ) : visibleGames.length === 0 ? (
-        <section className="empty-panel">
-          <h3>No live games right now</h3>
-          <p className="subtle">
-            When games are live, real-time updates will appear here.
-          </p>
-        </section>
+        <EmptyStatePanel
+          kind="live"
+          title="No live games right now"
+          description="When games go live, this page will stream updates automatically."
+          actionHref="/market"
+          actionLabel="View Market"
+        />
       ) : (
         <>
           <section className="table-panel">

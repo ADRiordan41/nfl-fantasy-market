@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, clearAuthToken, isUnauthorizedError } from "@/lib/api";
+import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatNumber } from "@/lib/format";
 import type { ForumPostSummary } from "@/lib/types";
 
@@ -152,10 +153,13 @@ export default function CommunityPage() {
             <h3>Loading posts...</h3>
           </section>
         ) : posts.length === 0 ? (
-          <section className="empty-panel">
-            <h3>No posts yet</h3>
-            <p className="subtle">Be the first to start the conversation.</p>
-          </section>
+          <EmptyStatePanel
+            kind="community"
+            title="No posts yet"
+            description="Be the first to start the conversation and set the market narrative."
+            actionHref="/community/new"
+            actionLabel="Create First Post"
+          />
         ) : (
           posts.map((post) => (
             <article className="community-post-card" key={post.id}>

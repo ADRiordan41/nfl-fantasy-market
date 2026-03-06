@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
+import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatNumber } from "@/lib/format";
 import type { ForumComment, ForumPostDetail } from "@/lib/types";
 
@@ -101,13 +102,13 @@ export default function CommunityPostPage() {
   if (!validId) {
     return (
       <main className="page-shell">
-        <section className="empty-panel">
-          <h2>Invalid post id</h2>
-          <p className="subtle">The selected post route is not valid.</p>
-          <Link href="/community" className="ghost-link">
-            Back to Community
-          </Link>
-        </section>
+        <EmptyStatePanel
+          kind="community"
+          title="Invalid post id"
+          description="The selected post route is not valid."
+          actionHref="/community"
+          actionLabel="Back to Community"
+        />
       </main>
     );
   }
@@ -199,10 +200,13 @@ export default function CommunityPostPage() {
 
           <section className="community-feed community-comments-thread">
             {post.comments.length === 0 ? (
-              <section className="empty-panel">
-                <h3>No comments yet</h3>
-                <p className="subtle">Start the thread with the first reply.</p>
-              </section>
+              <EmptyStatePanel
+                kind="comments"
+                title="No comments yet"
+                description="Start the thread with the first reply."
+                actionHref="/community/new"
+                actionLabel="Create Another Post"
+              />
             ) : (
               post.comments.map((comment) => (
                 <article className="community-comment-card" key={comment.id}>

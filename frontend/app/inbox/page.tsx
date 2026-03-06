@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, isUnauthorizedError } from "@/lib/api";
+import EmptyStatePanel from "@/components/empty-state-panel";
 import type { UserAccount } from "@/lib/types";
 
 function toMessage(err: unknown): string {
@@ -56,15 +56,13 @@ export default function InboxPage() {
           </div>
         </section>
       ) : (
-        <section className="empty-panel">
-          <h3>No conversations yet</h3>
-          <p className="subtle">
-            Start by visiting a user profile or community and opening a direct message thread.
-          </p>
-          <Link href="/community" className="ghost-link">
-            Go to Community
-          </Link>
-        </section>
+        <EmptyStatePanel
+          kind="inbox"
+          title="No conversations yet"
+          description="Start by visiting a user profile or community and opening a direct message thread."
+          actionHref="/community"
+          actionLabel="Go to Community"
+        />
       )}
     </main>
   );

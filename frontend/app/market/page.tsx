@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
+import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { notifySuccess } from "@/lib/toast";
 import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
@@ -561,12 +562,13 @@ export default function MarketPage() {
           </div>
         </section>
       ) : visibleRows.length === 0 ? (
-        <section className="empty-panel">
-          <h3>No players are listed yet</h3>
-          <p className="subtle">
-            IPO has not been launched for the selected sport. Once an admin launches IPO, players will appear here.
-          </p>
-        </section>
+        <EmptyStatePanel
+          kind="market"
+          title="No players are listed yet"
+          description="IPO has not been launched for this sport yet. Once listed, players will appear here automatically."
+          actionHref="/community"
+          actionLabel="Open Community"
+        />
       ) : (
         <section ref={marketTablePanelRef} className="table-panel market-table-panel">
           <div className="table-wrap">

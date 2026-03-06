@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
+import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
 import { notifySuccess } from "@/lib/toast";
@@ -578,10 +579,13 @@ export default function PortfolioPage() {
           </section>
 
           {rowsWithAllocation.length === 0 ? (
-            <section className="empty-panel">
-              <h3>No positions yet</h3>
-              <p className="subtle">Place your first trade on the market screen to start tracking P/L.</p>
-            </section>
+            <EmptyStatePanel
+              kind="portfolio"
+              title="No positions yet"
+              description="Place your first trade in the market to start tracking gains, allocation, and exposure."
+              actionHref="/market"
+              actionLabel="Browse Market"
+            />
           ) : (
             <>
               <section className="mobile-holdings">
