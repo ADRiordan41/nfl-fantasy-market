@@ -2,11 +2,14 @@ import csv
 import io
 import os
 import re
+from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from decimal import Decimal
+from threading import Lock
+from time import monotonic
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import and_, delete, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -171,6 +174,44 @@ MODERATION_ACTIONS = {
     MODERATION_ACTION_HIDE_CONTENT,
 }
 CONTENT_MODERATION_ACTION_HIDDEN = "HIDDEN"
+RATE_LIMIT_AUTH_LOGIN = int(os.environ.get("RATE_LIMIT_AUTH_LOGIN", "12"))
+RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", "300"))
+RATE_LIMIT_AUTH_REGISTER = int(os.environ.get("RATE_LIMIT_AUTH_REGISTER", "6"))
+RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS", "3600"))
+RATE_LIMIT_FORUM_POST_CREATE = int(os.environ.get("RATE_LIMIT_FORUM_POST_CREATE", "8"))
+RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS = int(
+    os.environ.get("RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS", "600")
+)
+RATE_LIMIT_FORUM_COMMENT_CREATE = int(os.environ.get("RATE_LIMIT_FORUM_COMMENT_CREATE", "30"))
+RATE_LIMIT_FORUM_COMMENT_CREATE_WINDOW_SECONDS = int(
+    os.environ.get("RATE_LIMIT_FORUM_COMMENT_CREATE_WINDOW_SECONDS", "600")
+)
+RATE_LIMIT_MODERATION_REPORT_CREATE = int(os.environ.get("RATE_LIMIT_MODERATION_REPORT_CREATE", "20"))
+RATE_LIMIT_MODERATION_REPORT_CREATE_WINDOW_SECONDS = int(
+    os.environ.get("RATE_LIMIT_MODERATION_REPORT_CREATE_WINDOW_SECONDS", "3600")
+)
+
+
+class SlidingWindowRateLimiter:
+    def __init__(self) -> None:
+        self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = Lock()
+
+    def allow(self, key: str, *, limit: int, window_seconds: int) -> tuple[bool, int]:
+        now = monotonic()
+        cutoff = now - window_seconds
+        with self._lock:
+            window = self._events[key]
+            while window and window[0] <= cutoff:
+                window.popleft()
+            if len(window) >= limit:
+                retry_after = max(1, int(window[0] + window_seconds - now))
+                return False, retry_after
+            window.append(now)
+            return True, 0
+
+
+RATE_LIMITER = SlidingWindowRateLimiter()
 
 
 @dataclass
@@ -253,6 +294,68 @@ def normalize_sport_code(raw_sport: str | None, default: str = "NFL") -> str:
     if not VALID_SPORT_CODE.match(sport):
         raise HTTPException(400, "Invalid sport code.")
     return sport
+
+
+def client_ip_from_request(request: Request) -> str:
+    forwarded_for = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        first_ip = forwarded_for.split(",")[0].strip()
+        if first_ip:
+            return first_ip
+    real_ip = (request.headers.get("x-real-ip") or "").strip()
+    if real_ip:
+        return real_ip
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def enforce_rate_limit(*, key: str, limit: int, window_seconds: int, label: str) -> None:
+    allowed, retry_after_seconds = RATE_LIMITER.allow(
+        key,
+        limit=max(1, int(limit)),
+        window_seconds=max(1, int(window_seconds)),
+    )
+    if allowed:
+        return
+    raise HTTPException(
+        status_code=429,
+        detail=f"Rate limit exceeded for {label}. Try again in {retry_after_seconds} seconds.",
+        headers={"Retry-After": str(retry_after_seconds)},
+    )
+
+
+def enforce_ip_rate_limit(
+    request: Request,
+    *,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+    label: str,
+) -> None:
+    ip = client_ip_from_request(request)
+    enforce_rate_limit(
+        key=f"{bucket}:ip:{ip}",
+        limit=limit,
+        window_seconds=window_seconds,
+        label=label,
+    )
+
+
+def enforce_user_rate_limit(
+    user_id: int,
+    *,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+    label: str,
+) -> None:
+    enforce_rate_limit(
+        key=f"{bucket}:user:{int(user_id)}",
+        limit=limit,
+        window_seconds=window_seconds,
+        label=label,
+    )
 
 
 def player_is_listed(player: Player) -> bool:
@@ -1768,8 +1871,25 @@ def create_auth_session_out(db: Session, user: User) -> AuthSessionOut:
 
 
 @app.post("/auth/register", response_model=AuthSessionOut)
-def register(payload: AuthRegisterIn, db: Session = Depends(get_db)):
+def register(
+    payload: AuthRegisterIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    enforce_ip_rate_limit(
+        request,
+        bucket="auth:register",
+        limit=RATE_LIMIT_AUTH_REGISTER,
+        window_seconds=RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS,
+        label="auth register",
+    )
     username = normalize_username(payload.username)
+    enforce_rate_limit(
+        key=f"auth:register:username:{username}",
+        limit=RATE_LIMIT_AUTH_REGISTER,
+        window_seconds=RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS,
+        label="auth register",
+    )
     existing = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
     if existing and existing.password_hash:
         raise HTTPException(400, f"User '{username}' already exists.")
@@ -1793,8 +1913,25 @@ def register(payload: AuthRegisterIn, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/login", response_model=AuthSessionOut)
-def login(payload: AuthLoginIn, db: Session = Depends(get_db)):
+def login(
+    payload: AuthLoginIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    enforce_ip_rate_limit(
+        request,
+        bucket="auth:login",
+        limit=RATE_LIMIT_AUTH_LOGIN,
+        window_seconds=RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS,
+        label="auth login",
+    )
     username = normalize_username(payload.username)
+    enforce_rate_limit(
+        key=f"auth:login:username:{username}",
+        limit=RATE_LIMIT_AUTH_LOGIN,
+        window_seconds=RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS,
+        label="auth login",
+    )
     user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
     if user and not user.password_hash:
         raise auth_exception("Account has no password yet. Register once to set credentials.")
@@ -2111,9 +2248,24 @@ def admin_feedback_list(
 @app.post("/moderation/reports", response_model=ModerationReportOut)
 def create_moderation_report(
     payload: ModerationReportCreateIn,
+    request: Request,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
+    enforce_user_rate_limit(
+        int(auth.user.id),
+        bucket="moderation:report:create",
+        limit=RATE_LIMIT_MODERATION_REPORT_CREATE,
+        window_seconds=RATE_LIMIT_MODERATION_REPORT_CREATE_WINDOW_SECONDS,
+        label="moderation report creation",
+    )
+    enforce_ip_rate_limit(
+        request,
+        bucket="moderation:report:create",
+        limit=RATE_LIMIT_MODERATION_REPORT_CREATE,
+        window_seconds=RATE_LIMIT_MODERATION_REPORT_CREATE_WINDOW_SECONDS,
+        label="moderation report creation",
+    )
     content_type = normalize_moderation_content_type(payload.content_type)
     content_id = int(payload.content_id)
     ensure_moderation_target_exists_or_raise(db, content_type, content_id)
@@ -2430,9 +2582,24 @@ def forum_list_posts(
 @app.post("/forum/posts", response_model=ForumPostSummaryOut)
 def forum_create_post(
     payload: ForumPostCreateIn,
+    request: Request,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
+    enforce_user_rate_limit(
+        int(auth.user.id),
+        bucket="forum:post:create",
+        limit=RATE_LIMIT_FORUM_POST_CREATE,
+        window_seconds=RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS,
+        label="forum post creation",
+    )
+    enforce_ip_rate_limit(
+        request,
+        bucket="forum:post:create",
+        limit=RATE_LIMIT_FORUM_POST_CREATE,
+        window_seconds=RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS,
+        label="forum post creation",
+    )
     title = normalize_forum_text(payload.title, "title")
     body = normalize_forum_text(payload.body, "body")
 
@@ -2522,9 +2689,24 @@ def forum_get_post(
 def forum_create_comment(
     post_id: int,
     payload: ForumCommentCreateIn,
+    request: Request,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
+    enforce_user_rate_limit(
+        int(auth.user.id),
+        bucket="forum:comment:create",
+        limit=RATE_LIMIT_FORUM_COMMENT_CREATE,
+        window_seconds=RATE_LIMIT_FORUM_COMMENT_CREATE_WINDOW_SECONDS,
+        label="forum comment creation",
+    )
+    enforce_ip_rate_limit(
+        request,
+        bucket="forum:comment:create",
+        limit=RATE_LIMIT_FORUM_COMMENT_CREATE,
+        window_seconds=RATE_LIMIT_FORUM_COMMENT_CREATE_WINDOW_SECONDS,
+        label="forum comment creation",
+    )
     post = db.get(ForumPost, post_id)
     if not post or is_content_hidden(db, MODERATION_CONTENT_FORUM_POST, int(post_id)):
         raise HTTPException(404, "Forum post not found")
