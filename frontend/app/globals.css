@@ -646,10 +646,51 @@ textarea[aria-invalid="true"] {
   text-align: right;
 }
 
+.app-status-strip {
+  width: min(1200px, 92vw);
+  margin: 8px auto 0;
+  padding: 0 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.status-pill {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(166, 197, 234, 0.9);
+  background: rgba(241, 248, 255, 0.9);
+  color: #2e4d6d;
+  padding: 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.status-pill.ok {
+  border-color: rgba(106, 183, 143, 0.75);
+  background: rgba(223, 245, 235, 0.88);
+  color: #18563b;
+}
+
+.status-pill.neutral {
+  border-color: rgba(164, 193, 228, 0.85);
+  background: rgba(233, 244, 255, 0.86);
+  color: #33587c;
+}
+
 .app-content {
   width: min(1200px, 92vw);
   margin: 16px auto 0;
   padding-bottom: 100px;
+}
+
+.route-frame {
+  min-width: 0;
+  animation: route-frame-enter 180ms ease-out;
 }
 
 .mobile-nav {
@@ -985,6 +1026,22 @@ textarea[aria-invalid="true"] {
   margin-top: 14px;
   display: grid;
   gap: 10px;
+}
+
+.password-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.password-toggle-btn {
+  min-height: 34px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .hero-panel {
@@ -2710,6 +2767,19 @@ td {
   }
 }
 
+@keyframes route-frame-enter {
+  from {
+    opacity: 0.92;
+    transform: translateY(4px);
+    filter: saturate(92%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: saturate(100%);
+  }
+}
+
 @keyframes skeleton-shimmer {
   0% {
     background-position: 120% 0;
@@ -2725,6 +2795,10 @@ td {
   }
 
   .market-ticker-marquee {
+    animation: none;
+  }
+
+  .route-frame {
     animation: none;
   }
 }
@@ -3201,6 +3275,16 @@ td {
 @media (max-width: 959px) {
   .app-header {
     display: none;
+  }
+
+  .app-status-strip {
+    margin-top: 10px;
+  }
+
+  .status-pill {
+    min-height: 26px;
+    font-size: 10.5px;
+    padding: 0 9px;
   }
 
   .toast-viewport {

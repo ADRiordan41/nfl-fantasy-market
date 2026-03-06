@@ -225,6 +225,13 @@ function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function formatTickerGeneratedAt(value: string | null | undefined): string {
+  if (!value) return "Waiting for market data";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Waiting for market data";
+  return `Updated ${parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -534,6 +541,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return process.env.NODE_ENV !== "production" ? DEV_TICKER_PREVIEW_ROWS : [];
   }, [movers]);
   const tickerLoopEntries = tickerEntries.length > 0 ? [...tickerEntries, ...tickerEntries] : [];
+  const sessionStatusLabel = checkingSession
+    ? "Checking session"
+    : currentUser
+      ? `Signed in as @${currentUser.username}${currentUser.is_admin ? " (Admin)" : ""}`
+      : "Browsing as guest";
+  const tickerStatusLabel = formatTickerGeneratedAt(movers?.generated_at);
 
   return (
     <div className={`app-shell${showNav ? " with-ticker" : ""}`}>
@@ -676,8 +689,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <div id="main-content" tabIndex={-1} className="app-content" key={`session-${currentUser?.username ?? "guest"}`}>
-        {children}
+      {showNav && (
+        <div className="app-status-strip" role="status" aria-live="polite">
+          <span className={`status-pill ${currentUser ? "ok" : "neutral"}`}>{sessionStatusLabel}</span>
+          <span className="status-pill neutral">{tickerStatusLabel}</span>
+        </div>
+      )}
+
+      <div id="main-content" tabIndex={-1} className="app-content">
+        <div className="route-frame" key={`${pathname}-${currentUser?.username ?? "guest"}`}>
+          {children}
+        </div>
       </div>
 
       {showNav && (

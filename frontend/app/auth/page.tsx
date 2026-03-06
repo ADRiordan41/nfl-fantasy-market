@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import {
+  ApiHttpError,
   apiGet,
   apiPost,
   clearAuthToken,
@@ -18,11 +19,31 @@ function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function authErrorMessage(err: unknown, mode: AuthMode): string {
+  if (err instanceof ApiHttpError) {
+    if (err.status === 401) return "Invalid username or password.";
+    if (err.status === 404) return "Sign-in endpoint not found. Check frontend API base URL config.";
+    if (err.status === 409) return "That username is already in use.";
+    if (err.status === 422) {
+      return mode === "register"
+        ? "Invalid registration input. Use a valid username and a password with at least 8 characters."
+        : "Invalid sign-in input.";
+    }
+    if (err.status >= 500) return "Server error. Please try again.";
+  }
+  const message = toMessage(err);
+  if (/Failed to fetch/i.test(message)) {
+    return "Unable to reach the backend service. Verify deployment and NEXT_PUBLIC_API_BASE_URL.";
+  }
+  return message;
+}
+
 export default function AuthPage() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -83,7 +104,7 @@ export default function AuthPage() {
       setAuthToken(session.access_token);
       router.replace("/");
     } catch (err: unknown) {
-      setError(toMessage(err));
+      setError(authErrorMessage(err, mode));
     } finally {
       setBusy(false);
     }
@@ -114,7 +135,10 @@ export default function AuthPage() {
           <button
             type="button"
             className={mode === "login" ? "auth-tab active" : "auth-tab"}
-            onClick={() => setMode("login")}
+            onClick={() => {
+              setMode("login");
+              setError("");
+            }}
             disabled={busy}
           >
             Sign In
@@ -122,7 +146,10 @@ export default function AuthPage() {
           <button
             type="button"
             className={mode === "register" ? "auth-tab active" : "auth-tab"}
-            onClick={() => setMode("register")}
+            onClick={() => {
+              setMode("register");
+              setError("");
+            }}
             disabled={busy}
           >
             Register
@@ -139,19 +166,32 @@ export default function AuthPage() {
             onChange={(event) => setUsername(event.target.value)}
             placeholder="lowercase username"
             autoComplete="username"
+            autoFocus
+            disabled={busy}
           />
 
           <label className="field-label" htmlFor="auth-password">
             Password
           </label>
-          <input
-            id="auth-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="at least 8 characters"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-          />
+          <div className="password-input-wrap">
+            <input
+              id="auth-password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="at least 8 characters"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              disabled={busy}
+            />
+            <button
+              type="button"
+              className="password-toggle-btn"
+              onClick={() => setShowPassword((value) => !value)}
+              disabled={busy}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
           {mode === "register" && (
             <p className="subtle">New accounts start with $100,000.00 in cash.</p>
