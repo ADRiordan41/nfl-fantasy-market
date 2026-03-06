@@ -29,6 +29,8 @@ export default function CommunityGuidelinesPage() {
           <li>Harassment, hate speech, sexual content, threats, or intimidation.</li>
           <li>Doxxing, impersonation, scams, spam, or malicious links.</li>
           <li>Sharing private account or personal data without consent.</li>
+          <li>Market manipulation, including coordinated pump-and-dump behavior, wash trading, or deceptive signals.</li>
+          <li>Operating multiple accounts to gain unfair trading, voting, messaging, or moderation advantage.</li>
         </ul>
       </section>
 
@@ -51,4 +53,3 @@ export default function CommunityGuidelinesPage() {
     </main>
   );
 }
-
