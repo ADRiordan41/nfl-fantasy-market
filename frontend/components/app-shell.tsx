@@ -229,7 +229,18 @@ function formatTickerGeneratedAt(value: string | null | undefined): string {
   if (!value) return "Waiting for market data";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "Waiting for market data";
-  return `Updated ${parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  const elapsedMs = Date.now() - parsed.getTime();
+  if (elapsedMs < 45_000) return "Updated just now";
+  if (elapsedMs < 90_000) return "Updated 1m ago";
+
+  const elapsedMinutes = Math.floor(elapsedMs / 60_000);
+  if (elapsedMinutes < 60) return `Updated ${elapsedMinutes}m ago`;
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `Updated ${elapsedHours}h ago`;
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return `Updated ${elapsedDays}d ago`;
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
