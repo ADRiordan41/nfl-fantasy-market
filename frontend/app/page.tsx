@@ -145,7 +145,7 @@ export default function HomePage() {
           </article>
           <article className="home-step">
             <h4>2. Prices Move Live</h4>
-            <p className="subtle">Current prices react to order flow and in-season fantasy performance updates.</p>
+            <p className="subtle">Player prices react to a combination of market activity and live fantasy performance.</p>
           </article>
           <article className="home-step">
             <h4>3. Final Season Settlement</h4>
