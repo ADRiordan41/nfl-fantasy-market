@@ -287,3 +287,28 @@ export type AdminFeedbackMessage = FeedbackMessage & {
   user_id: number;
   username: string;
 };
+
+export type ModerationReport = {
+  id: number;
+  content_type: string;
+  content_id: number;
+  reason: string;
+  details: string | null;
+  page_path: string | null;
+  status: string;
+  action_taken: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminModerationReport = ModerationReport & {
+  reporter_user_id: number;
+  reporter_username: string;
+  reviewed_by_user_id: number | null;
+  reviewed_by_username: string | null;
+  moderator_note: string | null;
+  reviewed_at: string | null;
+  target_preview: string | null;
+  target_exists: boolean;
+  is_content_hidden: boolean;
+};

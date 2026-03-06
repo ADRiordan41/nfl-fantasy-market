@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatNumber } from "@/lib/format";
+import { notifyError, notifySuccess } from "@/lib/toast";
 import type { ForumComment, ForumPostDetail } from "@/lib/types";
 
 function toMessage(err: unknown): string {
@@ -33,6 +34,7 @@ export default function CommunityPostPage() {
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(true);
   const [commenting, setCommenting] = useState(false);
+  const [reportingKey, setReportingKey] = useState("");
   const [error, setError] = useState("");
 
   const loadPost = useCallback(async () => {
@@ -96,6 +98,37 @@ export default function CommunityPostPage() {
       setError(toMessage(err));
     } finally {
       setCommenting(false);
+    }
+  }
+
+  async function reportContent(contentType: "FORUM_POST" | "FORUM_COMMENT", contentId: number, key: string) {
+    const reasonRaw = window.prompt("Report reason (required):", "abuse");
+    if (reasonRaw == null) return;
+    const reason = reasonRaw.trim();
+    if (!reason) {
+      notifyError("Report reason is required.");
+      return;
+    }
+    const detailsRaw = window.prompt("Optional details:", "");
+    setReportingKey(key);
+    try {
+      await apiPost("/moderation/reports", {
+        content_type: contentType,
+        content_id: contentId,
+        reason,
+        details: detailsRaw?.trim() || null,
+        page_path: `/community/${postId}`,
+      });
+      notifySuccess("Report submitted.");
+    } catch (err: unknown) {
+      if (isUnauthorizedError(err)) {
+        clearAuthToken();
+        router.replace("/auth");
+        return;
+      }
+      notifyError(toMessage(err));
+    } finally {
+      setReportingKey("");
     }
   }
 
@@ -171,7 +204,17 @@ export default function CommunityPostPage() {
           </section>
 
           <section className="table-panel community-post-detail">
-            <h3>{post.title}</h3>
+            <div className="community-detail-head">
+              <h3>{post.title}</h3>
+              <button
+                type="button"
+                className="community-report-btn"
+                onClick={() => void reportContent("FORUM_POST", post.id, `post:${post.id}`)}
+                disabled={reportingKey === `post:${post.id}`}
+              >
+                {reportingKey === `post:${post.id}` ? "Reporting..." : "Report Post"}
+              </button>
+            </div>
             <p className="community-post-body">{post.body}</p>
           </section>
 
@@ -210,12 +253,22 @@ export default function CommunityPostPage() {
             ) : (
               post.comments.map((comment) => (
                 <article className="community-comment-card" key={comment.id}>
-                  <p className="community-meta">
-                    <Link href={`/profile/${comment.author_username}`} className="community-user-link">
-                      {comment.author_username}
-                    </Link>{" "}
-                    | {formatStamp(comment.created_at)}
-                  </p>
+                  <div className="community-card-footer">
+                    <p className="community-meta">
+                      <Link href={`/profile/${comment.author_username}`} className="community-user-link">
+                        {comment.author_username}
+                      </Link>{" "}
+                      | {formatStamp(comment.created_at)}
+                    </p>
+                    <button
+                      type="button"
+                      className="community-report-btn"
+                      onClick={() => void reportContent("FORUM_COMMENT", comment.id, `comment:${comment.id}`)}
+                      disabled={reportingKey === `comment:${comment.id}`}
+                    >
+                      {reportingKey === `comment:${comment.id}` ? "Reporting..." : "Report"}
+                    </button>
+                  </div>
                   <p className="community-comment-body">{comment.body}</p>
                 </article>
               ))

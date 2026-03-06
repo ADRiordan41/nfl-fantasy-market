@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiGet, clearAuthToken, isUnauthorizedError } from "@/lib/api";
+import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatNumber } from "@/lib/format";
+import { notifyError, notifySuccess } from "@/lib/toast";
 import type { ForumPostSummary } from "@/lib/types";
 
 type SortMode = "new" | "popular";
@@ -34,6 +35,7 @@ export default function CommunityPage() {
   const [popularWindow, setPopularWindow] = useState<PopularWindow>("day");
   const [popularMenuOpen, setPopularMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [reportingPostId, setReportingPostId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const loadPosts = useCallback(async () => {
@@ -95,6 +97,37 @@ export default function CommunityPage() {
   function choosePopularWindow(nextWindow: PopularWindow) {
     setPopularWindow(nextWindow);
     setPopularMenuOpen(false);
+  }
+
+  async function reportPost(postId: number) {
+    const reasonRaw = window.prompt("Report reason (required):", "abuse");
+    if (reasonRaw == null) return;
+    const reason = reasonRaw.trim();
+    if (!reason) {
+      notifyError("Report reason is required.");
+      return;
+    }
+    const detailsRaw = window.prompt("Optional details:", "");
+    setReportingPostId(postId);
+    try {
+      await apiPost("/moderation/reports", {
+        content_type: "FORUM_POST",
+        content_id: postId,
+        reason,
+        details: detailsRaw?.trim() || null,
+        page_path: "/community",
+      });
+      notifySuccess("Report submitted.");
+    } catch (err: unknown) {
+      if (isUnauthorizedError(err)) {
+        clearAuthToken();
+        router.replace("/auth");
+        return;
+      }
+      notifyError(toMessage(err));
+    } finally {
+      setReportingPostId(null);
+    }
   }
 
   return (
@@ -167,14 +200,24 @@ export default function CommunityPage() {
                 {post.title}
               </Link>
               <p className="community-post-preview">{post.body_preview}</p>
-              <p className="community-meta">
-                By{" "}
-                <Link href={`/profile/${post.author_username}`} className="community-user-link">
-                  {post.author_username}
-                </Link>{" "}
-                | {formatStamp(post.updated_at)} | {formatNumber(post.view_count)} views |{" "}
-                {formatNumber(post.comment_count)} comments
-              </p>
+              <div className="community-card-footer">
+                <p className="community-meta">
+                  By{" "}
+                  <Link href={`/profile/${post.author_username}`} className="community-user-link">
+                    {post.author_username}
+                  </Link>{" "}
+                  | {formatStamp(post.updated_at)} | {formatNumber(post.view_count)} views |{" "}
+                  {formatNumber(post.comment_count)} comments
+                </p>
+                <button
+                  type="button"
+                  className="community-report-btn"
+                  onClick={() => void reportPost(post.id)}
+                  disabled={reportingPostId === post.id}
+                >
+                  {reportingPostId === post.id ? "Reporting..." : "Report"}
+                </button>
+              </div>
             </article>
           ))
         )}

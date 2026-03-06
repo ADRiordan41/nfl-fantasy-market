@@ -8,6 +8,7 @@ import { notifyError, notifySuccess } from "@/lib/toast";
 import type {
   AdminFeedbackMessage,
   AdminIpoActionResult,
+  AdminModerationReport,
   AdminIpoPlayers,
   AdminIpoSport,
   AdminStatsPreview,
@@ -53,6 +54,10 @@ export default function AdminStatsPage() {
   const [feedbackRows, setFeedbackRows] = useState<AdminFeedbackMessage[]>([]);
   const [feedbackStatusFilter, setFeedbackStatusFilter] = useState("ALL");
   const [busyFeedback, setBusyFeedback] = useState(false);
+  const [moderationRows, setModerationRows] = useState<AdminModerationReport[]>([]);
+  const [moderationStatusFilter, setModerationStatusFilter] = useState("OPEN");
+  const [busyModeration, setBusyModeration] = useState(false);
+  const [busyModerationAction, setBusyModerationAction] = useState("");
 
   const [error, setError] = useState("");
 
@@ -152,6 +157,22 @@ export default function AdminStatsPage() {
     }
   }, [feedbackStatusFilter, handleApiError]);
 
+  const loadModeration = useCallback(async () => {
+    setBusyModeration(true);
+    try {
+      const query =
+        moderationStatusFilter === "ALL"
+          ? "/admin/moderation/reports?limit=200"
+          : `/admin/moderation/reports?limit=200&status=${encodeURIComponent(moderationStatusFilter)}`;
+      const rows = await apiGet<AdminModerationReport[]>(query);
+      setModerationRows(rows);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyModeration(false);
+    }
+  }, [handleApiError, moderationStatusFilter]);
+
   useEffect(() => {
     void loadIpoSports();
     void loadTradingStatus();
@@ -165,6 +186,10 @@ export default function AdminStatsPage() {
   useEffect(() => {
     void loadFeedback();
   }, [loadFeedback]);
+
+  useEffect(() => {
+    void loadModeration();
+  }, [loadModeration]);
 
   function buildPayload(): { csv_text: string; week_override: number | null } | null {
     const trimmed = csvText.trim();
@@ -314,6 +339,46 @@ export default function AdminStatsPage() {
       handleApiError(err);
     } finally {
       setBusyTradingAction("");
+    }
+  }
+
+  async function resolveModerationReport(
+    reportId: number,
+    status: "RESOLVED" | "DISMISSED",
+    action: "NONE" | "HIDE_CONTENT",
+  ) {
+    const key = `${reportId}:${status}:${action}`;
+    setBusyModerationAction(key);
+    setError("");
+    try {
+      await apiPost<AdminModerationReport>(`/admin/moderation/reports/${reportId}/resolve`, {
+        status,
+        action,
+      });
+      notifySuccess(action === "HIDE_CONTENT" ? "Content hidden and report resolved." : "Report updated.");
+      await loadModeration();
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyModerationAction("");
+    }
+  }
+
+  async function unhideModeratedContent(contentType: string, contentId: number) {
+    const key = `unhide:${contentType}:${contentId}`;
+    setBusyModerationAction(key);
+    setError("");
+    try {
+      await apiPost<{ ok: boolean }>("/admin/moderation/content/unhide", {
+        content_type: contentType,
+        content_id: contentId,
+      });
+      notifySuccess("Content restored.");
+      await loadModeration();
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyModerationAction("");
     }
   }
 
@@ -527,6 +592,92 @@ export default function AdminStatsPage() {
                     <td>{row.message}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="table-panel">
+        <h3>Moderation Queue</h3>
+        <div className="admin-review-controls">
+          <select value={moderationStatusFilter} onChange={(event) => setModerationStatusFilter(event.target.value)}>
+            <option value="OPEN">Open</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="DISMISSED">Dismissed</option>
+            <option value="ALL">All Statuses</option>
+          </select>
+          <button onClick={() => void loadModeration()} disabled={busyModeration}>
+            {busyModeration ? "Refreshing..." : "Refresh Moderation"}
+          </button>
+        </div>
+        {!moderationRows.length ? (
+          <p className="subtle">No moderation reports for this filter.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Reporter</th>
+                  <th>Target</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {moderationRows.map((row) => {
+                  const resolveKey = `${row.id}:RESOLVED:HIDE_CONTENT`;
+                  const dismissKey = `${row.id}:DISMISSED:NONE`;
+                  const unhideKey = `unhide:${row.content_type}:${row.content_id}`;
+                  return (
+                    <tr key={row.id}>
+                      <td>{new Date(row.created_at).toLocaleString()}</td>
+                      <td>
+                        {row.reporter_username} (#{row.reporter_user_id})
+                      </td>
+                      <td>
+                        <div>{row.target_preview ?? `${row.content_type} #${row.content_id}`}</div>
+                        <div className="subtle">
+                          {row.content_type} #{row.content_id} {row.target_exists ? "" : "(deleted)"}
+                        </div>
+                      </td>
+                      <td>
+                        <div>{row.reason}</div>
+                        {row.details && <div className="subtle">{row.details}</div>}
+                      </td>
+                      <td>
+                        <div>{row.status}</div>
+                        <div className="subtle">{row.is_content_hidden ? "Hidden" : "Visible"}</div>
+                      </td>
+                      <td>
+                        <div className="admin-actions">
+                          <button
+                            className="danger-btn"
+                            onClick={() => void resolveModerationReport(row.id, "RESOLVED", "HIDE_CONTENT")}
+                            disabled={busyModerationAction.length > 0 || row.is_content_hidden || row.status !== "OPEN"}
+                          >
+                            {busyModerationAction === resolveKey ? "Saving..." : "Hide + Resolve"}
+                          </button>
+                          <button
+                            onClick={() => void resolveModerationReport(row.id, "DISMISSED", "NONE")}
+                            disabled={busyModerationAction.length > 0 || row.status !== "OPEN"}
+                          >
+                            {busyModerationAction === dismissKey ? "Saving..." : "Dismiss"}
+                          </button>
+                          <button
+                            className="primary-btn"
+                            onClick={() => void unhideModeratedContent(row.content_type, row.content_id)}
+                            disabled={busyModerationAction.length > 0 || !row.is_content_hidden}
+                          >
+                            {busyModerationAction === unhideKey ? "Saving..." : "Unhide"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

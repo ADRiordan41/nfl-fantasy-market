@@ -1596,6 +1596,22 @@ h1 {
   margin-top: 0;
 }
 
+.community-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.community-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .community-post-body {
   margin: 0;
   white-space: pre-wrap;
@@ -1618,6 +1634,21 @@ h1 {
 
 .community-comment-card {
   border-left: 4px solid rgba(109, 150, 199, 0.62);
+}
+
+.community-report-btn {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(170, 196, 227, 0.84);
+  background: rgba(247, 251, 255, 0.94);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.community-report-btn:hover {
+  border-color: rgba(142, 177, 214, 0.98);
 }
 
 .community-comments-thread {

@@ -20,6 +20,17 @@ class User(Base):
     forum_posts: Mapped[list["ForumPost"]] = relationship(back_populates="user")
     forum_comments: Mapped[list["ForumComment"]] = relationship(back_populates="user")
     feedback_messages: Mapped[list["FeedbackMessage"]] = relationship(back_populates="user")
+    content_reports: Mapped[list["ContentReport"]] = relationship(
+        foreign_keys="ContentReport.reporter_user_id",
+        back_populates="reporter",
+    )
+    reviewed_content_reports: Mapped[list["ContentReport"]] = relationship(
+        foreign_keys="ContentReport.reviewed_by_user_id",
+        back_populates="reviewed_by",
+    )
+    content_moderation_actions: Mapped[list["ContentModeration"]] = relationship(
+        back_populates="moderator",
+    )
 
 
 class UserSession(Base):
@@ -106,6 +117,61 @@ class FeedbackMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     user: Mapped["User"] = relationship(back_populates="feedback_messages")
+
+
+class ContentReport(Base):
+    __tablename__ = "content_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reporter_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    content_type: Mapped[str] = mapped_column(String(24), index=True)
+    content_id: Mapped[int] = mapped_column(Integer, index=True)
+    reason: Mapped[str] = mapped_column(String(96))
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="OPEN", index=True)
+    action_taken: Mapped[str] = mapped_column(String(24), default="NONE")
+    moderator_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        index=True,
+    )
+
+    reporter: Mapped["User"] = relationship(
+        foreign_keys=[reporter_user_id],
+        back_populates="content_reports",
+    )
+    reviewed_by: Mapped["User"] = relationship(
+        foreign_keys=[reviewed_by_user_id],
+        back_populates="reviewed_content_reports",
+    )
+
+
+class ContentModeration(Base):
+    __tablename__ = "content_moderation"
+    __table_args__ = (UniqueConstraint("content_type", "content_id", name="uq_content_moderation_target"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(24), index=True)
+    content_id: Mapped[int] = mapped_column(Integer, index=True)
+    action: Mapped[str] = mapped_column(String(24), default="HIDDEN", index=True)
+    reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    source_report_id: Mapped[int | None] = mapped_column(ForeignKey("content_reports.id"), nullable=True, index=True)
+    moderator_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        index=True,
+    )
+
+    moderator: Mapped["User"] = relationship(back_populates="content_moderation_actions")
 
 class Player(Base):
     __tablename__ = "players"

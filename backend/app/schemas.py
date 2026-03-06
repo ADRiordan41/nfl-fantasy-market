@@ -86,6 +86,54 @@ class AdminFeedbackOut(FeedbackOut):
     username: str
 
 
+class ModerationReportCreateIn(BaseModel):
+    content_type: str = Field(min_length=2, max_length=24)
+    content_id: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=96)
+    details: str | None = Field(default=None, max_length=2000)
+    page_path: str | None = Field(default=None, max_length=256)
+
+
+class ModerationReportOut(BaseModel):
+    id: int
+    content_type: str
+    content_id: int
+    reason: str
+    details: str | None = None
+    page_path: str | None = None
+    status: str
+    action_taken: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminModerationReportOut(ModerationReportOut):
+    reporter_user_id: int
+    reporter_username: str
+    reviewed_by_user_id: int | None = None
+    reviewed_by_username: str | None = None
+    moderator_note: str | None = None
+    reviewed_at: datetime | None = None
+    target_preview: str | None = None
+    target_exists: bool = True
+    is_content_hidden: bool = False
+
+
+class AdminModerationResolveIn(BaseModel):
+    status: str = Field(min_length=4, max_length=16)
+    action: str = Field(default="NONE", min_length=2, max_length=24)
+    moderator_note: str | None = Field(default=None, max_length=1000)
+
+
+class AdminModerationUnhideIn(BaseModel):
+    content_type: str = Field(min_length=2, max_length=24)
+    content_id: int = Field(ge=1)
+
+
+class AdminModerationUnhideOut(BaseModel):
+    ok: bool = True
+
+
 class ForumPostCreateIn(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     body: str = Field(min_length=1, max_length=10000)

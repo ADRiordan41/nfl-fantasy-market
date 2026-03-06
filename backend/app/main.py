@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,8 @@ from .db import SessionLocal, get_db
 from .models import (
     ArchivedHolding,
     ArchivedWeeklyStat,
+    ContentModeration,
+    ContentReport,
     FeedbackMessage,
     ForumComment,
     ForumPost,
@@ -50,6 +52,10 @@ from .schemas import (
     AdminStatsPreviewOut,
     AdminStatsPreviewRow,
     AdminStatsPublishOut,
+    AdminModerationReportOut,
+    AdminModerationResolveIn,
+    AdminModerationUnhideIn,
+    AdminModerationUnhideOut,
     AdminFeedbackOut,
     AdminSportTradingHaltUpdateIn,
     AdminTradingHaltUpdateIn,
@@ -71,6 +77,8 @@ from .schemas import (
     LiveGamesOut,
     MarketMoverOut,
     MarketMoversOut,
+    ModerationReportCreateIn,
+    ModerationReportOut,
     PlayerLiveOut,
     PlayerOut,
     PricePointOut,
@@ -142,6 +150,27 @@ ADMIN_USERNAMES = {
     if name.strip()
 }
 GLOBAL_TRADING_CONTROL_SPORT = "ALL"
+MODERATION_CONTENT_FORUM_POST = "FORUM_POST"
+MODERATION_CONTENT_FORUM_COMMENT = "FORUM_COMMENT"
+MODERATION_CONTENT_TYPES = {
+    MODERATION_CONTENT_FORUM_POST,
+    MODERATION_CONTENT_FORUM_COMMENT,
+}
+MODERATION_REPORT_STATUS_OPEN = "OPEN"
+MODERATION_REPORT_STATUS_RESOLVED = "RESOLVED"
+MODERATION_REPORT_STATUS_DISMISSED = "DISMISSED"
+MODERATION_REPORT_STATUSES = {
+    MODERATION_REPORT_STATUS_OPEN,
+    MODERATION_REPORT_STATUS_RESOLVED,
+    MODERATION_REPORT_STATUS_DISMISSED,
+}
+MODERATION_ACTION_NONE = "NONE"
+MODERATION_ACTION_HIDE_CONTENT = "HIDE_CONTENT"
+MODERATION_ACTIONS = {
+    MODERATION_ACTION_NONE,
+    MODERATION_ACTION_HIDE_CONTENT,
+}
+CONTENT_MODERATION_ACTION_HIDDEN = "HIDDEN"
 
 
 @dataclass
@@ -1621,6 +1650,106 @@ def forum_post_summary_to_out(
     )
 
 
+def normalize_moderation_content_type(raw_value: str) -> str:
+    content_type = (raw_value or "").strip().upper()
+    if content_type not in MODERATION_CONTENT_TYPES:
+        allowed = ", ".join(sorted(MODERATION_CONTENT_TYPES))
+        raise HTTPException(400, f"content_type must be one of: {allowed}")
+    return content_type
+
+
+def normalize_moderation_report_status(raw_value: str, *, allow_open: bool = True) -> str:
+    status = (raw_value or "").strip().upper()
+    if status not in MODERATION_REPORT_STATUSES:
+        allowed = ", ".join(sorted(MODERATION_REPORT_STATUSES))
+        raise HTTPException(400, f"status must be one of: {allowed}")
+    if not allow_open and status == MODERATION_REPORT_STATUS_OPEN:
+        raise HTTPException(400, "status must be RESOLVED or DISMISSED for this action.")
+    return status
+
+
+def normalize_moderation_action(raw_value: str) -> str:
+    action = (raw_value or MODERATION_ACTION_NONE).strip().upper()
+    if action not in MODERATION_ACTIONS:
+        allowed = ", ".join(sorted(MODERATION_ACTIONS))
+        raise HTTPException(400, f"action must be one of: {allowed}")
+    return action
+
+
+def hidden_content_id_set(db: Session, content_type: str, content_ids: list[int]) -> set[int]:
+    if not content_ids:
+        return set()
+    rows = db.execute(
+        select(ContentModeration.content_id).where(
+            ContentModeration.content_type == content_type,
+            ContentModeration.action == CONTENT_MODERATION_ACTION_HIDDEN,
+            ContentModeration.content_id.in_(content_ids),
+        )
+    ).all()
+    return {int(content_id) for (content_id,) in rows}
+
+
+def is_content_hidden(db: Session, content_type: str, content_id: int) -> bool:
+    row = db.execute(
+        select(ContentModeration.id).where(
+            ContentModeration.content_type == content_type,
+            ContentModeration.content_id == int(content_id),
+            ContentModeration.action == CONTENT_MODERATION_ACTION_HIDDEN,
+        )
+    ).scalar_one_or_none()
+    return bool(row)
+
+
+def ensure_moderation_target_exists_or_raise(db: Session, content_type: str, content_id: int) -> None:
+    if content_type == MODERATION_CONTENT_FORUM_POST:
+        target = db.get(ForumPost, int(content_id))
+    elif content_type == MODERATION_CONTENT_FORUM_COMMENT:
+        target = db.get(ForumComment, int(content_id))
+    else:
+        target = None
+    if not target:
+        raise HTTPException(404, "Report target not found.")
+
+
+def moderation_report_to_out(report: ContentReport) -> ModerationReportOut:
+    return ModerationReportOut(
+        id=int(report.id),
+        content_type=str(report.content_type),
+        content_id=int(report.content_id),
+        reason=str(report.reason),
+        details=normalize_optional_profile_field(report.details),
+        page_path=normalize_optional_profile_field(report.page_path),
+        status=str(report.status),
+        action_taken=str(report.action_taken or MODERATION_ACTION_NONE),
+        created_at=report.created_at,
+        updated_at=report.updated_at,
+    )
+
+
+def admin_moderation_report_to_out(
+    report: ContentReport,
+    *,
+    reporter_username: str,
+    reviewed_by_username: str | None,
+    target_preview: str | None,
+    target_exists: bool,
+    is_hidden: bool,
+) -> AdminModerationReportOut:
+    base = moderation_report_to_out(report)
+    return AdminModerationReportOut(
+        **base.model_dump(),
+        reporter_user_id=int(report.reporter_user_id),
+        reporter_username=reporter_username,
+        reviewed_by_user_id=int(report.reviewed_by_user_id) if report.reviewed_by_user_id is not None else None,
+        reviewed_by_username=reviewed_by_username,
+        moderator_note=normalize_optional_profile_field(report.moderator_note),
+        reviewed_at=report.reviewed_at,
+        target_preview=target_preview,
+        target_exists=target_exists,
+        is_content_hidden=is_hidden,
+    )
+
+
 def create_auth_session_out(db: Session, user: User) -> AuthSessionOut:
     token = generate_session_token()
     expires_at = session_expiry_from_now()
@@ -1979,6 +2108,226 @@ def admin_feedback_list(
     ]
 
 
+@app.post("/moderation/reports", response_model=ModerationReportOut)
+def create_moderation_report(
+    payload: ModerationReportCreateIn,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    content_type = normalize_moderation_content_type(payload.content_type)
+    content_id = int(payload.content_id)
+    ensure_moderation_target_exists_or_raise(db, content_type, content_id)
+    if is_content_hidden(db, content_type, content_id):
+        raise HTTPException(400, "This content is already hidden by moderation.")
+
+    existing_open = db.execute(
+        select(ContentReport).where(
+            ContentReport.reporter_user_id == int(auth.user.id),
+            ContentReport.content_type == content_type,
+            ContentReport.content_id == content_id,
+            ContentReport.status == MODERATION_REPORT_STATUS_OPEN,
+        )
+    ).scalar_one_or_none()
+    if existing_open:
+        return moderation_report_to_out(existing_open)
+
+    report = ContentReport(
+        reporter_user_id=int(auth.user.id),
+        content_type=content_type,
+        content_id=content_id,
+        reason=normalize_forum_text(payload.reason, "reason"),
+        details=normalize_optional_profile_field(payload.details),
+        page_path=normalize_optional_profile_field(payload.page_path),
+        status=MODERATION_REPORT_STATUS_OPEN,
+        action_taken=MODERATION_ACTION_NONE,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return moderation_report_to_out(report)
+
+
+@app.get("/admin/moderation/reports", response_model=list[AdminModerationReportOut])
+def admin_moderation_reports(
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    stmt = select(ContentReport).order_by(ContentReport.created_at.desc(), ContentReport.id.desc()).limit(limit)
+    if status_filter:
+        stmt = stmt.where(ContentReport.status == normalize_moderation_report_status(status_filter))
+
+    reports = db.execute(stmt).scalars().all()
+    if not reports:
+        return []
+
+    user_ids = {
+        int(report.reporter_user_id)
+        for report in reports
+    }
+    user_ids.update(
+        int(report.reviewed_by_user_id)
+        for report in reports
+        if report.reviewed_by_user_id is not None
+    )
+    user_rows = db.execute(select(User.id, User.username).where(User.id.in_(sorted(user_ids)))).all()
+    username_by_id = {int(user_id): str(username) for user_id, username in user_rows}
+
+    post_ids = sorted(
+        {int(report.content_id) for report in reports if str(report.content_type) == MODERATION_CONTENT_FORUM_POST}
+    )
+    comment_ids = sorted(
+        {int(report.content_id) for report in reports if str(report.content_type) == MODERATION_CONTENT_FORUM_COMMENT}
+    )
+    posts_by_id = {
+        int(post.id): post
+        for post in db.execute(select(ForumPost).where(ForumPost.id.in_(post_ids))).scalars().all()
+    } if post_ids else {}
+    comments_by_id = {
+        int(comment.id): comment
+        for comment in db.execute(select(ForumComment).where(ForumComment.id.in_(comment_ids))).scalars().all()
+    } if comment_ids else {}
+
+    hidden_post_ids = hidden_content_id_set(db, MODERATION_CONTENT_FORUM_POST, post_ids)
+    hidden_comment_ids = hidden_content_id_set(db, MODERATION_CONTENT_FORUM_COMMENT, comment_ids)
+
+    out: list[AdminModerationReportOut] = []
+    for report in reports:
+        content_type = str(report.content_type)
+        content_id = int(report.content_id)
+        if content_type == MODERATION_CONTENT_FORUM_POST:
+            post = posts_by_id.get(content_id)
+            target_preview = f"Post: {str(post.title)}" if post else None
+            target_exists = post is not None
+            is_hidden = content_id in hidden_post_ids
+        else:
+            comment = comments_by_id.get(content_id)
+            target_preview = f"Comment: {forum_body_preview(str(comment.body), 120)}" if comment else None
+            target_exists = comment is not None
+            is_hidden = content_id in hidden_comment_ids
+
+        out.append(
+            admin_moderation_report_to_out(
+                report,
+                reporter_username=username_by_id.get(int(report.reporter_user_id), "unknown"),
+                reviewed_by_username=(
+                    username_by_id.get(int(report.reviewed_by_user_id))
+                    if report.reviewed_by_user_id is not None
+                    else None
+                ),
+                target_preview=target_preview,
+                target_exists=target_exists,
+                is_hidden=is_hidden,
+            )
+        )
+    return out
+
+
+@app.post("/admin/moderation/reports/{report_id}/resolve", response_model=AdminModerationReportOut)
+def admin_resolve_moderation_report(
+    report_id: int,
+    payload: AdminModerationResolveIn,
+    admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    report = db.get(ContentReport, report_id)
+    if not report:
+        raise HTTPException(404, "Moderation report not found.")
+    if str(report.status) != MODERATION_REPORT_STATUS_OPEN:
+        raise HTTPException(400, "Report has already been reviewed.")
+
+    status_value = normalize_moderation_report_status(payload.status, allow_open=False)
+    action_value = normalize_moderation_action(payload.action)
+    if action_value == MODERATION_ACTION_HIDE_CONTENT and status_value != MODERATION_REPORT_STATUS_RESOLVED:
+        raise HTTPException(400, "HIDE_CONTENT action requires RESOLVED status.")
+
+    content_type = normalize_moderation_content_type(str(report.content_type))
+    ensure_moderation_target_exists_or_raise(db, content_type, int(report.content_id))
+
+    if action_value == MODERATION_ACTION_HIDE_CONTENT:
+        moderation_row = db.execute(
+            select(ContentModeration).where(
+                ContentModeration.content_type == content_type,
+                ContentModeration.content_id == int(report.content_id),
+            )
+        ).scalar_one_or_none()
+        if not moderation_row:
+            moderation_row = ContentModeration(
+                content_type=content_type,
+                content_id=int(report.content_id),
+                action=CONTENT_MODERATION_ACTION_HIDDEN,
+            )
+            db.add(moderation_row)
+        moderation_row.action = CONTENT_MODERATION_ACTION_HIDDEN
+        moderation_row.reason = normalize_optional_profile_field(payload.moderator_note) or str(report.reason)
+        moderation_row.source_report_id = int(report.id)
+        moderation_row.moderator_user_id = int(admin.user.id)
+        moderation_row.updated_at = datetime.utcnow()
+
+    report.status = status_value
+    report.action_taken = action_value
+    report.moderator_note = normalize_optional_profile_field(payload.moderator_note)
+    report.reviewed_by_user_id = int(admin.user.id)
+    report.reviewed_at = datetime.utcnow()
+    report.updated_at = datetime.utcnow()
+    db.flush()
+
+    reporter_user = db.get(User, int(report.reporter_user_id))
+    reviewed_by_user = db.get(User, int(report.reviewed_by_user_id))
+    is_hidden = is_content_hidden(db, content_type, int(report.content_id))
+
+    target_preview: str | None = None
+    target_exists = True
+    if content_type == MODERATION_CONTENT_FORUM_POST:
+        post = db.get(ForumPost, int(report.content_id))
+        if post:
+            target_preview = f"Post: {str(post.title)}"
+        else:
+            target_exists = False
+    elif content_type == MODERATION_CONTENT_FORUM_COMMENT:
+        comment = db.get(ForumComment, int(report.content_id))
+        if comment:
+            target_preview = f"Comment: {forum_body_preview(str(comment.body), 120)}"
+        else:
+            target_exists = False
+
+    out = admin_moderation_report_to_out(
+        report,
+        reporter_username=str(reporter_user.username) if reporter_user else "unknown",
+        reviewed_by_username=str(reviewed_by_user.username) if reviewed_by_user else None,
+        target_preview=target_preview,
+        target_exists=target_exists,
+        is_hidden=is_hidden,
+    )
+    db.commit()
+    return out
+
+
+@app.post("/admin/moderation/content/unhide", response_model=AdminModerationUnhideOut)
+def admin_unhide_moderated_content(
+    payload: AdminModerationUnhideIn,
+    admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    content_type = normalize_moderation_content_type(payload.content_type)
+    content_id = int(payload.content_id)
+    moderation_row = db.execute(
+        select(ContentModeration).where(
+            ContentModeration.content_type == content_type,
+            ContentModeration.content_id == content_id,
+        )
+    ).scalar_one_or_none()
+    if not moderation_row:
+        raise HTTPException(404, "No moderation action found for this content.")
+
+    moderation_row.action = "VISIBLE"
+    moderation_row.moderator_user_id = int(admin.user.id)
+    moderation_row.updated_at = datetime.utcnow()
+    db.commit()
+    return AdminModerationUnhideOut(ok=True)
+
+
 @app.get("/forum/posts", response_model=list[ForumPostSummaryOut])
 def forum_list_posts(
     limit: int = Query(default=50, ge=1, le=200),
@@ -2045,17 +2394,28 @@ def forum_list_posts(
     if not posts:
         return []
 
-    author_ids = sorted({int(post.user_id) for post in posts})
+    fetched_post_ids = [int(post.id) for post in posts]
+    hidden_post_ids = hidden_content_id_set(db, MODERATION_CONTENT_FORUM_POST, fetched_post_ids)
+    visible_posts = [post for post in posts if int(post.id) not in hidden_post_ids]
+    if not visible_posts:
+        return []
+
+    author_ids = sorted({int(post.user_id) for post in visible_posts})
     author_rows = db.execute(select(User.id, User.username).where(User.id.in_(author_ids))).all()
     author_by_id = {int(user_id): str(username) for user_id, username in author_rows}
 
-    post_ids = [int(post.id) for post in posts]
-    comment_rows = db.execute(
-        select(ForumComment.post_id, func.count(ForumComment.id))
-        .where(ForumComment.post_id.in_(post_ids))
-        .group_by(ForumComment.post_id)
+    visible_post_ids = [int(post.id) for post in visible_posts]
+    comment_records = db.execute(
+        select(ForumComment.id, ForumComment.post_id)
+        .where(ForumComment.post_id.in_(visible_post_ids))
     ).all()
-    comment_count_by_post_id = {int(post_id): int(count) for post_id, count in comment_rows}
+    comment_ids = [int(comment_id) for comment_id, _ in comment_records]
+    hidden_comment_ids = hidden_content_id_set(db, MODERATION_CONTENT_FORUM_COMMENT, comment_ids)
+    comment_count_by_post_id: dict[int, int] = {post_id: 0 for post_id in visible_post_ids}
+    for comment_id, post_id in comment_records:
+        if int(comment_id) in hidden_comment_ids:
+            continue
+        comment_count_by_post_id[int(post_id)] = comment_count_by_post_id.get(int(post_id), 0) + 1
 
     return [
         forum_post_summary_to_out(
@@ -2063,7 +2423,7 @@ def forum_list_posts(
             author_username=author_by_id.get(int(post.user_id), "unknown"),
             comment_count=comment_count_by_post_id.get(int(post.id), 0),
         )
-        for post in posts
+        for post in visible_posts
     ]
 
 
@@ -2099,7 +2459,7 @@ def forum_get_post(
     db: Session = Depends(get_db),
 ):
     post = db.get(ForumPost, post_id)
-    if not post:
+    if not post or is_content_hidden(db, MODERATION_CONTENT_FORUM_POST, int(post_id)):
         raise HTTPException(404, "Forum post not found")
 
     post.view_count = int(post.view_count or 0) + 1
@@ -2119,6 +2479,12 @@ def forum_get_post(
         .where(ForumComment.post_id == post.id)
         .order_by(ForumComment.created_at.asc(), ForumComment.id.asc())
     ).scalars().all()
+    hidden_comment_ids = hidden_content_id_set(
+        db,
+        MODERATION_CONTENT_FORUM_COMMENT,
+        [int(comment.id) for comment in comments],
+    )
+    comments = [comment for comment in comments if int(comment.id) not in hidden_comment_ids]
 
     if comments:
         comment_author_ids = sorted({int(comment.user_id) for comment in comments})
@@ -2160,7 +2526,7 @@ def forum_create_comment(
     db: Session = Depends(get_db),
 ):
     post = db.get(ForumPost, post_id)
-    if not post:
+    if not post or is_content_hidden(db, MODERATION_CONTENT_FORUM_POST, int(post_id)):
         raise HTTPException(404, "Forum post not found")
 
     body = normalize_forum_text(payload.body, "comment")
