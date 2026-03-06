@@ -47,6 +47,8 @@ export default function TermsPage() {
           <li>No exploitation, automation abuse, scraping abuse, or denial-of-service behavior.</li>
           <li>No harassment, hate speech, doxxing, threats, or illegal content.</li>
           <li>No attempts to bypass admin controls or security restrictions.</li>
+          <li>No market manipulation, including coordinated pump-and-dump behavior, wash trading, or deceptive signals.</li>
+          <li>No use of multiple accounts to gain unfair trading, messaging, voting, or moderation advantage.</li>
         </ul>
       </section>
 
