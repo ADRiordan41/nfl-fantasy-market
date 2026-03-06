@@ -693,6 +693,52 @@ textarea[aria-invalid="true"] {
   animation: route-frame-enter 180ms ease-out;
 }
 
+.app-footer {
+  width: min(1200px, 92vw);
+  margin: 8px auto 92px;
+  padding: 10px 12px;
+  border: 1px solid rgba(178, 204, 231, 0.7);
+  border-radius: 14px;
+  background: rgba(241, 248, 255, 0.78);
+  backdrop-filter: blur(8px);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.app-footer-copy {
+  color: #3f5e7f;
+  font-size: 11px;
+}
+
+.app-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.app-footer-link {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(171, 198, 230, 0.8);
+  background: rgba(255, 255, 255, 0.75);
+  color: #2c5074;
+  font-size: 12px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.app-footer-link:hover {
+  border-color: rgba(139, 176, 216, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+}
+
 .mobile-nav {
   --dock-size: clamp(30px, 9vw, 44px);
   position: fixed;
@@ -1345,6 +1391,37 @@ h1 {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.settings-link-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  width: min(820px, 100%);
+}
+
+.policy-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.policy-panel h3,
+.policy-panel h4 {
+  margin: 0;
+}
+
+.policy-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: #254667;
+}
+
+.policy-meta {
+  margin-top: 4px;
+  color: #4e6a88;
+  font-size: 12px;
 }
 
 .danger-btn {
@@ -3030,6 +3107,10 @@ td {
   .app-content {
     padding-bottom: 36px;
   }
+
+  .app-footer {
+    margin-bottom: 22px;
+  }
 }
 
 @media (min-width: 960px) {
@@ -3327,5 +3408,14 @@ td {
   .home-hero .hero-actions.hero-actions-single .home-create-account-cta {
     width: 100%;
     max-width: none;
+  }
+
+  .app-footer {
+    padding: 9px 10px;
+    gap: 8px;
+  }
+
+  .app-footer-copy {
+    width: 100%;
   }
 }

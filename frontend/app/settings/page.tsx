@@ -276,6 +276,28 @@ export default function SettingsPage() {
           </section>
 
           <section className="table-panel settings-panel">
+            <h3>Support and Policies</h3>
+            <p className="subtle">Review beta terms, privacy, risk disclosures, and community rules.</p>
+            <div className="settings-link-grid">
+              <Link href="/support" className="ghost-link">
+                Support
+              </Link>
+              <Link href="/terms" className="ghost-link">
+                Terms of Use
+              </Link>
+              <Link href="/privacy" className="ghost-link">
+                Privacy Policy
+              </Link>
+              <Link href="/risk" className="ghost-link">
+                Risk Disclosure
+              </Link>
+              <Link href="/community-guidelines" className="ghost-link">
+                Community Guidelines
+              </Link>
+            </div>
+          </section>
+
+          <section className="table-panel settings-panel">
             <h3>Session</h3>
             <p className="subtle">Sign out from this device.</p>
             <div className="settings-actions">

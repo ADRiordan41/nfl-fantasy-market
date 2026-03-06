@@ -203,6 +203,14 @@ const NAV_ITEMS = [
   { href: "/admin/stats", label: "Admin", Icon: AdminIcon, requiresAdmin: true },
 ] satisfies NavItem[];
 
+const FOOTER_LINKS = [
+  { href: "/support", label: "Support" },
+  { href: "/terms", label: "Terms" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/risk", label: "Risk" },
+  { href: "/community-guidelines", label: "Community Guidelines" },
+] as const;
+
 const DEV_TICKER_PREVIEW_ROWS: MarketMover[] = [
   { player_id: 900001, sport: "NFL", name: "Jalen Hurts", team: "PHI", position: "QB", spot_price: 42.18, reference_price: 38.95, change: 3.23, change_percent: 8.29, current_at: "2026-01-01T00:00:00Z", reference_at: "2025-12-31T00:00:00Z" },
   { player_id: 900002, sport: "NFL", name: "Christian McCaffrey", team: "SF", position: "RB", spot_price: 39.44, reference_price: 41.2, change: -1.76, change_percent: -4.27, current_at: "2026-01-01T00:00:00Z", reference_at: "2025-12-31T00:00:00Z" },
@@ -552,6 +560,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return process.env.NODE_ENV !== "production" ? DEV_TICKER_PREVIEW_ROWS : [];
   }, [movers]);
   const tickerLoopEntries = tickerEntries.length > 0 ? [...tickerEntries, ...tickerEntries] : [];
+  const currentYear = new Date().getFullYear();
   const sessionStatusLabel = checkingSession
     ? "Checking session"
     : currentUser
@@ -712,6 +721,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </div>
+
+      <footer className="app-footer">
+        <small className="app-footer-copy">MatchupMarket Beta {currentYear}</small>
+        <nav className="app-footer-links" aria-label="Support and policy links">
+          {FOOTER_LINKS.map((item) => (
+            <Link key={item.href} href={item.href} className="app-footer-link">
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </footer>
 
       {showNav && (
         <nav className="mobile-nav" style={mobileDockStyle}>
