@@ -2,6 +2,7 @@ import csv
 import io
 import os
 import re
+import smtplib
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from .auth import (
     verify_password,
 )
 from .db import SessionLocal, get_db
+from .mailer import SmtpSettings, build_password_reset_email, send_smtp_message
 from .models import (
     ArchivedHolding,
     ArchivedWeeklyStat,
@@ -220,6 +222,14 @@ PASSWORD_RESET_BASE_URL = (
     os.environ.get("PASSWORD_RESET_BASE_URL", "http://localhost:3000/auth").strip()
     or "http://localhost:3000/auth"
 )
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USERNAME = (os.environ.get("SMTP_USERNAME") or "").strip() or None
+SMTP_PASSWORD = (os.environ.get("SMTP_PASSWORD") or "").strip() or None
+SMTP_FROM_EMAIL = (os.environ.get("SMTP_FROM_EMAIL") or "").strip()
+SMTP_FROM_NAME = (os.environ.get("SMTP_FROM_NAME") or "MatchupMarket").strip()
+SMTP_USE_STARTTLS = os.environ.get("SMTP_USE_STARTTLS", "true").strip().lower() in {"1", "true", "yes"}
+SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").strip().lower() in {"1", "true", "yes"}
 RATE_LIMIT_FORUM_POST_CREATE = int(os.environ.get("RATE_LIMIT_FORUM_POST_CREATE", "8"))
 RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS = int(
     os.environ.get("RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS", "600")
@@ -254,6 +264,16 @@ class SlidingWindowRateLimiter:
 
 
 RATE_LIMITER = SlidingWindowRateLimiter()
+SMTP_SETTINGS = SmtpSettings(
+    host=SMTP_HOST,
+    port=SMTP_PORT,
+    username=SMTP_USERNAME,
+    password=SMTP_PASSWORD,
+    from_email=SMTP_FROM_EMAIL,
+    from_name=SMTP_FROM_NAME,
+    use_starttls=SMTP_USE_STARTTLS,
+    use_ssl=SMTP_USE_SSL,
+)
 
 
 @dataclass
@@ -632,6 +652,24 @@ def revoke_active_sessions_for_user(db: Session, user_id: int, *, revoked_at: da
 def password_reset_preview_url(token: str) -> str:
     separator = "&" if "?" in PASSWORD_RESET_BASE_URL else "?"
     return f"{PASSWORD_RESET_BASE_URL}{separator}reset_token={token}"
+
+
+def send_password_reset_email(*, to_email: str, token: str) -> bool:
+    if not SMTP_SETTINGS.enabled:
+        return False
+    message = build_password_reset_email(
+        to_email=to_email,
+        from_name=SMTP_SETTINGS.from_name,
+        from_email=SMTP_SETTINGS.from_email,
+        reset_url=password_reset_preview_url(token),
+        expiry_minutes=PASSWORD_RESET_TTL_MINUTES,
+    )
+    try:
+        send_smtp_message(SMTP_SETTINGS, message, recipients=[to_email])
+    except (OSError, smtplib.SMTPException) as exc:
+        print(f"password reset email delivery failed for {to_email}: {exc}")
+        return False
+    return True
 
 
 def player_is_listed(player: Player) -> bool:
@@ -2381,14 +2419,15 @@ def auth_password_reset_request(
     )
     db.commit()
 
+    email_sent = send_password_reset_email(to_email=email, token=raw_token)
     if not PASSWORD_RESET_PREVIEW_ENABLED:
         return AuthPasswordResetRequestOut(ok=True)
 
     return AuthPasswordResetRequestOut(
         ok=True,
         expires_at=expires_at,
-        preview_token=raw_token,
-        preview_url=password_reset_preview_url(raw_token),
+        preview_token=raw_token if not email_sent else None,
+        preview_url=password_reset_preview_url(raw_token) if not email_sent else None,
     )
 
 

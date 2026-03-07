@@ -199,7 +199,7 @@ function AuthPageContent() {
       setSuccess(
         response.preview_url
           ? "Reset token created. Use the preview link below to complete the flow while email delivery is not configured."
-          : "If an account exists for that email, reset instructions will be sent when email delivery is configured.",
+          : "If an account exists for that email, a password reset email has been sent.",
       );
       setPreviewResetUrl(response.preview_url || null);
       if (response.preview_token) {
