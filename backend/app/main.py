@@ -34,6 +34,7 @@ from .models import (
     ForumPost,
     ForumPostView,
     Holding,
+    PasswordResetToken,
     Player,
     PricePoint,
     SeasonClose,
@@ -85,6 +86,10 @@ from .schemas import (
     AuthLogoutOut,
     AuthPasswordUpdateIn,
     AuthPasswordUpdateOut,
+    AuthPasswordResetConfirmIn,
+    AuthPasswordResetConfirmOut,
+    AuthPasswordResetRequestIn,
+    AuthPasswordResetRequestOut,
     AuthRegisterIn,
     AuthSessionOut,
     LiveGameOut,
@@ -197,6 +202,24 @@ RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_AUTH_LOGIN
 RATE_LIMIT_AUTH_REGISTER = int(os.environ.get("RATE_LIMIT_AUTH_REGISTER", "6"))
 RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS", "3600"))
 REGISTER_MIN_SUBMIT_MS = max(0, int(os.environ.get("REGISTER_MIN_SUBMIT_MS", "2500")))
+RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST = int(os.environ.get("RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST", "6"))
+RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST_WINDOW_SECONDS = int(
+    os.environ.get("RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST_WINDOW_SECONDS", "3600")
+)
+RATE_LIMIT_AUTH_PASSWORD_RESET_CONFIRM = int(os.environ.get("RATE_LIMIT_AUTH_PASSWORD_RESET_CONFIRM", "12"))
+RATE_LIMIT_AUTH_PASSWORD_RESET_CONFIRM_WINDOW_SECONDS = int(
+    os.environ.get("RATE_LIMIT_AUTH_PASSWORD_RESET_CONFIRM_WINDOW_SECONDS", "1800")
+)
+PASSWORD_RESET_TTL_MINUTES = max(5, int(os.environ.get("PASSWORD_RESET_TTL_MINUTES", "60")))
+PASSWORD_RESET_PREVIEW_ENABLED = os.environ.get("PASSWORD_RESET_PREVIEW_ENABLED", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+PASSWORD_RESET_BASE_URL = (
+    os.environ.get("PASSWORD_RESET_BASE_URL", "http://localhost:3000/auth").strip()
+    or "http://localhost:3000/auth"
+)
 RATE_LIMIT_FORUM_POST_CREATE = int(os.environ.get("RATE_LIMIT_FORUM_POST_CREATE", "8"))
 RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS = int(
     os.environ.get("RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS", "600")
@@ -486,6 +509,13 @@ def normalize_login_identifier(raw_identifier: str | None) -> str:
     return normalize_email(identifier) if "@" in identifier else normalize_username(identifier)
 
 
+def normalize_password_reset_token(raw_token: str | None) -> str:
+    token = (raw_token or "").strip()
+    if not token:
+        raise HTTPException(400, "Reset token is required.")
+    return token
+
+
 def normalize_sport_code(raw_sport: str | None, default: str = "NFL") -> str:
     sport = (raw_sport or default).strip().upper()
     if not sport:
@@ -573,6 +603,35 @@ def validate_registration_request(payload: AuthRegisterIn) -> None:
     elapsed_ms = now_ms - int(started_at_ms)
     if elapsed_ms < REGISTER_MIN_SUBMIT_MS or elapsed_ms > 86_400_000:
         raise HTTPException(400, "Invalid registration request.")
+
+
+def revoke_password_reset_tokens_for_user(db: Session, user_id: int, *, used_at: datetime | None = None) -> None:
+    timestamp = used_at or datetime.utcnow()
+    tokens = db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == int(user_id),
+            PasswordResetToken.used_at.is_(None),
+        )
+    ).scalars().all()
+    for token in tokens:
+        token.used_at = timestamp
+
+
+def revoke_active_sessions_for_user(db: Session, user_id: int, *, revoked_at: datetime | None = None) -> None:
+    timestamp = revoked_at or datetime.utcnow()
+    sessions = db.execute(
+        select(UserSession).where(
+            UserSession.user_id == int(user_id),
+            UserSession.revoked_at.is_(None),
+        )
+    ).scalars().all()
+    for session in sessions:
+        session.revoked_at = timestamp
+
+
+def password_reset_preview_url(token: str) -> str:
+    separator = "&" if "?" in PASSWORD_RESET_BASE_URL else "?"
+    return f"{PASSWORD_RESET_BASE_URL}{separator}reset_token={token}"
 
 
 def player_is_listed(player: Player) -> bool:
@@ -2281,6 +2340,97 @@ def auth_update_password(
     user.password_hash = hash_password(payload.new_password)
     db.commit()
     return AuthPasswordUpdateOut(ok=True)
+
+
+@app.post("/auth/password-reset/request", response_model=AuthPasswordResetRequestOut)
+def auth_password_reset_request(
+    payload: AuthPasswordResetRequestIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    enforce_ip_rate_limit(
+        request,
+        bucket="auth:password-reset-request",
+        limit=RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST,
+        window_seconds=RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST_WINDOW_SECONDS,
+        label="password reset request",
+    )
+    email = normalize_email(payload.email)
+    enforce_rate_limit(
+        key=f"auth:password-reset-request:email:{email}",
+        limit=RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST,
+        window_seconds=RATE_LIMIT_AUTH_PASSWORD_RESET_REQUEST_WINDOW_SECONDS,
+        label="password reset request",
+    )
+
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if not user or not user.password_hash:
+        return AuthPasswordResetRequestOut(ok=True)
+
+    now = datetime.utcnow()
+    revoke_password_reset_tokens_for_user(db, user.id, used_at=now)
+
+    raw_token = generate_session_token()
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_session_token(raw_token),
+            expires_at=expires_at,
+        )
+    )
+    db.commit()
+
+    if not PASSWORD_RESET_PREVIEW_ENABLED:
+        return AuthPasswordResetRequestOut(ok=True)
+
+    return AuthPasswordResetRequestOut(
+        ok=True,
+        expires_at=expires_at,
+        preview_token=raw_token,
+        preview_url=password_reset_preview_url(raw_token),
+    )
+
+
+@app.post("/auth/password-reset/confirm", response_model=AuthPasswordResetConfirmOut)
+def auth_password_reset_confirm(
+    payload: AuthPasswordResetConfirmIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    enforce_ip_rate_limit(
+        request,
+        bucket="auth:password-reset-confirm",
+        limit=RATE_LIMIT_AUTH_PASSWORD_RESET_CONFIRM,
+        window_seconds=RATE_LIMIT_AUTH_PASSWORD_RESET_CONFIRM_WINDOW_SECONDS,
+        label="password reset confirm",
+    )
+
+    raw_token = normalize_password_reset_token(payload.token)
+    hashed_token = hash_session_token(raw_token)
+    now = datetime.utcnow()
+    reset_token = db.execute(
+        select(PasswordResetToken)
+        .where(
+            PasswordResetToken.token_hash == hashed_token,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if not reset_token or reset_token.expires_at < now:
+        raise HTTPException(400, "Invalid or expired reset token.")
+
+    user = get_user_by_id_or_raise(
+        db=db,
+        user_id=reset_token.user_id,
+        for_update=True,
+    )
+    user.password_hash = hash_password(payload.new_password)
+    reset_token.used_at = now
+    revoke_password_reset_tokens_for_user(db, user.id, used_at=now)
+    revoke_active_sessions_for_user(db, user.id, revoked_at=now)
+    db.commit()
+    return AuthPasswordResetConfirmOut(ok=True)
 
 
 @app.get("/users/me/profile", response_model=UserProfileOut)
