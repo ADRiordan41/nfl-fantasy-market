@@ -1,12 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = Number(process.env.PLAYWRIGHT_FRONTEND_PORT || 3000);
+const PORT = Number(process.env.PLAYWRIGHT_FRONTEND_PORT || 3101);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./tests/visual",
-  timeout: 30_000,
-  fullyParallel: true,
+  timeout: 60_000,
+  fullyParallel: false,
+  workers: process.env.CI ? 2 : 4,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
@@ -41,8 +42,12 @@ export default defineConfig({
   ],
   webServer: {
     command: `npm run dev -- --port ${PORT}`,
+    env: {
+      NEXT_DIST_DIR: ".next-playwright",
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000",
+    },
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

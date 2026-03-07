@@ -78,6 +78,7 @@ test.describe("Desktop baselines", () => {
 
     await page.goto("/live");
     await page.waitForLoadState("networkidle");
+    await expect(page.getByText("Showing 2 games and 4 live players.")).toBeVisible();
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("live-desktop.png", { fullPage: true });
@@ -89,6 +90,7 @@ test.describe("Desktop baselines", () => {
 
     await page.goto("/settings");
     await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("settings-desktop.png", { fullPage: true });
