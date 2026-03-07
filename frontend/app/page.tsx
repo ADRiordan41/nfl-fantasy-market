@@ -102,7 +102,7 @@ export default function HomePage() {
           <p className="eyebrow">Welcome</p>
           <h1 className="home-headline">Trade Pro Athletes Like Stocks in a Live Market</h1>
           <p className="subtle">
-            MatchupMarket is a fantasy trading exchange where each player has a live price. Start from preseason projections,
+            MatchupMarket is a free-to-play fantasy sports stock market. Start from preseason projections,
             trade long or short during the season, and settle positions against final fantasy production.
           </p>
         </div>
