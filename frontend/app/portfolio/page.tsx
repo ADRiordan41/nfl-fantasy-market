@@ -180,9 +180,15 @@ export default function PortfolioPage() {
         const player = playersById[holding.player_id];
         if (!player) return null;
         const shares = Number(holding.shares_owned);
-        const averageEntryPrice = Number(holding.average_entry_price);
-        const spot = Number(holding.spot_price || player.spot_price);
         const basisNotional = Number(holding.basis_amount);
+        const averageEntryPriceRaw = Number(holding.average_entry_price);
+        const averageEntryPrice =
+          Number.isFinite(averageEntryPriceRaw) && averageEntryPriceRaw > 0
+            ? averageEntryPriceRaw
+            : Math.abs(shares) > 0 && Number.isFinite(basisNotional) && basisNotional > 0
+              ? basisNotional / Math.abs(shares)
+              : Number.NaN;
+        const spot = Number(holding.spot_price || player.spot_price);
         const marketValue = Number(holding.market_value);
         const pnl = shares >= 0 ? marketValue - basisNotional : basisNotional + marketValue;
         const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
