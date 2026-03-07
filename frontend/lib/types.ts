@@ -24,6 +24,8 @@ export type Player = {
   shares_held: number;
   shares_short: number;
   spot_price: number;
+  bid_price: number;
+  ask_price: number;
   live: PlayerLive | null;
 };
 
@@ -69,6 +71,8 @@ export type Portfolio = {
   holdings: {
     player_id: number;
     shares_owned: number;
+    average_entry_price: number;
+    basis_amount: number;
     spot_price: number;
     market_value: number;
     maintenance_margin_required: number;

@@ -576,6 +576,8 @@ export default function MarketPage() {
               <colgroup>
                 <col className="market-col-player" />
                 <col className="market-col-price" />
+                <col className="market-col-price-side" />
+                <col className="market-col-price-side" />
                 <col className="market-col-change" />
                 <col className="market-col-change-24h" />
                 <col className="market-col-shares-held" />
@@ -597,6 +599,8 @@ export default function MarketPage() {
                       Price{sortLabel("spot_price")}
                     </button>
                   </th>
+                  <th>Bid</th>
+                  <th>Ask</th>
                   <th>
                     <button type="button" className="market-sort-btn" onClick={() => toggleSort("change_pct")}>
                       Total Gain{sortLabel("change_pct")}
@@ -635,6 +639,8 @@ export default function MarketPage() {
                         </div>
                       </td>
                       <td>{formatCurrency(player.spot_price)}</td>
+                      <td>{formatCurrency(player.bid_price)}</td>
+                      <td>{formatCurrency(player.ask_price)}</td>
                       <td className={totalChangePct >= 0 ? "up" : "down"}>{formatSignedPercent(totalChangePct)}</td>
                       <td className={change24hPct >= 0 ? "up" : "down"}>{formatSignedPercent(change24hPct)}</td>
                       <td className="market-owned-cell">{formatNumber(Math.round(sharesHeld))}</td>

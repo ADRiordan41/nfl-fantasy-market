@@ -2515,7 +2515,7 @@ button.segment.danger-segment.danger-active {
 
 .account-mix-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 10px;
   border: 1px solid var(--line);
@@ -2557,6 +2557,12 @@ button.segment.danger-segment.danger-active {
   white-space: nowrap;
 }
 
+.account-mix-gl {
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .market-table-panel {
   padding: 8px;
   min-width: 0;
@@ -2585,6 +2591,10 @@ button.segment.danger-segment.danger-active {
 
 .market-col-change-24h {
   width: 86px;
+}
+
+.market-col-price-side {
+  width: 78px;
 }
 
 .market-col-shares-held {

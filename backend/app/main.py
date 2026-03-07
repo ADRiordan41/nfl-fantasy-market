@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from decimal import Decimal
+from math import pow
 from threading import Lock
 from time import monotonic
 
@@ -43,7 +44,18 @@ from .models import (
     UserSession,
     WeeklyStat,
 )
-from .pricing import adjusted_base_price, cost_to_buy, effective_k, proceeds_to_sell, spot_price
+from .pricing import (
+    LIVE_POINTS_WEIGHT,
+    RECENT_FORM_WINDOW,
+    adjusted_base_price,
+    blended_fair_value,
+    cost_to_buy,
+    effective_k,
+    proceeds_to_sell,
+    recent_form_anchor,
+    spot_price,
+    spread_percentage,
+)
 from .schemas import (
     AdminIpoActionOut,
     AdminIpoHideIn,
@@ -141,6 +153,11 @@ MIN_SPOT_PRICE = Decimal(os.environ.get("MIN_SPOT_PRICE", "1.0"))
 MAINTENANCE_MARGIN_LONG = Decimal(os.environ.get("MAINTENANCE_MARGIN_LONG", "0.0"))
 MAINTENANCE_MARGIN_SHORT = Decimal(os.environ.get("MAINTENANCE_MARGIN_SHORT", "0.0"))
 MAX_POSITION_NOTIONAL_PER_PLAYER = Decimal(os.environ.get("MAX_POSITION_NOTIONAL_PER_PLAYER", "10000"))
+OPEN_POSITION_FEE_RATE = max(Decimal("0"), Decimal(os.environ.get("OPEN_POSITION_FEE_RATE", "0.0")))
+MARKET_REVERSION_HALF_LIFE_MINUTES = max(
+    Decimal("1"),
+    Decimal(os.environ.get("MARKET_REVERSION_HALF_LIFE_MINUTES", "180")),
+)
 REGISTER_STARTING_CASH = Decimal("100000")
 RAW_SANDBOX_USERNAME = (os.environ.get("SANDBOX_USERNAME") or "").strip().lower()
 DEFAULT_SANDBOX_USERNAME = RAW_SANDBOX_USERNAME or "foreverhopeful"
@@ -219,6 +236,8 @@ class PositionRisk:
     holding: Holding
     player: Player
     shares: Decimal
+    average_entry_price: Decimal
+    basis_amount: Decimal
     spot_price: Decimal
     market_value: Decimal
     maintenance_margin_required: Decimal
@@ -237,6 +256,168 @@ class AccountRiskSnapshot:
     available_buying_power: Decimal
     margin_call: bool
     positions: list[PositionRisk]
+
+
+@dataclass(frozen=True)
+class PlayerStatsSnapshot:
+    points_to_date: Decimal
+    latest_week: int
+    recent_points: Decimal
+    recent_sample_size: int
+
+
+def calculate_open_position_fee(notional: Decimal) -> Decimal:
+    if notional <= 0 or OPEN_POSITION_FEE_RATE <= 0:
+        return Decimal("0")
+    return notional * OPEN_POSITION_FEE_RATE
+
+
+def holding_basis_amount(holding: Holding) -> Decimal:
+    return max(Decimal("0"), Decimal(str(holding.basis_amount or 0)))
+
+
+def average_entry_price_for_position(*, basis_amount: Decimal, shares: Decimal) -> Decimal:
+    abs_shares = abs(shares)
+    if basis_amount <= 0 or abs_shares <= 0:
+        return Decimal("0")
+    return basis_amount / abs_shares
+
+
+def current_market_bias(player: Player, *, now: datetime | None = None) -> Decimal:
+    raw_bias = Decimal(str(getattr(player, "market_bias", 0) or 0))
+    updated_at = getattr(player, "market_bias_updated_at", None)
+    if raw_bias == 0 or updated_at is None:
+        return raw_bias
+    as_of = now or datetime.utcnow()
+    elapsed_minutes = max(0.0, (as_of - updated_at).total_seconds() / 60.0)
+    if elapsed_minutes <= 0:
+        return raw_bias
+    decay_factor = Decimal(str(pow(0.5, elapsed_minutes / float(MARKET_REVERSION_HALF_LIFE_MINUTES))))
+    decayed_bias = raw_bias * decay_factor
+    if abs(decayed_bias) < Decimal("0.000001"):
+        return Decimal("0")
+    return decayed_bias
+
+
+def set_market_bias(player: Player, *, bias: Decimal, now: datetime | None = None) -> None:
+    normalized_bias = Decimal("0") if abs(bias) < Decimal("0.000001") else bias
+    player.market_bias = float(normalized_bias)
+    player.market_bias_updated_at = now or datetime.utcnow()
+
+
+def apply_market_bias_delta(player: Player, *, delta: Decimal, now: datetime | None = None) -> Decimal:
+    as_of = now or datetime.utcnow()
+    next_bias = current_market_bias(player, now=as_of) + delta
+    set_market_bias(player, bias=next_bias, now=as_of)
+    return next_bias
+
+
+def pricing_spread_pct(player: Player, *, fundamental_price: Decimal) -> Decimal:
+    return spread_percentage(
+        anchor_price=fundamental_price,
+        reference_price=Decimal(str(player.base_price)),
+        live_now=bool(player.live_now),
+    )
+
+
+def current_spot_price(
+    player: Player,
+    *,
+    fundamental_price: Decimal,
+    market_bias: Decimal | None = None,
+) -> Decimal:
+    return spot_price(
+        fundamental_price,
+        Decimal(str(player.k)),
+        current_market_bias(player) if market_bias is None else market_bias,
+        live_now=bool(player.live_now),
+    )
+
+
+def current_bid_ask_prices(
+    player: Player,
+    *,
+    fundamental_price: Decimal,
+    market_bias: Decimal | None = None,
+) -> tuple[Decimal, Decimal]:
+    mid = current_spot_price(
+        player,
+        fundamental_price=fundamental_price,
+        market_bias=market_bias,
+    )
+    spread_pct = pricing_spread_pct(player, fundamental_price=fundamental_price)
+    half_spread = spread_pct / Decimal("2")
+    bid = max(Decimal("0.000001"), mid * (Decimal("1") - half_spread))
+    ask = max(Decimal("0.000001"), mid * (Decimal("1") + half_spread))
+    return bid, ask
+
+
+def current_cost_to_buy(
+    player: Player,
+    *,
+    fundamental_price: Decimal,
+    qty: Decimal,
+    market_bias: Decimal | None = None,
+) -> Decimal:
+    return cost_to_buy(
+        fundamental_price,
+        Decimal(str(player.k)),
+        current_market_bias(player) if market_bias is None else market_bias,
+        qty,
+        live_now=bool(player.live_now),
+        spread_pct=pricing_spread_pct(player, fundamental_price=fundamental_price),
+    )
+
+
+def current_proceeds_to_sell(
+    player: Player,
+    *,
+    fundamental_price: Decimal,
+    qty: Decimal,
+    market_bias: Decimal | None = None,
+) -> Decimal:
+    return proceeds_to_sell(
+        fundamental_price,
+        Decimal(str(player.k)),
+        current_market_bias(player) if market_bias is None else market_bias,
+        qty,
+        live_now=bool(player.live_now),
+        spread_pct=pricing_spread_pct(player, fundamental_price=fundamental_price),
+    )
+
+
+def market_value_for_position(
+    *,
+    player: Player,
+    fundamental_price: Decimal,
+    shares: Decimal,
+    market_bias: Decimal,
+) -> Decimal:
+    if shares > 0:
+        return current_proceeds_to_sell(
+            player,
+            fundamental_price=fundamental_price,
+            qty=shares,
+            market_bias=market_bias,
+        )
+    if shares < 0:
+        return -current_cost_to_buy(
+            player,
+            fundamental_price=fundamental_price,
+            qty=abs(shares),
+            market_bias=market_bias,
+        )
+    return Decimal("0")
+
+
+def reduce_basis_pro_rata(*, basis_amount: Decimal, shares_before: Decimal, shares_closed: Decimal) -> Decimal:
+    abs_before = abs(shares_before)
+    abs_closed = abs(shares_closed)
+    if basis_amount <= 0 or abs_before <= 0 or abs_closed <= 0:
+        return basis_amount
+    if abs_closed >= abs_before:
+        return Decimal("0")
+    return basis_amount - (basis_amount * abs_closed / abs_before)
 
 
 @dataclass
@@ -790,24 +971,38 @@ def parsed_rows_to_preview(rows: list[ParsedStatRow]) -> AdminStatsPreviewOut:
 def get_stats_snapshot_by_player(
     db: Session,
     player_ids: list[int],
-) -> dict[int, tuple[Decimal, int]]:
+) -> dict[int, PlayerStatsSnapshot]:
     if not player_ids:
         return {}
 
     rows = db.execute(
         select(
             WeeklyStat.player_id,
-            func.coalesce(func.sum(WeeklyStat.fantasy_points), 0),
-            func.coalesce(func.max(WeeklyStat.week), 0),
+            WeeklyStat.week,
+            WeeklyStat.fantasy_points,
         )
         .where(WeeklyStat.player_id.in_(player_ids))
-        .group_by(WeeklyStat.player_id)
+        .order_by(WeeklyStat.player_id.asc(), WeeklyStat.week.asc(), WeeklyStat.id.asc())
     ).all()
 
-    return {
-        int(player_id): (Decimal(str(points_to_date)), int(latest_week))
-        for player_id, points_to_date, latest_week in rows
-    }
+    by_player: dict[int, list[tuple[int, Decimal]]] = defaultdict(list)
+    for player_id, week, fantasy_points in rows:
+        by_player[int(player_id)].append((int(week), Decimal(str(fantasy_points))))
+
+    snapshots: dict[int, PlayerStatsSnapshot] = {}
+    for player_id, stat_rows in by_player.items():
+        points_to_date = sum((points for _, points in stat_rows), Decimal("0"))
+        latest_week = max((week for week, _ in stat_rows), default=0)
+        recent_rows = stat_rows[-RECENT_FORM_WINDOW:]
+        recent_points = sum((points for _, points in recent_rows), Decimal("0"))
+        snapshots[player_id] = PlayerStatsSnapshot(
+            points_to_date=points_to_date,
+            latest_week=latest_week,
+            recent_points=recent_points,
+            recent_sample_size=len(recent_rows),
+        )
+
+    return snapshots
 
 
 def get_aggregate_holdings_by_player(
@@ -840,16 +1035,51 @@ def get_aggregate_holdings_by_player(
 
 def get_pricing_context(
     player: Player,
-    stats_snapshot: dict[int, tuple[Decimal, int]],
+    stats_snapshot: dict[int, PlayerStatsSnapshot],
 ) -> tuple[Decimal, Decimal, int]:
     projected_points = Decimal(str(player.base_price))
-    points_to_date, latest_week = stats_snapshot.get(player.id, (Decimal("0"), 0))
-    fundamental = adjusted_base_price(
+    snapshot = stats_snapshot.get(
+        player.id,
+        PlayerStatsSnapshot(
+            points_to_date=Decimal("0"),
+            latest_week=0,
+            recent_points=Decimal("0"),
+            recent_sample_size=0,
+        ),
+    )
+    points_to_date = snapshot.points_to_date
+    latest_week = snapshot.latest_week
+    recent_points = snapshot.recent_points
+    recent_sample_size = snapshot.recent_sample_size
+
+    if bool(player.live_now) and player.live_game_fantasy_points is not None:
+        live_points = Decimal(str(player.live_game_fantasy_points)) * LIVE_POINTS_WEIGHT
+        points_to_date += live_points
+        recent_points += live_points
+        recent_sample_size = max(1, recent_sample_size)
+        if player.live_week is not None:
+            latest_week = max(latest_week, int(player.live_week))
+
+    season_anchor = adjusted_base_price(
         projected_points=projected_points,
         points_to_date=points_to_date,
         latest_week=latest_week,
         season_weeks=SEASON_WEEKS,
         performance_weight=PERFORMANCE_WEIGHT,
+    )
+    recent_anchor = recent_form_anchor(
+        projected_points=projected_points,
+        recent_points=recent_points,
+        recent_sample_size=recent_sample_size,
+        season_weeks=SEASON_WEEKS,
+        performance_weight=PERFORMANCE_WEIGHT,
+    )
+    fundamental = blended_fair_value(
+        projected_points=projected_points,
+        season_anchor=season_anchor,
+        recent_anchor=recent_anchor,
+        latest_week=latest_week,
+        season_weeks=SEASON_WEEKS,
     )
     return fundamental, points_to_date, latest_week
 
@@ -881,11 +1111,8 @@ def player_to_out(
     shares_held: Decimal = Decimal("0"),
     shares_short: Decimal = Decimal("0"),
 ) -> PlayerOut:
-    spot = spot_price(
-        fundamental_price,
-        Decimal(str(player.k)),
-        Decimal(str(player.total_shares)),
-    )
+    spot = current_spot_price(player, fundamental_price=fundamental_price)
+    bid_price, ask_price = current_bid_ask_prices(player, fundamental_price=fundamental_price)
     return PlayerOut(
         id=player.id,
         sport=str(player.sport),
@@ -901,6 +1128,8 @@ def player_to_out(
         shares_held=float(shares_held),
         shares_short=float(shares_short),
         spot_price=float(spot),
+        bid_price=float(bid_price),
+        ask_price=float(ask_price),
         live=player_live_to_out(player),
     )
 
@@ -913,11 +1142,7 @@ def add_price_point(
     points_to_date: Decimal,
     latest_week: int,
 ) -> None:
-    spot = spot_price(
-        fundamental_price,
-        Decimal(str(player.k)),
-        Decimal(str(player.total_shares)),
-    )
+    spot = current_spot_price(player, fundamental_price=fundamental_price)
     db.add(
         PricePoint(
             player_id=player.id,
@@ -1087,14 +1312,7 @@ def build_market_mover_rows(
         for player_id in missing_player_ids:
             player = players_by_id[player_id]
             fundamental, _, _ = get_pricing_context(player, stats_snapshot)
-            latest_by_player[player_id] = (
-                spot_price(
-                    fundamental,
-                    Decimal(str(player.k)),
-                    Decimal(str(player.total_shares)),
-                ),
-                now,
-            )
+            latest_by_player[player_id] = (current_spot_price(player, fundamental_price=fundamental), now)
 
     movers: list[MarketMoverOut] = []
     for player_id in player_ids:
@@ -1134,36 +1352,43 @@ def build_market_mover_rows(
     return movers
 
 
-def min_total_shares_for_price_floor(
+def min_market_bias_for_price_floor(
+    *,
+    player: Player,
     fundamental_price: Decimal,
-    k: Decimal,
 ) -> Decimal:
-    return (MIN_SPOT_PRICE / fundamental_price - Decimal("1")) / effective_k(k)
+    return (MIN_SPOT_PRICE / fundamental_price - Decimal("1")) / effective_k(
+        Decimal(str(player.k)),
+        fundamental_price,
+        live_now=bool(player.live_now),
+    )
 
 
 def max_sell_qty_before_price_floor(
-    total_shares: Decimal,
+    *,
+    player: Player,
+    market_bias: Decimal,
     fundamental_price: Decimal,
-    k: Decimal,
 ) -> Decimal:
-    minimum_total_shares = min_total_shares_for_price_floor(
+    minimum_market_bias = min_market_bias_for_price_floor(
+        player=player,
         fundamental_price=fundamental_price,
-        k=k,
     )
-    available = total_shares - minimum_total_shares
+    available = market_bias - minimum_market_bias
     return max(Decimal("0"), available)
 
 
 def ensure_sell_side_allowed_or_raise(
-    total_shares: Decimal,
+    *,
+    player: Player,
+    market_bias: Decimal,
     qty: Decimal,
     fundamental_price: Decimal,
-    k: Decimal,
 ) -> None:
     max_qty = max_sell_qty_before_price_floor(
-        total_shares=total_shares,
+        player=player,
+        market_bias=market_bias,
         fundamental_price=fundamental_price,
-        k=k,
     )
     if qty > max_qty:
         raise HTTPException(
@@ -1246,12 +1471,23 @@ def build_account_risk_snapshot(
             continue
 
         fundamental_price, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
-        spot = spot_price(
-            fundamental_price,
-            Decimal(str(player.k)),
-            Decimal(str(player.total_shares)),
+        basis_amount = holding_basis_amount(holding)
+        average_entry_price = average_entry_price_for_position(
+            basis_amount=basis_amount,
+            shares=shares,
         )
-        market_value = shares * spot
+        market_bias = current_market_bias(player)
+        spot = current_spot_price(
+            player,
+            fundamental_price=fundamental_price,
+            market_bias=market_bias,
+        )
+        market_value = market_value_for_position(
+            player=player,
+            fundamental_price=fundamental_price,
+            shares=shares,
+            market_bias=market_bias,
+        )
         maintenance_rate = MAINTENANCE_MARGIN_LONG if shares > 0 else MAINTENANCE_MARGIN_SHORT
         maintenance_margin_required = abs(market_value) * maintenance_rate
 
@@ -1263,6 +1499,8 @@ def build_account_risk_snapshot(
                 holding=holding,
                 player=player,
                 shares=shares,
+                average_entry_price=average_entry_price,
+                basis_amount=basis_amount,
                 spot_price=spot,
                 market_value=market_value,
                 maintenance_margin_required=maintenance_margin_required,
@@ -1319,25 +1557,32 @@ def enforce_margin_and_maybe_liquidate(
         for position in liquidation_candidates:
             player = position.player
             holding = position.holding
-            k = Decimal(str(player.k))
+            market_bias = current_market_bias(player)
             total_shares = Decimal(str(player.total_shares))
 
             if position.shares > 0:
                 qty = position.shares
                 try:
                     ensure_sell_side_allowed_or_raise(
-                        total_shares=total_shares,
+                        player=player,
+                        market_bias=market_bias,
                         qty=qty,
                         fundamental_price=position.fundamental_price,
-                        k=k,
                     )
                 except HTTPException:
                     continue
 
-                proceeds = proceeds_to_sell(position.fundamental_price, k, total_shares, qty)
+                proceeds = current_proceeds_to_sell(
+                    player,
+                    fundamental_price=position.fundamental_price,
+                    qty=qty,
+                    market_bias=market_bias,
+                )
                 user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
                 holding.shares_owned = 0.0
+                holding.basis_amount = 0.0
                 player.total_shares = float(total_shares - qty)
+                apply_market_bias_delta(player, delta=-qty)
                 db.add(
                     Transaction(
                         user_id=user.id,
@@ -1360,10 +1605,17 @@ def enforce_margin_and_maybe_liquidate(
                 break
 
             qty = -position.shares
-            total_cost = cost_to_buy(position.fundamental_price, k, total_shares, qty)
+            total_cost = current_cost_to_buy(
+                player,
+                fundamental_price=position.fundamental_price,
+                qty=qty,
+                market_bias=market_bias,
+            )
             user.cash_balance = float(Decimal(str(user.cash_balance)) - total_cost)
             holding.shares_owned = 0.0
+            holding.basis_amount = 0.0
             player.total_shares = float(total_shares + qty)
+            apply_market_bias_delta(player, delta=qty)
             db.add(
                 Transaction(
                     user_id=user.id,
@@ -1551,11 +1803,7 @@ def list_live_games(
 
         fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
         _ = latest_week
-        spot = spot_price(
-            fundamental,
-            Decimal(str(player.k)),
-            Decimal(str(player.total_shares)),
-        )
+        spot = current_spot_price(player, fundamental_price=fundamental)
         game_points = (
             float(player.live_game_fantasy_points)
             if player.live_game_fantasy_points is not None
@@ -2755,6 +3003,8 @@ def portfolio(
             PortfolioHolding(
                 player_id=position.player.id,
                 shares_owned=float(position.shares),
+                average_entry_price=float(position.average_entry_price),
+                basis_amount=float(position.basis_amount),
                 spot_price=float(position.spot_price),
                 market_value=float(position.market_value),
                 maintenance_margin_required=float(position.maintenance_margin_required),
@@ -2795,17 +3045,29 @@ def quote_buy(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, _, _ = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
-    total_shares = Decimal(str(player.total_shares))
-
-    spot_before = spot_price(fundamental, k, total_shares)
+    market_bias = current_market_bias(player)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
     ensure_open_position_cap_or_raise(
         current_abs_shares=max(Decimal("0"), net_shares),
         additional_shares=qty,
         spot_before=spot_before,
     )
-    total_cost = cost_to_buy(fundamental, k, total_shares, qty)
-    spot_after = spot_price(fundamental, k, total_shares + qty)
+    raw_cost = current_cost_to_buy(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
+    total_cost = raw_cost + calculate_open_position_fee(raw_cost)
+    spot_after = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias + qty,
+    )
     average_price = (total_cost / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
@@ -2849,18 +3111,30 @@ def quote_sell(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, _, _ = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
-    total_shares = Decimal(str(player.total_shares))
+    market_bias = current_market_bias(player)
     ensure_sell_side_allowed_or_raise(
-        total_shares=total_shares,
+        player=player,
+        market_bias=market_bias,
         qty=qty,
         fundamental_price=fundamental,
-        k=k,
     )
 
-    spot_before = spot_price(fundamental, k, total_shares)
-    proceeds = proceeds_to_sell(fundamental, k, total_shares, qty)
-    spot_after = spot_price(fundamental, k, total_shares - qty)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
+    proceeds = current_proceeds_to_sell(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
+    spot_after = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias - qty,
+    )
     average_price = (proceeds / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
@@ -2904,23 +3178,36 @@ def quote_short(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, _, _ = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
-    total_shares = Decimal(str(player.total_shares))
+    market_bias = current_market_bias(player)
     ensure_sell_side_allowed_or_raise(
-        total_shares=total_shares,
+        player=player,
+        market_bias=market_bias,
         qty=qty,
         fundamental_price=fundamental,
-        k=k,
     )
 
-    spot_before = spot_price(fundamental, k, total_shares)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
     ensure_open_position_cap_or_raise(
         current_abs_shares=abs(min(Decimal("0"), net_shares)),
         additional_shares=qty,
         spot_before=spot_before,
     )
-    proceeds = proceeds_to_sell(fundamental, k, total_shares, qty)
-    spot_after = spot_price(fundamental, k, total_shares - qty)
+    raw_proceeds = current_proceeds_to_sell(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
+    proceeds = raw_proceeds - calculate_open_position_fee(raw_proceeds)
+    spot_after = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias - qty,
+    )
     average_price = (proceeds / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
@@ -2968,12 +3255,23 @@ def quote_cover(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, _, _ = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
-    total_shares = Decimal(str(player.total_shares))
-
-    spot_before = spot_price(fundamental, k, total_shares)
-    total_cost = cost_to_buy(fundamental, k, total_shares, qty)
-    spot_after = spot_price(fundamental, k, total_shares + qty)
+    market_bias = current_market_bias(player)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
+    total_cost = current_cost_to_buy(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
+    spot_after = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias + qty,
+    )
     average_price = (total_cost / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
@@ -3012,7 +3310,6 @@ def buy(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
     total_shares = Decimal(str(player.total_shares))
 
     holding = db.execute(
@@ -3024,14 +3321,25 @@ def buy(
     if net_shares < 0:
         raise HTTPException(400, "You are short this player. Use /trade/cover.")
 
-    spot_before = spot_price(fundamental, k, total_shares)
+    market_bias = current_market_bias(player)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
     ensure_open_position_cap_or_raise(
         current_abs_shares=max(Decimal("0"), net_shares),
         additional_shares=qty,
         spot_before=spot_before,
     )
 
-    total_cost = cost_to_buy(fundamental, k, total_shares, qty)
+    raw_cost = current_cost_to_buy(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
+    total_cost = raw_cost + calculate_open_position_fee(raw_cost)
     cash = Decimal(str(user.cash_balance))
 
     if total_cost > cash:
@@ -3040,11 +3348,14 @@ def buy(
     user.cash_balance = float(cash - total_cost)
 
     if not holding:
-        holding = Holding(user_id=user.id, player_id=player.id, shares_owned=0)
+        holding = Holding(user_id=user.id, player_id=player.id, shares_owned=0, basis_amount=0)
         db.add(holding)
 
+    previous_basis_amount = holding_basis_amount(holding)
     holding.shares_owned = float(Decimal(str(holding.shares_owned)) + qty)
+    holding.basis_amount = float(previous_basis_amount + total_cost)
     player.total_shares = float(total_shares + qty)
+    apply_market_bias_delta(player, delta=qty)
 
     unit_estimate = (total_cost / qty) if qty > 0 else Decimal("0")
     db.add(
@@ -3119,24 +3430,41 @@ def sell(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
     total_shares = Decimal(str(player.total_shares))
+    market_bias = current_market_bias(player)
     ensure_sell_side_allowed_or_raise(
-        total_shares=total_shares,
+        player=player,
+        market_bias=market_bias,
         qty=qty,
         fundamental_price=fundamental,
-        k=k,
     )
 
-    spot_before = spot_price(fundamental, k, total_shares)
-
-    proceeds = proceeds_to_sell(fundamental, k, total_shares, qty)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
+    proceeds = current_proceeds_to_sell(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
 
     cash = Decimal(str(user.cash_balance))
     user.cash_balance = float(cash + proceeds)
 
+    previous_basis_amount = holding_basis_amount(holding)
     holding.shares_owned = float(owned - qty)
+    holding.basis_amount = float(
+        reduce_basis_pro_rata(
+            basis_amount=previous_basis_amount,
+            shares_before=owned,
+            shares_closed=qty,
+        )
+    )
     player.total_shares = float(total_shares - qty)
+    apply_market_bias_delta(player, delta=-qty)
 
     unit_estimate = (proceeds / qty) if qty > 0 else Decimal("0")
     db.add(
@@ -3202,7 +3530,7 @@ def short(
         .with_for_update()
     ).scalar_one_or_none()
     if not holding:
-        holding = Holding(user_id=user.id, player_id=player.id, shares_owned=0)
+        holding = Holding(user_id=user.id, player_id=player.id, shares_owned=0, basis_amount=0)
         db.add(holding)
 
     net_shares = Decimal(str(holding.shares_owned))
@@ -3212,29 +3540,42 @@ def short(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
     total_shares = Decimal(str(player.total_shares))
+    market_bias = current_market_bias(player)
     ensure_sell_side_allowed_or_raise(
-        total_shares=total_shares,
+        player=player,
+        market_bias=market_bias,
         qty=qty,
         fundamental_price=fundamental,
-        k=k,
     )
 
-    spot_before = spot_price(fundamental, k, total_shares)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
     ensure_open_position_cap_or_raise(
         current_abs_shares=abs(min(Decimal("0"), net_shares)),
         additional_shares=qty,
         spot_before=spot_before,
     )
 
-    proceeds = proceeds_to_sell(fundamental, k, total_shares, qty)
+    raw_proceeds = current_proceeds_to_sell(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
+    proceeds = raw_proceeds - calculate_open_position_fee(raw_proceeds)
 
     cash = Decimal(str(user.cash_balance))
     user.cash_balance = float(cash + proceeds)
 
+    previous_basis_amount = holding_basis_amount(holding)
     holding.shares_owned = float(net_shares - qty)
+    holding.basis_amount = float(previous_basis_amount + proceeds)
     player.total_shares = float(total_shares - qty)
+    apply_market_bias_delta(player, delta=-qty)
 
     unit_estimate = (proceeds / qty) if qty > 0 else Decimal("0")
     db.add(
@@ -3313,9 +3654,14 @@ def cover(
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id])
     fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
 
-    k = Decimal(str(player.k))
     total_shares = Decimal(str(player.total_shares))
-    total_cost = cost_to_buy(fundamental, k, total_shares, qty)
+    market_bias = current_market_bias(player)
+    total_cost = current_cost_to_buy(
+        player,
+        fundamental_price=fundamental,
+        qty=qty,
+        market_bias=market_bias,
+    )
 
     cash = Decimal(str(user.cash_balance))
     if total_cost > cash:
@@ -3323,8 +3669,17 @@ def cover(
 
     user.cash_balance = float(cash - total_cost)
 
+    previous_basis_amount = holding_basis_amount(holding)
     holding.shares_owned = float(net_shares + qty)
+    holding.basis_amount = float(
+        reduce_basis_pro_rata(
+            basis_amount=previous_basis_amount,
+            shares_before=net_shares,
+            shares_closed=qty,
+        )
+    )
     player.total_shares = float(total_shares + qty)
+    apply_market_bias_delta(player, delta=qty)
 
     unit_estimate = (total_cost / qty) if qty > 0 else Decimal("0")
     db.add(
@@ -3564,7 +3919,6 @@ def close_out_sport_holdings_for_ipo_hide(
             continue
 
         fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
-        k = Decimal(str(player.k))
         short_holdings = [holding for holding in player_holdings if Decimal(str(holding.shares_owned)) < 0]
         long_holdings = [holding for holding in player_holdings if Decimal(str(holding.shares_owned)) > 0]
 
@@ -3579,25 +3933,39 @@ def close_out_sport_holdings_for_ipo_hide(
                 continue
 
             total_shares = Decimal(str(player.total_shares))
+            market_bias = current_market_bias(player)
 
             if shares < 0:
                 qty = -shares
-                total_cost = cost_to_buy(fundamental, k, total_shares, qty)
+                total_cost = current_cost_to_buy(
+                    player,
+                    fundamental_price=fundamental,
+                    qty=qty,
+                    market_bias=market_bias,
+                )
                 user.cash_balance = float(Decimal(str(user.cash_balance)) - total_cost)
                 player.total_shares = float(total_shares + qty)
+                apply_market_bias_delta(player, delta=qty)
                 unit_price = (total_cost / qty) if qty > 0 else Decimal("0")
                 amount = -total_cost
                 tx_type = "IPO_HIDE_COVER"
             else:
                 qty = shares
-                proceeds = proceeds_to_sell(fundamental, k, total_shares, qty)
+                proceeds = current_proceeds_to_sell(
+                    player,
+                    fundamental_price=fundamental,
+                    qty=qty,
+                    market_bias=market_bias,
+                )
                 user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
                 player.total_shares = float(total_shares - qty)
+                apply_market_bias_delta(player, delta=-qty)
                 unit_price = (proceeds / qty) if qty > 0 else Decimal("0")
                 amount = proceeds
                 tx_type = "IPO_HIDE_SELL"
 
             holding.shares_owned = 0.0
+            holding.basis_amount = 0.0
             closed_positions += 1
             closed_shares += qty
             db.add(
@@ -3742,6 +4110,8 @@ def admin_ipo_hide(
         player.ipo_open = False
         player.ipo_season = None
         player.ipo_opened_at = None
+        player.market_bias = 0.0
+        player.market_bias_updated_at = None
 
     record_price_points_for_players(
         db=db,
@@ -3988,6 +4358,8 @@ def reset_season(season: int, db: Session = Depends(get_db)):
         if Decimal(str(player.total_shares)) != Decimal("0"):
             players_reset += 1
         player.total_shares = 0.0
+        player.market_bias = 0.0
+        player.market_bias_updated_at = None
         player.live_now = False
         player.live_week = None
         player.live_game_id = None

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .auth import hash_password
 from .db import Base, engine
-from .models import Player, User
+from .models import Holding, Player, Transaction, User
 
 STAR_PLAYER_CATALOG: list[dict[str, object]] = [
     # Quarterbacks
@@ -148,6 +148,14 @@ SEED_UPDATE_EXISTING_PRICING = os.environ.get("SEED_UPDATE_EXISTING_PRICING", "f
     "1",
     "true",
     "yes",
+}
+OPEN_BASIS_TRANSACTION_TYPES = {
+    "BUY",
+    "SELL",
+    "SHORT",
+    "COVER",
+    "LIQUIDATE_SELL",
+    "LIQUIDATE_COVER",
 }
 
 
@@ -408,10 +416,85 @@ def init_db():
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS live_game_stat_line TEXT"))
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS live_game_fantasy_points NUMERIC(18,6)"))
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS live_updated_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS market_bias NUMERIC(18,6) DEFAULT 0"))
+        conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS market_bias_updated_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE holdings ADD COLUMN IF NOT EXISTS basis_amount NUMERIC(18,6) DEFAULT 0"))
         conn.execute(text("UPDATE players SET sport='NFL' WHERE sport IS NULL OR sport=''"))
         conn.execute(text("UPDATE players SET ipo_open=FALSE WHERE ipo_open IS NULL"))
         conn.execute(text("UPDATE players SET live_now=FALSE WHERE live_now IS NULL"))
+        conn.execute(text("UPDATE players SET market_bias=0 WHERE market_bias IS NULL"))
         conn.execute(text("UPDATE forum_posts SET view_count=0 WHERE view_count IS NULL"))
+        conn.execute(text("UPDATE holdings SET basis_amount=0 WHERE basis_amount IS NULL"))
+    with Session(engine) as db:
+        backfill_holding_basis_amounts(db)
+        db.commit()
+
+
+def backfill_holding_basis_amounts(db: Session) -> None:
+    tolerance = Decimal("0.000001")
+    holdings = db.execute(
+        select(Holding).where(
+            Holding.shares_owned != 0,
+            Holding.basis_amount == 0,
+        )
+    ).scalars().all()
+
+    for holding in holdings:
+        transactions = db.execute(
+            select(Transaction)
+            .where(
+                Transaction.user_id == holding.user_id,
+                Transaction.player_id == holding.player_id,
+                Transaction.type.in_(OPEN_BASIS_TRANSACTION_TYPES),
+            )
+            .order_by(Transaction.created_at.asc(), Transaction.id.asc())
+        ).scalars().all()
+        if not transactions:
+            continue
+
+        running_shares = Decimal("0")
+        running_basis = Decimal("0")
+        for transaction in transactions:
+            shares = Decimal(str(transaction.shares))
+            amount = Decimal(str(transaction.amount))
+            tx_type = str(transaction.type)
+
+            if tx_type == "BUY":
+                running_shares += shares
+                running_basis += -amount
+                continue
+
+            if tx_type in {"SELL", "LIQUIDATE_SELL"}:
+                if running_shares <= 0 or shares <= 0:
+                    continue
+                basis_reduction = running_basis if shares >= running_shares else running_basis * shares / running_shares
+                running_shares -= shares
+                running_basis -= basis_reduction
+                if abs(running_shares) <= tolerance:
+                    running_shares = Decimal("0")
+                    running_basis = Decimal("0")
+                continue
+
+            if tx_type == "SHORT":
+                running_shares -= shares
+                running_basis += amount
+                continue
+
+            if tx_type in {"COVER", "LIQUIDATE_COVER"}:
+                short_size = -running_shares
+                if short_size <= 0 or shares <= 0:
+                    continue
+                basis_reduction = running_basis if shares >= short_size else running_basis * shares / short_size
+                running_shares += shares
+                running_basis -= basis_reduction
+                if abs(running_shares) <= tolerance:
+                    running_shares = Decimal("0")
+                    running_basis = Decimal("0")
+
+        actual_shares = Decimal(str(holding.shares_owned))
+        if abs(actual_shares - running_shares) > tolerance:
+            continue
+        holding.basis_amount = float(max(running_basis, Decimal("0")))
 
 
 def seed(db: Session):

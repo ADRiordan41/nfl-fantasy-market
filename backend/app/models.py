@@ -195,6 +195,8 @@ class Player(Base):
     base_price: Mapped[float] = mapped_column(NUM, default=10)
     k: Mapped[float] = mapped_column(NUM, default=0.0025)  # curve steepness
     total_shares: Mapped[float] = mapped_column(NUM, default=0)
+    market_bias: Mapped[float] = mapped_column(NUM, default=0)
+    market_bias_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -207,6 +209,7 @@ class Holding(Base):
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
 
     shares_owned: Mapped[float] = mapped_column(NUM, default=0)
+    basis_amount: Mapped[float] = mapped_column(NUM, default=0)
 
     user: Mapped["User"] = relationship(back_populates="holdings")
 

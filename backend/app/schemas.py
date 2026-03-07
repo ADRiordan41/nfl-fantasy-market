@@ -235,6 +235,8 @@ class PlayerOut(BaseModel):
     shares_held: float
     shares_short: float
     spot_price: float
+    bid_price: float
+    ask_price: float
     live: PlayerLiveOut | None = None
 
 
@@ -273,6 +275,8 @@ class MarketMoversOut(BaseModel):
 class PortfolioHolding(BaseModel):
     player_id: int
     shares_owned: float
+    average_entry_price: float
+    basis_amount: float
     spot_price: float
     market_value: float
     maintenance_margin_required: float

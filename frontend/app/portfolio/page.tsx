@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
-import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency } from "@/lib/format";
+import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
 import { notifySuccess } from "@/lib/toast";
 import type { Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
@@ -19,7 +19,7 @@ type HoldingRow = {
   team: string;
   position: string;
   shares: number;
-  base: number;
+  averageEntryPrice: number;
   spot: number;
   basisNotional: number;
   marketValue: number;
@@ -41,6 +41,7 @@ type AccountMixSlice = {
   label: string;
   color: string;
   value: number;
+  gainLossPct: number | null;
 };
 
 type AccountMixSegment = AccountMixSlice & {
@@ -179,10 +180,10 @@ export default function PortfolioPage() {
         const player = playersById[holding.player_id];
         if (!player) return null;
         const shares = Number(holding.shares_owned);
-        const base = Number(player.base_price);
+        const averageEntryPrice = Number(holding.average_entry_price);
         const spot = Number(holding.spot_price || player.spot_price);
-        const basisNotional = Math.abs(shares) * base;
-        const marketValue = Number(holding.market_value || shares * spot);
+        const basisNotional = Number(holding.basis_amount);
+        const marketValue = Number(holding.market_value);
         const pnl = shares >= 0 ? marketValue - basisNotional : basisNotional + marketValue;
         const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
         return {
@@ -192,7 +193,7 @@ export default function PortfolioPage() {
           team: player.team,
           position: player.position,
           shares,
-          base,
+          averageEntryPrice,
           spot,
           basisNotional,
           marketValue,
@@ -274,6 +275,7 @@ export default function PortfolioPage() {
         label: `${row.name} (${row.team})`,
         color: teamPrimaryColor(row.team, row.sport),
         value: Math.max(0, row.marketValue),
+        gainLossPct: Number.isFinite(row.pnlPct) ? row.pnlPct : null,
       }))
       .filter((slice) => slice.value > 0)
       .sort((a, b) => b.value - a.value);
@@ -290,6 +292,7 @@ export default function PortfolioPage() {
         label: "Cash",
         color: "#15784d",
         value: cashValue,
+        gainLossPct: null,
       });
     }
     slices.push(...topHoldings);
@@ -299,6 +302,7 @@ export default function PortfolioPage() {
         label: "Other Holdings",
         color: "#8ea5bf",
         value: otherValue,
+        gainLossPct: null,
       });
     }
     return slices;
@@ -520,7 +524,9 @@ export default function PortfolioPage() {
                         tabIndex={0}
                         onMouseEnter={() => setActiveAccountMixSliceKey(slice.key)}
                         onFocus={() => setActiveAccountMixSliceKey(slice.key)}
-                        aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)})`}
+                        aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)} allocation)${
+                          slice.gainLossPct == null ? "" : `, ${formatSignedPercent(slice.gainLossPct, 2)} gain/loss`
+                        }`}
                       />
                     );
                   })}
@@ -561,7 +567,9 @@ export default function PortfolioPage() {
                       tabIndex={0}
                       onMouseEnter={() => setActiveAccountMixSliceKey(slice.key)}
                       onFocus={() => setActiveAccountMixSliceKey(slice.key)}
-                      aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)})`}
+                      aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)} allocation)${
+                        slice.gainLossPct == null ? "" : `, ${formatSignedPercent(slice.gainLossPct, 2)} gain/loss`
+                      }`}
                     >
                       <span className="account-mix-label">
                         <span className="account-mix-swatch" style={{ background: slice.color }} />
@@ -571,6 +579,9 @@ export default function PortfolioPage() {
                       </span>
                       <strong>{formatCurrency(slice.value)}</strong>
                       <span>{formatPercent(slice.pct, 1)}</span>
+                      <span className={slice.gainLossPct == null ? "account-mix-gl" : `account-mix-gl ${slice.gainLossPct >= 0 ? "up" : "down"}`}>
+                        {slice.gainLossPct == null ? "--" : formatSignedPercent(slice.gainLossPct, 2)}
+                      </span>
                     </div>
                   );
                 })}
@@ -611,7 +622,7 @@ export default function PortfolioPage() {
                           </div>
                           <p className="muted-line">
                             {formatNumber(row.shares, 0)} shares | Current Price {formatCurrency(row.spot)} | Purchase Price{" "}
-                            {formatCurrency(row.base)}
+                            {formatCurrency(row.averageEntryPrice)}
                           </p>
                           <div className="portfolio-trade-row">
                             {haltedForRow(row) && (
@@ -728,7 +739,7 @@ export default function PortfolioPage() {
                                 </Link>
                               </td>
                               <td>{formatNumber(row.shares, 0)}</td>
-                              <td>{formatCurrency(row.base)}</td>
+                              <td>{formatCurrency(row.averageEntryPrice)}</td>
                               <td>{formatCurrency(row.spot)}</td>
                               <td>{formatCurrency(row.marketValue)}</td>
                               <td className={row.pnl >= 0 ? "up" : "down"}>
