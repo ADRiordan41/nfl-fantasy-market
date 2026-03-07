@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = Number(process.env.PLAYWRIGHT_FRONTEND_PORT || 3000);
+const PORT = Number(process.env.PLAYWRIGHT_FRONTEND_PORT || 3102);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
@@ -28,8 +28,12 @@ export default defineConfig({
   ],
   webServer: {
     command: `npm run dev -- --port ${PORT}`,
+    env: {
+      NEXT_DIST_DIR: ".next-e2e",
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000",
+    },
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });
