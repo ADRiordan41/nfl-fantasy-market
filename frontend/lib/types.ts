@@ -123,6 +123,7 @@ export type MarketMovers = {
 export type UserAccount = {
   id: number;
   username: string;
+  email: string | null;
   cash_balance: number;
   profile_image_url?: string | null;
   bio?: string | null;

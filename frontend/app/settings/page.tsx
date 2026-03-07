@@ -178,6 +178,10 @@ export default function SettingsPage() {
               <strong>{currentUser.username}</strong>
             </article>
             <article className="kpi-card">
+              <span>Email</span>
+              <strong>{currentUser.email ?? "Not set"}</strong>
+            </article>
+            <article className="kpi-card">
               <span>User ID</span>
               <strong>{currentUser.id}</strong>
             </article>

@@ -10,6 +10,7 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     cash_balance: Mapped[float] = mapped_column(NUM, default=0)
     password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
     profile_image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)

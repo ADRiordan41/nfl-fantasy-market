@@ -145,6 +145,7 @@ def healthz():
 SYNTHETIC_PLAYER_NAME = re.compile(r"^[A-Z]{2,3} (QB|RB|WR|TE)\d$")
 VALID_USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 VALID_SPORT_CODE = re.compile(r"^[A-Z0-9_-]{2,16}$")
+VALID_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 SEASON_WEEKS = int(os.environ.get("SEASON_WEEKS", "18"))
 PERFORMANCE_WEIGHT = Decimal(os.environ.get("PERFORMANCE_WEIGHT", "1.0"))
@@ -467,6 +468,22 @@ def normalize_username(raw_username: str | None) -> str:
             ),
         )
     return username
+
+
+def normalize_email(raw_email: str | None) -> str:
+    email = (raw_email or "").strip().lower()
+    if not email:
+        raise HTTPException(400, "email is required")
+    if len(email) > 320 or not VALID_EMAIL.match(email):
+        raise HTTPException(400, "Invalid email address.")
+    return email
+
+
+def normalize_login_identifier(raw_identifier: str | None) -> str:
+    identifier = (raw_identifier or "").strip().lower()
+    if not identifier:
+        raise HTTPException(400, "username or email is required")
+    return normalize_email(identifier) if "@" in identifier else normalize_username(identifier)
 
 
 def normalize_sport_code(raw_sport: str | None, default: str = "NFL") -> str:
@@ -1936,10 +1953,12 @@ def get_player_history(
 def user_to_out(user: User) -> UserOut:
     profile_image_url = (str(user.profile_image_url).strip() if user.profile_image_url else None) or None
     bio = (str(user.bio).strip() if user.bio else None) or None
+    email = (str(user.email).strip().lower() if user.email else None) or None
     is_admin = str(user.username).strip().lower() in ADMIN_USERNAMES
     return UserOut(
         id=user.id,
         username=str(user.username),
+        email=email,
         cash_balance=float(user.cash_balance),
         profile_image_url=profile_image_url,
         bio=bio,
@@ -2151,6 +2170,7 @@ def register(
         label="auth register",
     )
     username = normalize_username(payload.username)
+    email = normalize_email(payload.email)
     enforce_rate_limit(
         key=f"auth:register:username:{username}",
         limit=RATE_LIMIT_AUTH_REGISTER,
@@ -2159,9 +2179,19 @@ def register(
     )
     validate_registration_request(payload)
     existing = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+    existing_by_email = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if existing_by_email and existing and existing_by_email.id != existing.id:
+        raise HTTPException(409, "That email is already in use.")
+    if existing_by_email and not existing:
+        if existing_by_email.password_hash:
+            raise HTTPException(409, "That email is already in use.")
+        raise HTTPException(409, "That email is already reserved by another account.")
     if existing and existing.password_hash:
         raise HTTPException(409, f"User '{username}' already exists.")
     if existing and not existing.password_hash:
+        if existing.email and str(existing.email).strip().lower() != email:
+            raise HTTPException(409, "That username is already reserved with a different email.")
+        existing.email = email
         existing.password_hash = hash_password(payload.password)
         out = create_auth_session_out(db=db, user=existing)
         db.commit()
@@ -2169,6 +2199,7 @@ def register(
 
     user = User(
         username=username,
+        email=email,
         cash_balance=float(REGISTER_STARTING_CASH),
         password_hash=hash_password(payload.password),
     )
@@ -2193,14 +2224,17 @@ def login(
         window_seconds=RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS,
         label="auth login",
     )
-    username = normalize_username(payload.username)
+    identifier = normalize_login_identifier(payload.username)
     enforce_rate_limit(
-        key=f"auth:login:username:{username}",
+        key=f"auth:login:identifier:{identifier}",
         limit=RATE_LIMIT_AUTH_LOGIN,
         window_seconds=RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS,
         label="auth login",
     )
-    user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+    if "@" in identifier:
+        user = db.execute(select(User).where(User.email == identifier)).scalar_one_or_none()
+    else:
+        user = db.execute(select(User).where(User.username == identifier)).scalar_one_or_none()
     if user and not user.password_hash:
         raise auth_exception("Account has no password yet. Register once to set credentials.")
     if not user or not verify_password(payload.password, user.password_hash):

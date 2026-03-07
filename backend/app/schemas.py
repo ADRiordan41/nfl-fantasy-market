@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 class UserOut(BaseModel):
     id: int
     username: str
+    email: str | None = None
     cash_balance: float
     profile_image_url: str | None = None
     bio: str | None = None
@@ -17,6 +18,7 @@ class UserCreateIn(BaseModel):
 
 class AuthRegisterIn(BaseModel):
     username: str = Field(min_length=1, max_length=64)
+    email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=8, max_length=128)
     form_started_at_ms: int | None = None
     contact_email: str | None = Field(default=None, max_length=256)

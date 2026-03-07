@@ -27,6 +27,7 @@ export default function TermsPage() {
         <h3>2. Eligibility and Accounts</h3>
         <ul className="policy-list">
           <li>You are responsible for safeguarding your credentials and session access.</li>
+          <li>You must provide a valid email address for account registration and account administration.</li>
           <li>You may not impersonate others or create abusive/spam accounts.</li>
           <li>Accounts can be suspended or terminated for policy violations.</li>
         </ul>

@@ -20,19 +20,19 @@ function toMessage(err: unknown): string {
 }
 
 function authErrorMessage(err: unknown, mode: AuthMode): string {
-  if (err instanceof ApiHttpError) {
-    if (err.status === 401) return "Invalid username or password.";
-    if (err.status === 404) return "Sign-in endpoint not found. Check frontend API base URL config.";
-    if (err.status === 409) return "That username is already in use.";
-    if (err.status === 400 && mode === "register") {
-      return "Unable to complete registration. Please try again.";
-    }
-    if (err.status === 429) return "Too many attempts. Please wait and try again.";
-    if (err.status === 422) {
-      return mode === "register"
-        ? "Invalid registration input. Use a valid username and a password with at least 8 characters."
+    if (err instanceof ApiHttpError) {
+      if (err.status === 401) return "Invalid username or password.";
+      if (err.status === 404) return "Sign-in endpoint not found. Check frontend API base URL config.";
+      if (err.status === 409) return mode === "register" ? "That username or email is already in use." : "Account conflict.";
+      if (err.status === 400 && mode === "register") {
+        return "Unable to complete registration. Please try again.";
+      }
+      if (err.status === 429) return "Too many attempts. Please wait and try again.";
+      if (err.status === 422) {
+        return mode === "register"
+        ? "Invalid registration input. Use a valid username, email, and a password with at least 8 characters."
         : "Invalid sign-in input.";
-    }
+      }
     if (err.status >= 500) return "Server error. Please try again.";
   }
   const message = toMessage(err);
@@ -46,6 +46,7 @@ export default function AuthPage() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [registerStartedAtMs, setRegisterStartedAtMs] = useState(() => Date.now());
   const [contactEmail, setContactEmail] = useState("");
@@ -89,6 +90,11 @@ export default function AuthPage() {
       setError("Username is required.");
       return;
     }
+    const normalizedEmail = email.trim().toLowerCase();
+    if (mode === "register" && !normalizedEmail) {
+      setError("Email is required.");
+      return;
+    }
     if (!password.trim()) {
       setError("Password is required.");
       return;
@@ -106,6 +112,7 @@ export default function AuthPage() {
         mode === "register"
           ? {
               contact_email: contactEmail,
+              email: normalizedEmail,
               form_started_at_ms: registerStartedAtMs,
               username: normalizedUsername,
               password,
@@ -141,8 +148,8 @@ export default function AuthPage() {
         <h1>{mode === "login" ? "Sign In" : "Create Account"}</h1>
         <p className="subtle">
           {mode === "login"
-            ? "Access your portfolio and continue trading."
-            : "Create a new account with its own isolated portfolio."}
+            ? "Access your portfolio and continue trading with your username or email."
+            : "Create a new account with its own isolated portfolio and recovery email."}
         </p>
 
         <div className="auth-tabs">
@@ -195,17 +202,34 @@ export default function AuthPage() {
           )}
 
           <label className="field-label" htmlFor="auth-username">
-            Username
+            {mode === "login" ? "Username or Email" : "Username"}
           </label>
           <input
             id="auth-username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            placeholder="lowercase username"
-            autoComplete="username"
+            placeholder={mode === "login" ? "username or email" : "lowercase username"}
+            autoComplete={mode === "login" ? "username" : "username"}
             autoFocus
             disabled={busy}
           />
+
+          {mode === "register" && (
+            <>
+              <label className="field-label" htmlFor="auth-email">
+                Email
+              </label>
+              <input
+                id="auth-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                disabled={busy}
+              />
+            </>
+          )}
 
           <label className="field-label" htmlFor="auth-password">
             Password
@@ -231,7 +255,7 @@ export default function AuthPage() {
           </div>
 
           {mode === "register" && (
-            <p className="subtle">New accounts start with $100,000.00 in cash.</p>
+            <p className="subtle">New accounts start with $100,000.00 in cash and use email for future recovery.</p>
           )}
 
           {error && <p className="error-box">{error}</p>}

@@ -400,9 +400,13 @@ def init_db():
 
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(320)"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(512)"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR(512)"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT"))
+        conn.execute(text("UPDATE users SET email=NULL WHERE email IS NOT NULL AND TRIM(email)=''"))
+        conn.execute(text("UPDATE users SET email=LOWER(TRIM(email)) WHERE email IS NOT NULL"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email_unique ON users(email)"))
         conn.execute(text("ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS view_count INTEGER DEFAULT 0"))
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS sport VARCHAR(16)"))
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS ipo_open BOOLEAN DEFAULT FALSE"))

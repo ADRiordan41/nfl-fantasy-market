@@ -17,7 +17,7 @@ export default function PrivacyPage() {
       <section className="table-panel policy-panel">
         <h3>Data We Collect</h3>
         <ul className="policy-list">
-          <li>Account data: username, password hash, session tokens, and account role flags.</li>
+          <li>Account data: username, email address, password hash, session tokens, and account role flags.</li>
           <li>Profile data: avatar URL, bio, and public profile metadata.</li>
           <li>Activity data: trades, quotes, holdings, forum posts/comments, direct messages, and feedback reports.</li>
           <li>Operational logs: request metadata, errors, and service diagnostics.</li>
@@ -28,6 +28,7 @@ export default function PrivacyPage() {
         <h3>How We Use Data</h3>
         <ul className="policy-list">
           <li>To operate authentication, trading, portfolio, community, and messaging features.</li>
+          <li>To support account recovery, account notices, and product communications where enabled.</li>
           <li>To detect abuse, enforce policies, and protect platform integrity.</li>
           <li>To troubleshoot reliability issues and improve product quality.</li>
         </ul>
@@ -57,4 +58,3 @@ export default function PrivacyPage() {
     </main>
   );
 }
-
