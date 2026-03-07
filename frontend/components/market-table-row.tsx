@@ -1,0 +1,274 @@
+"use client";
+
+import Link from "next/link";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
+import type { Quote } from "@/lib/types";
+
+export type MarketTradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
+
+export type MarketPriceFlashState = {
+  spot?: "up" | "down";
+  bid?: "up" | "down";
+  ask?: "up" | "down";
+};
+
+export type MarketTableRowModel = {
+  player: {
+    id: number;
+    name: string;
+    team: string;
+    position: string;
+    sport: string;
+    spot_price: number;
+    bid_price: number;
+    ask_price: number;
+    live: {
+      live_now: boolean;
+    } | null;
+  };
+  sharesHeld: number;
+  sharesShort: number;
+  totalChangePct: number;
+  change24hPct: number;
+  buyRemaining: number;
+  shortRemaining: number;
+};
+
+type MarketTableRowProps = {
+  row: MarketTableRowModel;
+  isTradingHalted: boolean;
+  priceFlash?: MarketPriceFlashState;
+  measureRow?: boolean;
+  onMeasureRow?: (height: number) => void;
+  onSetError: (message: string) => void;
+  onPreviewQuote: (playerId: number, side: MarketTradeSide, shares: number) => Promise<Quote>;
+  onExecuteTrade: (playerId: number, side: MarketTradeSide, shares: number) => Promise<void>;
+};
+
+export const DEFAULT_MARKET_ROW_HEIGHT = 44;
+
+function isCostSide(side: MarketTradeSide): boolean {
+  return side === "BUY" || side === "COVER";
+}
+
+function parseWholeShares(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return parsed > 0 ? parsed : null;
+}
+
+function flashClass(direction: "up" | "down" | undefined): string {
+  if (!direction) return "";
+  return direction === "up" ? " market-cell-flash-up" : " market-cell-flash-down";
+}
+
+function MarketTableRow({
+  row,
+  isTradingHalted,
+  priceFlash,
+  measureRow = false,
+  onMeasureRow,
+  onSetError,
+  onPreviewQuote,
+  onExecuteTrade,
+}: MarketTableRowProps) {
+  const rowRef = useRef<HTMLTableRowElement | null>(null);
+  const [side, setSide] = useState<MarketTradeSide>("BUY");
+  const [qty, setQty] = useState("");
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isPlacing, setIsPlacing] = useState(false);
+
+  useEffect(() => {
+    if (!measureRow || !onMeasureRow || !rowRef.current) return;
+    const height = Math.ceil(rowRef.current.getBoundingClientRect().height);
+    if (height > 0) onMeasureRow(height);
+  }, [isPlacing, isPreviewing, measureRow, onMeasureRow, quote]);
+
+  const setQuantity = useCallback((value: string) => {
+    const digitsOnly = value.replace(/\D/g, "").slice(0, 4);
+    setQty(digitsOnly);
+    setQuote(null);
+  }, []);
+
+  const handlePreviewTrade = useCallback(async () => {
+    if (isTradingHalted) return;
+    const shares = parseWholeShares(qty);
+    if (!shares) {
+      onSetError("Enter whole shares (1 or more) before previewing.");
+      return;
+    }
+
+    setIsPreviewing(true);
+    onSetError("");
+    try {
+      const nextQuote = await onPreviewQuote(row.player.id, side, shares);
+      setQuote(nextQuote);
+    } catch {
+      // Parent callback already surfaces the request error.
+    } finally {
+      setIsPreviewing(false);
+    }
+  }, [isTradingHalted, onPreviewQuote, onSetError, qty, row.player.id, side]);
+
+  const handlePlaceTrade = useCallback(async () => {
+    if (isTradingHalted) return;
+    if (!quote) {
+      onSetError("Preview a quote first.");
+      return;
+    }
+
+    setIsPlacing(true);
+    onSetError("");
+    try {
+      await onExecuteTrade(row.player.id, side, quote.shares);
+      setQty("");
+      setQuote(null);
+    } catch {
+      // Parent callback already surfaces the request error.
+    } finally {
+      setIsPlacing(false);
+    }
+  }, [isTradingHalted, onExecuteTrade, onSetError, quote, row.player.id, side]);
+
+  const handleExecuteMaxTrade = useCallback(
+    async (nextSide: "BUY" | "SHORT", maxSize: number) => {
+      if (isTradingHalted || maxSize <= 0) return;
+      setSide(nextSide);
+      setQty(String(maxSize));
+      setIsPreviewing(true);
+      setIsPlacing(true);
+      onSetError("");
+      try {
+        const nextQuote = await onPreviewQuote(row.player.id, nextSide, maxSize);
+        await onExecuteTrade(row.player.id, nextSide, nextQuote.shares);
+        setQty("");
+        setQuote(null);
+      } catch {
+        // Parent callback already surfaces the request error.
+      } finally {
+        setIsPreviewing(false);
+        setIsPlacing(false);
+      }
+    },
+    [isTradingHalted, onExecuteTrade, onPreviewQuote, onSetError, row.player.id],
+  );
+
+  const rowHighlighted = Boolean(quote) || isPreviewing || isPlacing;
+
+  return (
+    <tr
+      ref={rowRef}
+      className={`market-data-row${rowHighlighted ? " market-row-quoted" : ""}${isPlacing ? " market-row-placing" : ""}`}
+      data-market-row="true"
+    >
+      <td className="market-sticky-player-cell">
+        <div className="market-player-cell">
+          <Link href={`/player/${row.player.id}`} className="card-title">
+            {row.player.name}
+          </Link>
+          <span className="market-player-meta">
+            {row.player.team} {row.player.position}
+          </span>
+          {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
+        </div>
+      </td>
+      <td className={`market-cell-numeric market-price-cell market-mid-cell${flashClass(priceFlash?.spot)}`}>
+        {formatCurrency(row.player.spot_price)}
+      </td>
+      <td className={`market-cell-numeric market-price-cell market-bid-cell${flashClass(priceFlash?.bid)}`}>
+        {formatCurrency(row.player.bid_price)}
+      </td>
+      <td className={`market-cell-numeric market-price-cell market-ask-cell${flashClass(priceFlash?.ask)}`}>
+        {formatCurrency(row.player.ask_price)}
+      </td>
+      <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
+        {formatSignedPercent(row.totalChangePct)}
+      </td>
+      <td className={`market-cell-numeric ${row.change24hPct >= 0 ? "up" : "down"}`}>
+        {formatSignedPercent(row.change24hPct)}
+      </td>
+      <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
+      <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
+      <td className="market-cell-control">
+        <div className="market-row-actions">
+          <button
+            className="chip market-mini-btn market-quick-buy-btn"
+            onClick={() => void handleExecuteMaxTrade("BUY", row.buyRemaining)}
+            disabled={isTradingHalted || row.buyRemaining <= 0 || isPreviewing || isPlacing}
+          >
+            Buy Max
+          </button>
+          <button
+            className="chip market-mini-btn market-quick-short-btn"
+            onClick={() => void handleExecuteMaxTrade("SHORT", row.shortRemaining)}
+            disabled={isTradingHalted || row.shortRemaining <= 0 || isPreviewing || isPlacing}
+          >
+            Short Max
+          </button>
+        </div>
+      </td>
+      <td className="market-cell-control">
+        <select
+          className="market-side-select"
+          value={side}
+          onChange={(event) => {
+            setSide(event.target.value as MarketTradeSide);
+            setQuote(null);
+          }}
+          disabled={isTradingHalted}
+        >
+          <option value="BUY">BUY</option>
+          <option value="SELL">SELL</option>
+          <option value="SHORT">SHORT</option>
+          <option value="COVER">COVER</option>
+        </select>
+      </td>
+      <td className="market-qty-cell market-cell-control">
+        <input
+          className="market-qty-input"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={4}
+          value={qty}
+          onChange={(event) => setQuantity(event.target.value)}
+          placeholder="qty"
+          disabled={isTradingHalted}
+        />
+      </td>
+      <td className="market-quote-cell">
+        {quote ? (
+          <div className="market-quote-with-action">
+            <div className="market-quote-text">
+              <p className="market-quote-main">{isCostSide(side) ? "Cost" : "Net"}: {formatCurrency(quote.total)}</p>
+              <p className="market-quote-sub">Avg {formatCurrency(quote.average_price, 3)}</p>
+            </div>
+            <button
+              className={
+                side === "SHORT" || side === "SELL"
+                  ? "primary-btn short-btn market-quote-action-btn"
+                  : "primary-btn market-quote-action-btn"
+              }
+              disabled={isTradingHalted || isPlacing}
+              onClick={() => void handlePlaceTrade()}
+            >
+              {isPlacing ? "Placing..." : "Execute"}
+            </button>
+          </div>
+        ) : (
+          <button
+            className="market-quote-action-btn market-quote-preview-btn"
+            onClick={() => void handlePreviewTrade()}
+            disabled={isTradingHalted || isPreviewing}
+          >
+            {isPreviewing ? "Quoting..." : "Preview"}
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+export default memo(MarketTableRow);

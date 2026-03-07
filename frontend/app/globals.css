@@ -2575,58 +2575,59 @@ button.segment.danger-segment.danger-active {
   min-width: 860px;
   max-width: none;
   table-layout: fixed;
+  font-size: 13px;
 }
 
 .market-col-player {
-  width: 250px;
+  width: 232px;
 }
 
 .market-col-price {
-  width: 80px;
-}
-
-.market-col-change {
   width: 76px;
 }
 
-.market-col-change-24h {
-  width: 86px;
+.market-col-change {
+  width: 72px;
 }
 
-.market-col-price-side {
+.market-col-change-24h {
   width: 78px;
 }
 
+.market-col-price-side {
+  width: 72px;
+}
+
 .market-col-shares-held {
-  width: 74px;
+  width: 68px;
 }
 
 .market-col-shares-short {
-  width: 74px;
+  width: 68px;
 }
 
 .market-col-quick {
-  width: 124px;
+  width: 112px;
 }
 
 .market-col-action {
-  width: 84px;
+  width: 78px;
 }
 
 .market-col-qty {
-  width: 64px;
+  width: 58px;
 }
 
 .market-col-quote {
-  width: 142px;
+  width: 128px;
 }
 
 .market-table th,
 .market-table td {
-  padding: 5px 5px;
-  line-height: 1.15;
-  border-right: 2px solid #c0cedc;
-  border-bottom: 2px solid #c0cedc;
+  padding: 4px 5px;
+  line-height: 1.1;
+  border-right: 2px solid #b7c8dc;
+  border-bottom: 2px solid #b7c8dc;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2640,10 +2641,75 @@ button.segment.danger-segment.danger-active {
 .market-table thead th {
   border-top: 2px solid #c0cedc;
   position: sticky;
-  top: 0;
-  z-index: 2;
+  z-index: 3;
   background: linear-gradient(180deg, rgba(247, 252, 255, 0.98) 0%, rgba(236, 246, 255, 0.96) 100%);
   box-shadow: inset 0 -1px 0 rgba(175, 198, 223, 0.82), 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.market-header-group-row th {
+  top: 0;
+  z-index: 5;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #486684;
+}
+
+.market-header-detail-row th {
+  top: 28px;
+  z-index: 4;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.market-header-group {
+  background:
+    linear-gradient(180deg, rgba(241, 248, 255, 0.99) 0%, rgba(230, 241, 252, 0.98) 100%);
+}
+
+.market-header-single {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #163a60;
+}
+
+.market-header-corner {
+  z-index: 7 !important;
+  min-width: 0;
+}
+
+.market-header-corner .market-sort-btn {
+  justify-content: flex-start;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.market-header-corner .market-sort-label {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: #14385d;
+}
+
+.market-price-header {
+  font-size: 12px;
+  font-weight: 800;
+  color: #183a5e;
+}
+
+.market-bid-header {
+  background:
+    linear-gradient(180deg, rgba(236, 248, 241, 0.99) 0%, rgba(225, 241, 232, 0.97) 100%);
+}
+
+.market-ask-header {
+  background:
+    linear-gradient(180deg, rgba(255, 245, 236, 0.99) 0%, rgba(255, 236, 220, 0.97) 100%);
 }
 
 .market-table th {
@@ -2666,6 +2732,63 @@ button.segment.danger-segment.danger-active {
   background: rgba(225, 241, 255, 0.9);
 }
 
+.market-data-row td {
+  height: 42px;
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    color 140ms ease;
+}
+
+.market-row-quoted td {
+  background: rgba(229, 241, 255, 0.92) !important;
+}
+
+.market-row-placing td {
+  background: rgba(220, 236, 255, 0.98) !important;
+}
+
+.market-sticky-player-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background-clip: padding-box;
+}
+
+.market-table thead .market-sticky-player-cell {
+  z-index: 7;
+  box-shadow:
+    inset -2px 0 0 rgba(183, 200, 220, 0.98),
+    8px 0 12px -12px rgba(13, 34, 59, 0.24);
+}
+
+.market-table tbody .market-sticky-player-cell {
+  z-index: 2;
+  box-shadow:
+    inset -2px 0 0 rgba(183, 200, 220, 0.98),
+    8px 0 12px -12px rgba(13, 34, 59, 0.3);
+}
+
+.market-table tbody tr:nth-child(odd) .market-sticky-player-cell {
+  background: rgba(245, 251, 255, 0.96);
+}
+
+.market-table tbody tr:nth-child(even) .market-sticky-player-cell {
+  background: rgba(252, 254, 255, 0.98);
+}
+
+.market-table tbody tr:hover .market-sticky-player-cell {
+  background: rgba(225, 241, 255, 0.96);
+}
+
+.market-row-quoted .market-sticky-player-cell {
+  background: rgba(229, 241, 255, 0.96);
+}
+
+.market-row-placing .market-sticky-player-cell {
+  background: rgba(220, 236, 255, 0.98);
+}
+
 .market-table .card-title,
 .market-player-meta {
   display: block;
@@ -2679,23 +2802,79 @@ button.segment.danger-segment.danger-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   width: 100%;
   min-height: 0;
   height: auto;
   border: 0;
-  border-radius: 0;
+  border-radius: 8px;
   background: transparent;
-  padding: 0;
+  padding: 3px 5px;
   color: inherit;
   box-shadow: none;
   font-weight: 700;
   white-space: nowrap;
 }
 
+.market-sort-label {
+  display: inline-block;
+}
+
 .market-sort-btn:hover {
   transform: none;
   border-color: transparent;
-  text-decoration: underline;
+  background: rgba(227, 240, 255, 0.84);
+  text-decoration: none;
+}
+
+.market-sort-btn.active {
+  background: rgba(214, 232, 255, 0.94);
+  color: #14385d;
+  box-shadow: inset 0 0 0 1px rgba(143, 177, 214, 0.82);
+}
+
+.market-sort-indicator {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 10px;
+  flex: 0 0 auto;
+}
+
+.market-sort-indicator::before,
+.market-sort-indicator::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  opacity: 0.4;
+}
+
+.market-sort-indicator::before {
+  top: 0;
+  border-bottom: 4px solid #537294;
+}
+
+.market-sort-indicator::after {
+  bottom: 0;
+  border-top: 4px solid #537294;
+}
+
+.market-sort-indicator.asc::before,
+.market-sort-indicator.desc::after,
+.market-sort-indicator.both::before,
+.market-sort-indicator.both::after {
+  opacity: 1;
+}
+
+.market-sort-btn.active .market-sort-indicator::before,
+.market-sort-btn.active .market-sort-indicator::after {
+  border-bottom-color: #0e345c;
+  border-top-color: #0e345c;
 }
 
 .market-player-cell {
@@ -2706,64 +2885,105 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-player-meta {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   font-weight: 600;
+}
+
+.market-table .card-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #16385e;
 }
 
 .market-live-chip {
   border: 1px solid rgba(255, 140, 46, 0.6);
   border-radius: 999px;
-  padding: 1px 5px;
-  font-size: 9px;
+  padding: 1px 4px;
+  font-size: 8px;
   font-weight: 700;
   color: #a85611;
   background: rgba(255, 237, 219, 0.88);
 }
 
+.market-cell-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-cell-control {
+  text-align: center;
+}
+
+.market-price-cell {
+  font-weight: 700;
+}
+
+.market-mid-cell {
+  background: rgba(240, 247, 255, 0.9);
+}
+
+.market-bid-cell {
+  background: rgba(236, 248, 241, 0.9);
+  color: #1d5b37;
+}
+
+.market-ask-cell {
+  background: rgba(255, 245, 236, 0.9);
+  color: #9b5311;
+}
+
+.market-cell-flash-up {
+  animation: market-cell-flash-up 850ms ease-out;
+}
+
+.market-cell-flash-down {
+  animation: market-cell-flash-down 850ms ease-out;
+}
+
 .market-side-select {
-  width: 80px;
-  min-width: 80px;
-  max-width: 80px;
-  height: 30px;
-  padding: 0 6px;
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  height: 26px;
+  padding: 0 5px;
   margin: 0 auto;
+  border-radius: 9px;
+  font-size: 11px;
 }
 
 .market-qty-input {
   display: block;
-  width: 48px;
-  min-width: 48px;
-  max-width: 48px;
-  height: 30px;
-  padding: 0 6px;
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
+  height: 26px;
+  padding: 0 5px;
   margin: 0 auto;
   text-align: center;
+  border-radius: 9px;
+  font-size: 11px;
 }
 
 .market-qty-cell {
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
+  width: 58px;
+  min-width: 58px;
+  max-width: 58px;
   padding-left: 0;
   padding-right: 0;
   text-align: center;
 }
 
 .market-quote-cell {
-  width: 142px;
-  min-width: 142px;
-  max-width: 142px;
-}
-
-.market-owned-cell {
-  text-align: center;
+  width: 128px;
+  min-width: 128px;
+  max-width: 128px;
 }
 
 .market-quote-with-action {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .market-quote-text {
@@ -2772,24 +2992,24 @@ button.segment.danger-segment.danger-active {
 
 .market-quote-main {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1.1;
 }
 
 .market-quote-sub {
-  margin: 2px 0 0;
-  font-size: 11px;
+  margin: 1px 0 0;
+  font-size: 9px;
   line-height: 1.1;
   color: var(--muted);
 }
 
 .market-quote-action-btn {
-  min-height: 36px;
-  height: 36px;
-  border-radius: 10px;
-  padding: 0 12px;
-  font-size: 12px;
+  min-height: 28px;
+  height: 28px;
+  border-radius: 9px;
+  padding: 0 9px;
+  font-size: 10px;
   flex: 0 0 auto;
 }
 
@@ -2800,7 +3020,7 @@ button.segment.danger-segment.danger-active {
 .market-row-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+  gap: 3px;
 }
 
 .market-row-actions + .market-row-actions {
@@ -2809,11 +3029,11 @@ button.segment.danger-segment.danger-active {
 
 .market-row-actions button {
   width: 100%;
-  min-height: 32px;
-  height: 32px;
-  border-radius: 10px;
-  padding: 0 6px;
-  font-size: 12px;
+  min-height: 26px;
+  height: 26px;
+  border-radius: 9px;
+  padding: 0 5px;
+  font-size: 10px;
 }
 
 .market-row-actions .market-quick-buy-btn,
@@ -2831,6 +3051,17 @@ button.segment.danger-segment.danger-active {
 .market-row-actions .market-quick-short-btn {
   background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
   box-shadow: 0 8px 16px rgba(212, 108, 16, 0.22);
+}
+
+.market-spacer-row td {
+  padding: 0;
+  border: 0;
+  background: transparent !important;
+}
+
+.market-table-status {
+  margin: 8px 4px 0;
+  text-align: right;
 }
 
 .table-wrap {
@@ -2895,6 +3126,24 @@ td {
     opacity: 1;
     transform: translateY(0);
     filter: saturate(100%);
+  }
+}
+
+@keyframes market-cell-flash-up {
+  0% {
+    background-color: rgba(179, 235, 197, 0.96);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes market-cell-flash-down {
+  0% {
+    background-color: rgba(255, 213, 188, 0.96);
+  }
+  100% {
+    background-color: transparent;
   }
 }
 
