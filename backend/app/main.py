@@ -195,6 +195,7 @@ RATE_LIMIT_AUTH_LOGIN = int(os.environ.get("RATE_LIMIT_AUTH_LOGIN", "12"))
 RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_AUTH_LOGIN_WINDOW_SECONDS", "300"))
 RATE_LIMIT_AUTH_REGISTER = int(os.environ.get("RATE_LIMIT_AUTH_REGISTER", "6"))
 RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS", "3600"))
+REGISTER_MIN_SUBMIT_MS = max(0, int(os.environ.get("REGISTER_MIN_SUBMIT_MS", "2500")))
 RATE_LIMIT_FORUM_POST_CREATE = int(os.environ.get("RATE_LIMIT_FORUM_POST_CREATE", "8"))
 RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS = int(
     os.environ.get("RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS", "600")
@@ -537,6 +538,24 @@ def enforce_user_rate_limit(
         window_seconds=window_seconds,
         label=label,
     )
+
+
+def validate_registration_request(payload: AuthRegisterIn) -> None:
+    honeypot = (payload.contact_email or "").strip()
+    if honeypot:
+        raise HTTPException(400, "Invalid registration request.")
+
+    if REGISTER_MIN_SUBMIT_MS <= 0:
+        return
+
+    started_at_ms = payload.form_started_at_ms
+    if started_at_ms is None:
+        raise HTTPException(400, "Invalid registration request.")
+
+    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    elapsed_ms = now_ms - int(started_at_ms)
+    if elapsed_ms < REGISTER_MIN_SUBMIT_MS or elapsed_ms > 86_400_000:
+        raise HTTPException(400, "Invalid registration request.")
 
 
 def player_is_listed(player: Player) -> bool:
@@ -2138,9 +2157,10 @@ def register(
         window_seconds=RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS,
         label="auth register",
     )
+    validate_registration_request(payload)
     existing = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
     if existing and existing.password_hash:
-        raise HTTPException(400, f"User '{username}' already exists.")
+        raise HTTPException(409, f"User '{username}' already exists.")
     if existing and not existing.password_hash:
         existing.password_hash = hash_password(payload.password)
         out = create_auth_session_out(db=db, user=existing)

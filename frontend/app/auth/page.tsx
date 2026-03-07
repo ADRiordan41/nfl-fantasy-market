@@ -24,6 +24,10 @@ function authErrorMessage(err: unknown, mode: AuthMode): string {
     if (err.status === 401) return "Invalid username or password.";
     if (err.status === 404) return "Sign-in endpoint not found. Check frontend API base URL config.";
     if (err.status === 409) return "That username is already in use.";
+    if (err.status === 400 && mode === "register") {
+      return "Unable to complete registration. Please try again.";
+    }
+    if (err.status === 429) return "Too many attempts. Please wait and try again.";
     if (err.status === 422) {
       return mode === "register"
         ? "Invalid registration input. Use a valid username and a password with at least 8 characters."
@@ -43,6 +47,8 @@ export default function AuthPage() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [registerStartedAtMs, setRegisterStartedAtMs] = useState(() => Date.now());
+  const [contactEmail, setContactEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -69,6 +75,12 @@ export default function AuthPage() {
     })();
   }, [router]);
 
+  useEffect(() => {
+    if (mode !== "register") return;
+    setRegisterStartedAtMs(Date.now());
+    setContactEmail("");
+  }, [mode]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -93,6 +105,8 @@ export default function AuthPage() {
         mode === "register" ? "/auth/register" : "/auth/login",
         mode === "register"
           ? {
+              contact_email: contactEmail,
+              form_started_at_ms: registerStartedAtMs,
               username: normalizedUsername,
               password,
             }
@@ -157,6 +171,29 @@ export default function AuthPage() {
         </div>
 
         <form className="auth-form" onSubmit={submit}>
+          {mode === "register" && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: "-9999px",
+                width: "1px",
+                height: "1px",
+                overflow: "hidden",
+              }}
+            >
+              <label htmlFor="auth-contact-email">Contact email</label>
+              <input
+                id="auth-contact-email"
+                tabIndex={-1}
+                autoComplete="off"
+                value={contactEmail}
+                onChange={(event) => setContactEmail(event.target.value)}
+                disabled={busy}
+              />
+            </div>
+          )}
+
           <label className="field-label" htmlFor="auth-username">
             Username
           </label>
