@@ -139,23 +139,39 @@ python backend/scripts/import_weekly_stats.py --file path/to/your_weekly_stats.c
 For near real-time fundamental updates during games, run the live poller:
 
 ```bash
-python backend/scripts/live_stats_poller.py --source-provider mlb-statsapi --sport MLB --week 1 --api-base http://localhost:8000 --token <admin_bearer_token> --interval-seconds 60
+python backend/scripts/live_stats_poller.py --source-provider mlb-statsapi --sport MLB --week 1 --api-base http://localhost:8000 --auth-username ForeverHopeful --auth-password <admin_password> --interval-seconds 60
 ```
 
 The built-in `mlb-statsapi` provider pulls from public MLB StatsAPI game feeds and computes fantasy points from live/season boxscore stats. `--week 1` is recommended so each cycle upserts cumulative season points in place.
 
-### Free Auto-Run via GitHub Actions
-This repo includes `.github/workflows/live-stats-poller.yml`, which runs every 5 minutes and calls the poller once using MLB StatsAPI.
+### Render Background Worker
+Recommended beta setup:
+- service type: `Background Worker`
+- plan: `Starter`
+- root directory: `backend`
+- start command: `python scripts/run_live_stats_worker.py`
 
-Set these GitHub repository secrets:
-- `LIVE_POLLER_USERNAME` (admin username, for example `ForeverHopeful`)
-- `LIVE_POLLER_PASSWORD` (admin password)
+Detailed setup:
+- [Render Live Stats Worker Guide](docs/render-live-worker.md)
 
-Optional GitHub repository variables:
-- `LIVE_POLLER_API_BASE` (default `https://matchupmarket.onrender.com`)
-- `LIVE_POLLER_SPORT` (default `MLB`)
-- `LIVE_POLLER_WEEK` (default `1`)
-- `LIVE_POLLER_MLB_LIVE_ONLY` (default `true`)
+Recommended worker env vars:
+
+```env
+LIVE_POLLER_SOURCE_PROVIDER=mlb-statsapi
+LIVE_POLLER_API_BASE=https://matchupmarket.onrender.com
+LIVE_POLLER_SPORT=MLB
+LIVE_POLLER_WEEK=1
+LIVE_POLLER_INTERVAL_SECONDS=30
+LIVE_POLLER_MLB_LIVE_ONLY=true
+LIVE_POLLER_STATE_FILE=/tmp/live_stats_state.json
+LIVE_POLLER_TIMEOUT=20
+LIVE_POLLER_MAX_POST_RETRIES=3
+LIVE_POLLER_RETRY_BACKOFF=1.5
+LIVE_POLLER_USERNAME=ForeverHopeful
+LIVE_POLLER_PASSWORD=<admin_password>
+```
+
+`python scripts/run_live_stats_worker.py` reads those env vars, logs into `/auth/login` automatically, caches the access token until expiry, and refreshes on `401` if needed.
 
 You can also use your own provider URL:
 

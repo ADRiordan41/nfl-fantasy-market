@@ -4,7 +4,7 @@ import io
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from urllib import error, parse, request
@@ -47,6 +47,42 @@ class CycleCounts:
     unmatched_rows: int = 0
     invalid_rows: int = 0
     failed_posts: int = 0
+
+
+@dataclass
+class ApiAuthContext:
+    api_base: str
+    timeout: float
+    token: str | None = None
+    username: str | None = None
+    password: str | None = None
+    session_token: str | None = None
+    session_expires_at: datetime | None = None
+
+    def can_reauthenticate(self) -> bool:
+        return bool(self.username and self.password)
+
+    def invalidate_session(self) -> None:
+        self.session_token = None
+        self.session_expires_at = None
+
+    def session_is_expired(self) -> bool:
+        if self.session_expires_at is None:
+            return False
+        return datetime.now(timezone.utc) >= self.session_expires_at - timedelta(seconds=60)
+
+    def current_token(self) -> str | None:
+        if self.can_reauthenticate():
+            if self.session_token and not self.session_is_expired():
+                return self.session_token
+            self.session_token, self.session_expires_at = login_for_access_token(
+                api_base=self.api_base,
+                username=str(self.username),
+                password=str(self.password),
+                timeout=self.timeout,
+            )
+            return self.session_token
+        return self.token
 
 
 def now_iso() -> str:
@@ -208,6 +244,55 @@ def http_get_text(url: str, timeout: float) -> str:
 def http_get_json(url: str, timeout: float) -> Any:
     raw = http_get_text(url=url, timeout=timeout)
     return json.loads(raw)
+
+
+def http_post_json(url: str, payload: dict[str, Any], timeout: float, headers: dict[str, str] | None = None) -> Any:
+    request_headers = {"Content-Type": "application/json"}
+    if headers:
+        request_headers.update(headers)
+    req = request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=request_headers,
+        method="POST",
+    )
+    with request.urlopen(req, timeout=timeout) as response:
+        raw = response.read().decode("utf-8")
+    return json.loads(raw) if raw else {}
+
+
+def parse_api_datetime(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def login_for_access_token(
+    *,
+    api_base: str,
+    username: str,
+    password: str,
+    timeout: float,
+) -> tuple[str, datetime | None]:
+    url = f"{api_base.rstrip('/')}/auth/login"
+    payload = http_post_json(
+        url=url,
+        payload={"username": username, "password": password},
+        timeout=timeout,
+    )
+    if not isinstance(payload, dict) or "access_token" not in payload:
+        raise ValueError("Auth login response did not include an access token.")
+    expires_at = parse_api_datetime(payload.get("expires_at"))
+    log("Authenticated live poller session.")
+    return str(payload["access_token"]), expires_at
 
 
 def fetch_players(api_base: str, sport: str | None, timeout: float) -> list[dict[str, Any]]:
@@ -707,7 +792,7 @@ def save_state(path: Path, row_signature_by_player_week: dict[str, str]) -> None
 def post_stat_with_retry(
     api_base: str,
     payload: dict[str, Any],
-    token: str | None,
+    auth: ApiAuthContext | None,
     timeout: float,
     max_retries: int,
     retry_backoff: float,
@@ -715,9 +800,14 @@ def post_stat_with_retry(
     attempts = max(1, max_retries)
     for attempt in range(1, attempts + 1):
         try:
+            token = auth.current_token() if auth else None
             post_stat(api_base=api_base, payload=payload, token=token, timeout=timeout)
             return
-        except error.HTTPError:
+        except error.HTTPError as exc:
+            if exc.code == 401 and auth and auth.can_reauthenticate():
+                auth.invalidate_session()
+                if attempt < attempts:
+                    continue
             if attempt >= attempts:
                 raise
         except error.URLError:
@@ -733,7 +823,7 @@ def post_stat_with_retry(
 def run_cycle(
     *,
     api_base: str,
-    token: str | None,
+    auth: ApiAuthContext | None,
     sport: str | None,
     source_provider: str | None,
     source_url: str | None,
@@ -823,7 +913,7 @@ def run_cycle(
             post_stat_with_retry(
                 api_base=api_base,
                 payload=payload,
-                token=token,
+                auth=auth,
                 timeout=timeout,
                 max_retries=max_post_retries,
                 retry_backoff=retry_backoff,
@@ -839,7 +929,7 @@ def run_cycle(
     return counts
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Poll a live source and upsert fantasy points to /stats. "
@@ -859,6 +949,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-format", choices=("auto", "json", "csv"), default="auto")
     parser.add_argument("--api-base", default="http://localhost:8000", help="API base URL")
     parser.add_argument("--token", default=None, help="Admin bearer token for /stats")
+    parser.add_argument("--auth-username", default=None, help="Admin username/email for automatic session login")
+    parser.add_argument("--auth-password", default=None, help="Admin password for automatic session login")
     parser.add_argument("--sport", default=None, help="Optional sport filter when fetching /players")
     parser.add_argument("--mlb-date", default=None, help="Optional date (YYYY-MM-DD) for MLB StatsAPI provider")
     parser.add_argument("--mlb-live-only", action="store_true", help="When using MLB provider, include only games currently live")
@@ -874,11 +966,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-post-retries", type=int, default=3, help="Retry attempts per /stats post")
     parser.add_argument("--retry-backoff", type=float, default=1.5, help="Backoff multiplier in seconds")
     parser.add_argument("--dry-run", action="store_true", help="Process and log without posting to /stats")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     if not args.source_provider and not args.source_url and not args.source_file:
         print("[error] provide one source: --source-provider or one of --source-url/--source-file")
@@ -895,6 +987,17 @@ def main() -> int:
     if args.max_post_retries <= 0:
         print("[error] --max-post-retries must be > 0")
         return 1
+    if not args.dry_run and not args.token and not (args.auth_username and args.auth_password):
+        print("[error] provide --token or --auth-username/--auth-password unless --dry-run is set")
+        return 1
+
+    auth = ApiAuthContext(
+        api_base=args.api_base,
+        timeout=float(args.timeout),
+        token=args.token,
+        username=args.auth_username,
+        password=args.auth_password,
+    )
 
     state_path = Path(args.state_file)
     state = load_state(state_path)
@@ -907,7 +1010,7 @@ def main() -> int:
         try:
             counts = run_cycle(
                 api_base=args.api_base,
-                token=args.token,
+                auth=auth,
                 sport=args.sport,
                 source_provider=args.source_provider,
                 source_url=args.source_url,
