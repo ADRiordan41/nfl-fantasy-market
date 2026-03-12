@@ -3250,6 +3250,33 @@ td {
   }
 }
 
+@media (max-width: 959px) {
+  .market-page-shell {
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    margin: 0;
+    padding-right: 0;
+  }
+
+  .market-page-shell > .hero-panel,
+  .market-page-shell > .toolbar,
+  .market-page-shell > .error-box,
+  .market-page-shell > .empty-panel,
+  .market-page-shell > .market-table-panel {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .market-page-shell > .market-table-panel {
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 @media (min-width: 960px) {
   .app-header {
     flex-wrap: nowrap;
