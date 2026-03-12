@@ -254,6 +254,7 @@ function formatTickerGeneratedAt(value: string | null | undefined): string {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const pathnameRef = useRef<string>(pathname ?? "/");
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileHomeMenuRef = useRef<HTMLDivElement | null>(null);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
@@ -285,6 +286,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }, Math.max(1200, durationMs));
   }, []);
 
+  useEffect(() => {
+    pathnameRef.current = pathname ?? "/";
+  }, [pathname]);
+
   const loadCurrentUser = useCallback(async () => {
     const token = getAuthToken();
     if (!token) {
@@ -302,17 +307,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (isUnauthorizedError(err)) {
         clearAuthToken();
         setCurrentUser(null);
-        if (pathname !== "/auth") router.replace("/auth");
+        if (pathnameRef.current !== "/auth") router.replace("/auth");
         return;
       }
       setAuthError(toMessage(err));
     } finally {
       setCheckingSession(false);
     }
-  }, [pathname, router]);
+  }, [router]);
 
   useEffect(() => {
     void loadCurrentUser();
+  }, [loadCurrentUser]);
+
+  useEffect(() => {
+    function handleAuthChanged() {
+      void loadCurrentUser();
+    }
+    window.addEventListener("fsm-auth-token-changed", handleAuthChanged);
+    return () => {
+      window.removeEventListener("fsm-auth-token-changed", handleAuthChanged);
+    };
   }, [loadCurrentUser]);
 
   useEffect(() => {
