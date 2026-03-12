@@ -1,5 +1,22 @@
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:8000";
+const LOCAL_API_BASE = "http://localhost:8000";
+const RENDER_API_BASE = "https://matchupmarket.onrender.com";
+
+function inferHostedApiBase(): string {
+  if (typeof window === "undefined") return "";
+  const hostname = window.location.hostname.trim().toLowerCase();
+  if (!hostname) return "";
+  if (hostname === "matchupmarket-frontend.onrender.com") return RENDER_API_BASE;
+  if (hostname === "www.matchupmarket.com" || hostname === "matchupmarket.com") return RENDER_API_BASE;
+  return "";
+}
+
+function resolveApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
+  if (configured) return configured;
+  return inferHostedApiBase() || LOCAL_API_BASE;
+}
+
+const API_BASE = resolveApiBase();
 const AUTH_TOKEN_STORAGE_KEY = "fsm_access_token";
 
 export class ApiHttpError extends Error {
