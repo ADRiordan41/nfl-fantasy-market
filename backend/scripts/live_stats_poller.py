@@ -12,6 +12,7 @@ from urllib import error, parse, request
 MLB_STATS_API_BASE = "https://statsapi.mlb.com"
 MLB_STATS_API_SCHEDULE_PATH = "/api/v1/schedule"
 MLB_STATS_API_LIVE_FEED_PATH = "/api/v1.1/game/{game_pk}/feed/live"
+DEFAULT_MLB_ALLOWED_GAME_TYPES = {"R", "F", "D", "L", "W"}
 
 
 @dataclass
@@ -111,6 +112,18 @@ def normalize_optional_text(value: Any) -> str | None:
         return None
     cleaned = str(value).strip()
     return cleaned or None
+
+
+def parse_mlb_allowed_game_types(raw_value: str | None) -> set[str]:
+    raw = str(raw_value or "").strip().upper()
+    if not raw:
+        return set(DEFAULT_MLB_ALLOWED_GAME_TYPES)
+    allowed = {
+        token.strip().upper()
+        for token in raw.replace(";", ",").split(",")
+        if token.strip()
+    }
+    return allowed or set(DEFAULT_MLB_ALLOWED_GAME_TYPES)
 
 
 def parse_live_flag(value: Any) -> bool | None:
@@ -342,6 +355,7 @@ def fetch_mlb_statsapi_rows(
     week_override: int | None,
     schedule_date: str | None,
     live_only: bool,
+    allowed_game_types: set[str],
 ) -> tuple[list[IncomingStat], int]:
     target_date = (schedule_date or datetime.now(timezone.utc).date().isoformat()).strip()
     if not target_date:
@@ -372,6 +386,9 @@ def fetch_mlb_statsapi_rows(
         game_pk = game.get("gamePk")
         if game_pk is None:
             continue
+        game_type = str(game.get("gameType") or "").strip().upper()
+        if allowed_game_types and game_type not in allowed_game_types:
+            continue
         status_block = game.get("status", {}) if isinstance(game.get("status"), dict) else {}
         abstract_state = str(status_block.get("abstractGameState") or "").strip()
         if abstract_state.upper() == "PREVIEW":
@@ -386,6 +403,9 @@ def fetch_mlb_statsapi_rows(
 
         game_data = feed_payload.get("gameData", {}) if isinstance(feed_payload.get("gameData"), dict) else {}
         live_data = feed_payload.get("liveData", {}) if isinstance(feed_payload.get("liveData"), dict) else {}
+        feed_game_type = str(game_data.get("gameType") or game_type).strip().upper()
+        if allowed_game_types and feed_game_type not in allowed_game_types:
+            continue
         status = game_data.get("status", {}) if isinstance(game_data.get("status"), dict) else {}
         abstract = str(status.get("abstractGameState") or abstract_state).strip()
         detailed = str(status.get("detailedState") or "").strip() or None
@@ -435,6 +455,8 @@ def fetch_mlb_statsapi_rows(
                 season_batting = season_stats.get("batting", {}) if isinstance(season_stats.get("batting"), dict) else {}
                 season_pitching = season_stats.get("pitching", {}) if isinstance(season_stats.get("pitching"), dict) else {}
 
+                # Persist a season-to-date fantasy total for each player through /stats.
+                # This is the ongoing anchor the backend stores in WeeklyStat and uses for pricing.
                 season_points = mlb_hitter_points(season_batting) + mlb_pitcher_points(season_pitching)
                 game_points = mlb_hitter_points(game_batting) + mlb_pitcher_points(game_pitching)
                 live_stat_line = format_mlb_live_stat_line(game_batting=game_batting, game_pitching=game_pitching)
@@ -831,6 +853,7 @@ def run_cycle(
     source_format: str,
     mlb_date: str | None,
     mlb_live_only: bool,
+    mlb_allowed_game_types: set[str],
     week_override: int | None,
     timeout: float,
     max_post_retries: int,
@@ -851,6 +874,7 @@ def run_cycle(
             week_override=week_override,
             schedule_date=mlb_date,
             live_only=mlb_live_only,
+            allowed_game_types=mlb_allowed_game_types,
         )
         invalid_rows = 0
     else:
@@ -954,6 +978,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sport", default=None, help="Optional sport filter when fetching /players")
     parser.add_argument("--mlb-date", default=None, help="Optional date (YYYY-MM-DD) for MLB StatsAPI provider")
     parser.add_argument("--mlb-live-only", action="store_true", help="When using MLB provider, include only games currently live")
+    parser.add_argument(
+        "--mlb-allowed-game-types",
+        default="R,F,D,L,W",
+        help="Comma-separated MLB gameType codes to ingest (default: regular season + postseason only)",
+    )
     parser.add_argument("--week", type=int, default=None, help="Optional week override")
     parser.add_argument("--interval-seconds", type=int, default=60, help="Polling interval for continuous mode")
     parser.add_argument("--once", action="store_true", help="Run one cycle and exit")
@@ -998,6 +1027,7 @@ def main(argv: list[str] | None = None) -> int:
         username=args.auth_username,
         password=args.auth_password,
     )
+    mlb_allowed_game_types = parse_mlb_allowed_game_types(args.mlb_allowed_game_types)
 
     state_path = Path(args.state_file)
     state = load_state(state_path)
@@ -1018,6 +1048,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_format=args.source_format,
                 mlb_date=args.mlb_date,
                 mlb_live_only=bool(args.mlb_live_only),
+                mlb_allowed_game_types=mlb_allowed_game_types,
                 week_override=args.week,
                 timeout=float(args.timeout),
                 max_post_retries=int(args.max_post_retries),

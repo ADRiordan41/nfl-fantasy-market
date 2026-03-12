@@ -40,6 +40,9 @@ def build_argv() -> list[str]:
     mlb_date = env_value("LIVE_POLLER_MLB_DATE")
     if mlb_date:
         argv.extend(["--mlb-date", mlb_date])
+    mlb_allowed_game_types = env_value("LIVE_POLLER_MLB_ALLOWED_GAME_TYPES", "R,F,D,L,W")
+    if mlb_allowed_game_types:
+        argv.extend(["--mlb-allowed-game-types", mlb_allowed_game_types])
 
     interval_seconds = env_value("LIVE_POLLER_INTERVAL_SECONDS", "30")
     if interval_seconds:
