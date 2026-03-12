@@ -31,6 +31,8 @@ from .models import (
     ArchivedWeeklyStat,
     ContentModeration,
     ContentReport,
+    DirectMessage,
+    DirectThread,
     FeedbackMessage,
     ForumComment,
     ForumPost,
@@ -60,6 +62,12 @@ from .pricing import (
     spread_percentage,
 )
 from .schemas import (
+    AdminActivityAuditOut,
+    AdminAuditDirectMessageOut,
+    AdminAuditForumCommentOut,
+    AdminAuditForumPostOut,
+    AdminAuditSessionOut,
+    AdminAuditTradeOut,
     AdminIpoActionOut,
     AdminIpoHideIn,
     AdminIpoLaunchIn,
@@ -94,6 +102,11 @@ from .schemas import (
     AuthPasswordResetRequestOut,
     AuthRegisterIn,
     AuthSessionOut,
+    DirectMessageCreateIn,
+    DirectMessageOut,
+    DirectThreadCreateIn,
+    DirectThreadDetailOut,
+    DirectThreadSummaryOut,
     LiveGameOut,
     LiveGamePlayerOut,
     LiveGamesOut,
@@ -237,6 +250,14 @@ RATE_LIMIT_FORUM_POST_CREATE_WINDOW_SECONDS = int(
 RATE_LIMIT_FORUM_COMMENT_CREATE = int(os.environ.get("RATE_LIMIT_FORUM_COMMENT_CREATE", "30"))
 RATE_LIMIT_FORUM_COMMENT_CREATE_WINDOW_SECONDS = int(
     os.environ.get("RATE_LIMIT_FORUM_COMMENT_CREATE_WINDOW_SECONDS", "600")
+)
+RATE_LIMIT_DIRECT_THREAD_CREATE = int(os.environ.get("RATE_LIMIT_DIRECT_THREAD_CREATE", "20"))
+RATE_LIMIT_DIRECT_THREAD_CREATE_WINDOW_SECONDS = int(
+    os.environ.get("RATE_LIMIT_DIRECT_THREAD_CREATE_WINDOW_SECONDS", "3600")
+)
+RATE_LIMIT_DIRECT_MESSAGE_CREATE = int(os.environ.get("RATE_LIMIT_DIRECT_MESSAGE_CREATE", "40"))
+RATE_LIMIT_DIRECT_MESSAGE_CREATE_WINDOW_SECONDS = int(
+    os.environ.get("RATE_LIMIT_DIRECT_MESSAGE_CREATE_WINDOW_SECONDS", "600")
 )
 RATE_LIMIT_MODERATION_REPORT_CREATE = int(os.environ.get("RATE_LIMIT_MODERATION_REPORT_CREATE", "20"))
 RATE_LIMIT_MODERATION_REPORT_CREATE_WINDOW_SECONDS = int(
@@ -2108,6 +2129,141 @@ def forum_body_preview(body: str, max_len: int = 220) -> str:
     return f"{compact[: max_len - 3].rstrip()}..."
 
 
+def normalize_direct_message_body(value: str | None) -> str:
+    normalized = (value or "").strip()
+    if not normalized:
+        raise HTTPException(400, "Message body is required.")
+    return normalized
+
+
+def direct_thread_pair(user_a_id: int, user_b_id: int) -> tuple[int, int]:
+    return (user_a_id, user_b_id) if user_a_id < user_b_id else (user_b_id, user_a_id)
+
+
+def direct_thread_counterpart_user_id(thread: DirectThread, current_user_id: int) -> int:
+    if int(thread.user_one_id) == current_user_id:
+        return int(thread.user_two_id)
+    if int(thread.user_two_id) == current_user_id:
+        return int(thread.user_one_id)
+    raise HTTPException(403, "Direct thread access denied.")
+
+
+def direct_thread_last_read_at(thread: DirectThread, current_user_id: int) -> datetime | None:
+    if int(thread.user_one_id) == current_user_id:
+        return thread.user_one_last_read_at
+    if int(thread.user_two_id) == current_user_id:
+        return thread.user_two_last_read_at
+    raise HTTPException(403, "Direct thread access denied.")
+
+
+def mark_direct_thread_read(thread: DirectThread, current_user_id: int, at_time: datetime) -> None:
+    if int(thread.user_one_id) == current_user_id:
+        thread.user_one_last_read_at = at_time
+        return
+    if int(thread.user_two_id) == current_user_id:
+        thread.user_two_last_read_at = at_time
+        return
+    raise HTTPException(403, "Direct thread access denied.")
+
+
+def get_direct_thread_for_user_or_raise(
+    db: Session,
+    *,
+    thread_id: int,
+    user_id: int,
+    for_update: bool = False,
+) -> DirectThread:
+    stmt = select(DirectThread).where(
+        DirectThread.id == int(thread_id),
+        or_(
+            DirectThread.user_one_id == int(user_id),
+            DirectThread.user_two_id == int(user_id),
+        ),
+    )
+    if for_update:
+        stmt = stmt.with_for_update()
+    thread = db.execute(stmt).scalar_one_or_none()
+    if not thread:
+        raise HTTPException(404, "Direct thread not found.")
+    return thread
+
+
+def direct_message_preview(body: str, max_len: int = 120) -> str:
+    return forum_body_preview(body, max_len=max_len)
+
+
+def build_direct_thread_summaries(
+    db: Session,
+    *,
+    current_user_id: int,
+    threads: list[DirectThread],
+) -> list[DirectThreadSummaryOut]:
+    if not threads:
+        return []
+
+    thread_by_id = {int(thread.id): thread for thread in threads}
+    counterpart_user_ids = {
+        direct_thread_counterpart_user_id(thread, current_user_id)
+        for thread in threads
+    }
+    counterpart_users = db.execute(
+        select(User).where(User.id.in_(counterpart_user_ids))
+    ).scalars().all()
+    users_by_id = {int(user.id): user for user in counterpart_users}
+
+    message_rows = db.execute(
+        select(DirectMessage, User.username)
+        .join(User, DirectMessage.sender_user_id == User.id)
+        .where(DirectMessage.thread_id.in_(list(thread_by_id.keys())))
+        .order_by(DirectMessage.created_at.desc(), DirectMessage.id.desc())
+    ).all()
+
+    last_message_by_thread: dict[int, DirectMessage] = {}
+    last_sender_by_thread: dict[int, str] = {}
+    message_count_by_thread: dict[int, int] = defaultdict(int)
+    unread_count_by_thread: dict[int, int] = defaultdict(int)
+
+    for message, sender_username in message_rows:
+        thread_id = int(message.thread_id)
+        if thread_id not in last_message_by_thread:
+            last_message_by_thread[thread_id] = message
+            last_sender_by_thread[thread_id] = str(sender_username)
+        message_count_by_thread[thread_id] += 1
+
+        if int(message.sender_user_id) == current_user_id:
+            continue
+
+        thread = thread_by_id[thread_id]
+        last_read_at = direct_thread_last_read_at(thread, current_user_id)
+        if last_read_at is None or message.created_at > last_read_at:
+            unread_count_by_thread[thread_id] += 1
+
+    summaries: list[DirectThreadSummaryOut] = []
+    for thread in threads:
+        thread_id = int(thread.id)
+        counterpart_id = direct_thread_counterpart_user_id(thread, current_user_id)
+        counterpart = users_by_id.get(counterpart_id)
+        if counterpart is None:
+            continue
+        last_message = last_message_by_thread.get(thread_id)
+        summaries.append(
+            DirectThreadSummaryOut(
+                id=thread_id,
+                counterpart_user_id=counterpart_id,
+                counterpart_username=str(counterpart.username),
+                counterpart_profile_image_url=normalize_optional_profile_field(counterpart.profile_image_url),
+                created_at=thread.created_at,
+                updated_at=thread.updated_at,
+                last_message_at=thread.last_message_at,
+                last_message_preview=direct_message_preview(str(last_message.body)) if last_message else None,
+                last_message_sender_username=last_sender_by_thread.get(thread_id),
+                message_count=int(message_count_by_thread.get(thread_id, 0)),
+                unread_count=int(unread_count_by_thread.get(thread_id, 0)),
+            )
+        )
+    return summaries
+
+
 def forum_comment_to_out(comment: ForumComment, author_username: str) -> ForumCommentOut:
     return ForumCommentOut(
         id=int(comment.id),
@@ -2250,6 +2406,72 @@ def create_auth_session_out(db: Session, user: User) -> AuthSessionOut:
         access_token=token,
         expires_at=expires_at,
         user=user_to_out(user),
+    )
+
+
+def admin_audit_session_to_out(
+    session: UserSession,
+    *,
+    username: str,
+    email: str | None,
+    now: datetime,
+) -> AdminAuditSessionOut:
+    status_label = "ACTIVE"
+    if session.revoked_at is not None:
+        status_label = "REVOKED"
+    elif session.expires_at <= now:
+        status_label = "EXPIRED"
+    return AdminAuditSessionOut(
+        id=int(session.id),
+        user_id=int(session.user_id),
+        username=str(username),
+        email=normalize_optional_profile_field(email.lower() if email else None),
+        created_at=session.created_at,
+        expires_at=session.expires_at,
+        revoked_at=session.revoked_at,
+        status=status_label,
+    )
+
+
+def admin_audit_trade_to_out(
+    transaction: Transaction,
+    *,
+    username: str,
+    player: Player | None,
+) -> AdminAuditTradeOut:
+    return AdminAuditTradeOut(
+        id=int(transaction.id),
+        user_id=int(transaction.user_id),
+        username=str(username),
+        player_id=int(transaction.player_id) if transaction.player_id is not None else None,
+        player_name=str(player.name) if player is not None else None,
+        sport=str(player.sport) if player is not None else None,
+        team=str(player.team) if player is not None else None,
+        position=str(player.position) if player is not None else None,
+        trade_type=str(transaction.type),
+        shares=float(transaction.shares),
+        unit_price=float(transaction.unit_price),
+        amount=float(transaction.amount),
+        created_at=transaction.created_at,
+    )
+
+
+def admin_audit_direct_message_to_out(
+    message: DirectMessage,
+    *,
+    sender_username: str,
+    recipient_user_id: int,
+    recipient_username: str,
+) -> AdminAuditDirectMessageOut:
+    return AdminAuditDirectMessageOut(
+        id=int(message.id),
+        thread_id=int(message.thread_id),
+        sender_user_id=int(message.sender_user_id),
+        sender_username=str(sender_username),
+        recipient_user_id=int(recipient_user_id),
+        recipient_username=str(recipient_username),
+        body_preview=direct_message_preview(str(message.body), max_len=140),
+        created_at=message.created_at,
     )
 
 
@@ -2535,6 +2757,227 @@ def users_profile_by_username(
     return user_profile_to_out(user=user, snapshot=snapshot)
 
 
+@app.get("/inbox/threads", response_model=list[DirectThreadSummaryOut])
+def inbox_threads(
+    limit: int = Query(default=100, ge=1, le=500),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    current_user_id = int(auth.user.id)
+    threads = db.execute(
+        select(DirectThread)
+        .where(
+            or_(
+                DirectThread.user_one_id == current_user_id,
+                DirectThread.user_two_id == current_user_id,
+            )
+        )
+        .order_by(
+            func.coalesce(
+                DirectThread.last_message_at,
+                DirectThread.updated_at,
+                DirectThread.created_at,
+            ).desc(),
+            DirectThread.id.desc(),
+        )
+        .limit(limit)
+    ).scalars().all()
+    return build_direct_thread_summaries(
+        db,
+        current_user_id=current_user_id,
+        threads=threads,
+    )
+
+
+@app.post("/inbox/threads", response_model=DirectThreadSummaryOut)
+def inbox_open_thread(
+    payload: DirectThreadCreateIn,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    enforce_user_rate_limit(
+        int(auth.user.id),
+        bucket="direct:thread:create",
+        limit=RATE_LIMIT_DIRECT_THREAD_CREATE,
+        window_seconds=RATE_LIMIT_DIRECT_THREAD_CREATE_WINDOW_SECONDS,
+        label="direct thread creation",
+    )
+    enforce_ip_rate_limit(
+        request,
+        bucket="direct:thread:create",
+        limit=RATE_LIMIT_DIRECT_THREAD_CREATE,
+        window_seconds=RATE_LIMIT_DIRECT_THREAD_CREATE_WINDOW_SECONDS,
+        label="direct thread creation",
+    )
+
+    current_user = get_user_by_id_or_raise(db, int(auth.user.id), for_update=False)
+    target_username = normalize_username(payload.username)
+    if target_username == str(current_user.username).strip().lower():
+        raise HTTPException(400, "You cannot start a direct thread with yourself.")
+    target_user = get_user_by_username_or_raise(db, target_username, for_update=False)
+    user_one_id, user_two_id = direct_thread_pair(int(current_user.id), int(target_user.id))
+
+    thread = db.execute(
+        select(DirectThread).where(
+            DirectThread.user_one_id == user_one_id,
+            DirectThread.user_two_id == user_two_id,
+        )
+    ).scalar_one_or_none()
+    if thread is None:
+        thread = DirectThread(
+            user_one_id=user_one_id,
+            user_two_id=user_two_id,
+        )
+        db.add(thread)
+        db.flush()
+
+    initial_message = normalize_optional_profile_field(payload.initial_message)
+    if initial_message:
+        enforce_user_rate_limit(
+            int(auth.user.id),
+            bucket="direct:message:create",
+            limit=RATE_LIMIT_DIRECT_MESSAGE_CREATE,
+            window_seconds=RATE_LIMIT_DIRECT_MESSAGE_CREATE_WINDOW_SECONDS,
+            label="direct message creation",
+        )
+        enforce_ip_rate_limit(
+            request,
+            bucket="direct:message:create",
+            limit=RATE_LIMIT_DIRECT_MESSAGE_CREATE,
+            window_seconds=RATE_LIMIT_DIRECT_MESSAGE_CREATE_WINDOW_SECONDS,
+            label="direct message creation",
+        )
+        created_at = datetime.utcnow()
+        db.add(
+            DirectMessage(
+                thread_id=int(thread.id),
+                sender_user_id=int(current_user.id),
+                body=normalize_direct_message_body(initial_message),
+                created_at=created_at,
+            )
+        )
+        thread.last_message_at = created_at
+        thread.updated_at = created_at
+        mark_direct_thread_read(thread, int(current_user.id), created_at)
+        db.flush()
+
+    summary = build_direct_thread_summaries(
+        db,
+        current_user_id=int(current_user.id),
+        threads=[thread],
+    )
+    db.commit()
+    if not summary:
+        raise HTTPException(500, "Unable to load direct thread.")
+    return summary[0]
+
+
+@app.get("/inbox/threads/{thread_id}", response_model=DirectThreadDetailOut)
+def inbox_thread_detail(
+    thread_id: int,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    current_user_id = int(auth.user.id)
+    thread = get_direct_thread_for_user_or_raise(
+        db,
+        thread_id=int(thread_id),
+        user_id=current_user_id,
+        for_update=True,
+    )
+    now = datetime.utcnow()
+    mark_direct_thread_read(thread, current_user_id, now)
+    db.flush()
+
+    summaries = build_direct_thread_summaries(
+        db,
+        current_user_id=current_user_id,
+        threads=[thread],
+    )
+    if not summaries:
+        raise HTTPException(500, "Unable to load direct thread.")
+    summary = summaries[0]
+
+    message_rows = db.execute(
+        select(DirectMessage, User.username)
+        .join(User, DirectMessage.sender_user_id == User.id)
+        .where(DirectMessage.thread_id == int(thread.id))
+        .order_by(DirectMessage.created_at.asc(), DirectMessage.id.asc())
+    ).all()
+
+    out = DirectThreadDetailOut(
+        **summary.model_dump(),
+        messages=[
+            DirectMessageOut(
+                id=int(message.id),
+                thread_id=int(message.thread_id),
+                sender_user_id=int(message.sender_user_id),
+                sender_username=str(sender_username),
+                body=str(message.body),
+                created_at=message.created_at,
+                own_message=int(message.sender_user_id) == current_user_id,
+            )
+            for message, sender_username in message_rows
+        ],
+    )
+    db.commit()
+    return out
+
+
+@app.post("/inbox/threads/{thread_id}/messages", response_model=DirectMessageOut)
+def inbox_send_message(
+    thread_id: int,
+    payload: DirectMessageCreateIn,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    enforce_user_rate_limit(
+        int(auth.user.id),
+        bucket="direct:message:create",
+        limit=RATE_LIMIT_DIRECT_MESSAGE_CREATE,
+        window_seconds=RATE_LIMIT_DIRECT_MESSAGE_CREATE_WINDOW_SECONDS,
+        label="direct message creation",
+    )
+    enforce_ip_rate_limit(
+        request,
+        bucket="direct:message:create",
+        limit=RATE_LIMIT_DIRECT_MESSAGE_CREATE,
+        window_seconds=RATE_LIMIT_DIRECT_MESSAGE_CREATE_WINDOW_SECONDS,
+        label="direct message creation",
+    )
+    thread = get_direct_thread_for_user_or_raise(
+        db,
+        thread_id=int(thread_id),
+        user_id=int(auth.user.id),
+        for_update=True,
+    )
+    created_at = datetime.utcnow()
+    message = DirectMessage(
+        thread_id=int(thread.id),
+        sender_user_id=int(auth.user.id),
+        body=normalize_direct_message_body(payload.body),
+        created_at=created_at,
+    )
+    db.add(message)
+    thread.last_message_at = created_at
+    thread.updated_at = created_at
+    mark_direct_thread_read(thread, int(auth.user.id), created_at)
+    db.flush()
+    out = DirectMessageOut(
+        id=int(message.id),
+        thread_id=int(message.thread_id),
+        sender_user_id=int(message.sender_user_id),
+        sender_username=str(auth.user.username),
+        body=str(message.body),
+        created_at=message.created_at,
+        own_message=True,
+    )
+    db.commit()
+    return out
+
+
 @app.get("/search", response_model=list[SearchResultOut])
 def global_search(
     query: str = Query(..., min_length=1, max_length=64),
@@ -2734,6 +3177,144 @@ def admin_feedback_list(
         )
         for feedback, username in rows
     ]
+
+
+@app.get("/admin/activity", response_model=AdminActivityAuditOut)
+def admin_activity_audit(
+    limit: int = Query(default=20, ge=1, le=100),
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    now = datetime.utcnow()
+
+    active_sessions_count = int(
+        db.execute(
+            select(func.count(UserSession.id)).where(
+                UserSession.revoked_at.is_(None),
+                UserSession.expires_at > now,
+            )
+        ).scalar_one()
+        or 0
+    )
+
+    active_session_rows = db.execute(
+        select(UserSession, User.username, User.email)
+        .join(User, UserSession.user_id == User.id)
+        .where(
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+        )
+        .order_by(UserSession.created_at.desc(), UserSession.id.desc())
+        .limit(limit)
+    ).all()
+    recent_session_rows = db.execute(
+        select(UserSession, User.username, User.email)
+        .join(User, UserSession.user_id == User.id)
+        .order_by(UserSession.created_at.desc(), UserSession.id.desc())
+        .limit(limit)
+    ).all()
+
+    comment_count_sq = (
+        select(ForumComment.post_id, func.count(ForumComment.id).label("comment_count"))
+        .group_by(ForumComment.post_id)
+        .subquery()
+    )
+    recent_post_rows = db.execute(
+        select(ForumPost, User.username, func.coalesce(comment_count_sq.c.comment_count, 0))
+        .join(User, ForumPost.user_id == User.id)
+        .outerjoin(comment_count_sq, comment_count_sq.c.post_id == ForumPost.id)
+        .order_by(ForumPost.created_at.desc(), ForumPost.id.desc())
+        .limit(limit)
+    ).all()
+    recent_comment_rows = db.execute(
+        select(ForumComment, User.username, ForumPost.title)
+        .join(User, ForumComment.user_id == User.id)
+        .join(ForumPost, ForumComment.post_id == ForumPost.id)
+        .order_by(ForumComment.created_at.desc(), ForumComment.id.desc())
+        .limit(limit)
+    ).all()
+    recent_transaction_rows = db.execute(
+        select(Transaction, User.username, Player)
+        .join(User, Transaction.user_id == User.id)
+        .outerjoin(Player, Transaction.player_id == Player.id)
+        .order_by(Transaction.created_at.desc(), Transaction.id.desc())
+        .limit(limit)
+    ).all()
+    recent_direct_message_rows = db.execute(
+        select(DirectMessage, DirectThread, User.username)
+        .join(DirectThread, DirectMessage.thread_id == DirectThread.id)
+        .join(User, DirectMessage.sender_user_id == User.id)
+        .order_by(DirectMessage.created_at.desc(), DirectMessage.id.desc())
+        .limit(limit)
+    ).all()
+    direct_message_recipient_ids = {
+        int(thread.user_two_id) if int(message.sender_user_id) == int(thread.user_one_id) else int(thread.user_one_id)
+        for message, thread, _sender_username in recent_direct_message_rows
+    }
+    recipient_users_by_id = {
+        int(user.id): user
+        for user in db.execute(
+            select(User).where(User.id.in_(direct_message_recipient_ids))
+        ).scalars().all()
+    } if direct_message_recipient_ids else {}
+
+    return AdminActivityAuditOut(
+        generated_at=now,
+        active_sessions_count=active_sessions_count,
+        active_sessions=[
+            admin_audit_session_to_out(session, username=str(username), email=email, now=now)
+            for session, username, email in active_session_rows
+        ],
+        recent_sessions=[
+            admin_audit_session_to_out(session, username=str(username), email=email, now=now)
+            for session, username, email in recent_session_rows
+        ],
+        recent_transactions=[
+            admin_audit_trade_to_out(transaction, username=str(username), player=player)
+            for transaction, username, player in recent_transaction_rows
+        ],
+        recent_forum_posts=[
+            AdminAuditForumPostOut(
+                id=int(post.id),
+                user_id=int(post.user_id),
+                username=str(username),
+                title=str(post.title),
+                comment_count=int(comment_count or 0),
+                view_count=int(post.view_count),
+                created_at=post.created_at,
+                updated_at=post.updated_at,
+            )
+            for post, username, comment_count in recent_post_rows
+        ],
+        recent_forum_comments=[
+            AdminAuditForumCommentOut(
+                id=int(comment.id),
+                post_id=int(comment.post_id),
+                post_title=str(post_title),
+                user_id=int(comment.user_id),
+                username=str(username),
+                body_preview=forum_body_preview(str(comment.body), 140),
+                created_at=comment.created_at,
+                updated_at=comment.updated_at,
+            )
+            for comment, username, post_title in recent_comment_rows
+        ],
+        recent_direct_messages=[
+            admin_audit_direct_message_to_out(
+                message,
+                sender_username=str(sender_username),
+                recipient_user_id=recipient_id,
+                recipient_username=str(recipient_users_by_id[recipient_id].username),
+            )
+            for message, thread, sender_username in recent_direct_message_rows
+            for recipient_id in [
+                int(thread.user_two_id) if int(message.sender_user_id) == int(thread.user_one_id) else int(thread.user_one_id)
+            ]
+            if recipient_id in recipient_users_by_id
+        ],
+        direct_messages_supported=True,
+        direct_messages_note=None,
+    )
 
 
 @app.post("/moderation/reports", response_model=ModerationReportOut)

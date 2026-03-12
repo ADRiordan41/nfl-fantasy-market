@@ -110,6 +110,79 @@ class AdminFeedbackOut(FeedbackOut):
     username: str
 
 
+class AdminAuditSessionOut(BaseModel):
+    id: int
+    user_id: int
+    username: str
+    email: str | None = None
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    status: str
+
+
+class AdminAuditTradeOut(BaseModel):
+    id: int
+    user_id: int
+    username: str
+    player_id: int | None = None
+    player_name: str | None = None
+    sport: str | None = None
+    team: str | None = None
+    position: str | None = None
+    trade_type: str
+    shares: float
+    unit_price: float
+    amount: float
+    created_at: datetime
+
+
+class AdminAuditForumPostOut(BaseModel):
+    id: int
+    user_id: int
+    username: str
+    title: str
+    comment_count: int
+    view_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminAuditForumCommentOut(BaseModel):
+    id: int
+    post_id: int
+    post_title: str
+    user_id: int
+    username: str
+    body_preview: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminAuditDirectMessageOut(BaseModel):
+    id: int
+    thread_id: int
+    sender_user_id: int
+    sender_username: str
+    recipient_user_id: int
+    recipient_username: str
+    body_preview: str
+    created_at: datetime
+
+
+class AdminActivityAuditOut(BaseModel):
+    generated_at: datetime
+    active_sessions_count: int
+    active_sessions: list[AdminAuditSessionOut]
+    recent_sessions: list[AdminAuditSessionOut]
+    recent_transactions: list[AdminAuditTradeOut]
+    recent_forum_posts: list[AdminAuditForumPostOut]
+    recent_forum_comments: list[AdminAuditForumCommentOut]
+    recent_direct_messages: list[AdminAuditDirectMessageOut]
+    direct_messages_supported: bool = True
+    direct_messages_note: str | None = None
+
+
 class ModerationReportCreateIn(BaseModel):
     content_type: str = Field(min_length=2, max_length=24)
     content_id: int = Field(ge=1)
@@ -197,6 +270,43 @@ class ForumPostDetailOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     comments: list[ForumCommentOut]
+
+
+class DirectThreadCreateIn(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    initial_message: str | None = Field(default=None, max_length=5000)
+
+
+class DirectMessageCreateIn(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+
+class DirectMessageOut(BaseModel):
+    id: int
+    thread_id: int
+    sender_user_id: int
+    sender_username: str
+    body: str
+    created_at: datetime
+    own_message: bool
+
+
+class DirectThreadSummaryOut(BaseModel):
+    id: int
+    counterpart_user_id: int
+    counterpart_username: str
+    counterpart_profile_image_url: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    last_message_at: datetime | None = None
+    last_message_preview: str | None = None
+    last_message_sender_username: str | None = None
+    message_count: int
+    unread_count: int
+
+
+class DirectThreadDetailOut(DirectThreadSummaryOut):
+    messages: list[DirectMessageOut]
 
 
 class UserProfileHoldingOut(BaseModel):

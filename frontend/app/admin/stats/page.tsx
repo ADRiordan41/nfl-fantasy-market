@@ -6,6 +6,7 @@ import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedNumber } from "@/lib/format";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import type {
+  AdminActivityAudit,
   AdminFeedbackMessage,
   AdminIpoActionResult,
   AdminModerationReport,
@@ -58,6 +59,8 @@ export default function AdminStatsPage() {
   const [moderationStatusFilter, setModerationStatusFilter] = useState("OPEN");
   const [busyModeration, setBusyModeration] = useState(false);
   const [busyModerationAction, setBusyModerationAction] = useState("");
+  const [activityAudit, setActivityAudit] = useState<AdminActivityAudit | null>(null);
+  const [busyActivity, setBusyActivity] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -173,6 +176,18 @@ export default function AdminStatsPage() {
     }
   }, [handleApiError, moderationStatusFilter]);
 
+  const loadActivity = useCallback(async () => {
+    setBusyActivity(true);
+    try {
+      const audit = await apiGet<AdminActivityAudit>("/admin/activity?limit=20");
+      setActivityAudit(audit);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyActivity(false);
+    }
+  }, [handleApiError]);
+
   useEffect(() => {
     void loadIpoSports();
     void loadTradingStatus();
@@ -190,6 +205,10 @@ export default function AdminStatsPage() {
   useEffect(() => {
     void loadModeration();
   }, [loadModeration]);
+
+  useEffect(() => {
+    void loadActivity();
+  }, [loadActivity]);
 
   function buildPayload(): { csv_text: string; week_override: number | null } | null {
     const trimmed = csvText.trim();
@@ -551,6 +570,237 @@ export default function AdminStatsPage() {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="table-panel">
+        <h3>Activity Audit</h3>
+        <div className="admin-review-controls">
+          <div className="subtle">
+            {activityAudit
+              ? `Generated ${new Date(activityAudit.generated_at).toLocaleString()}`
+              : "Load recent sessions, trades, forum activity, and direct messages."}
+          </div>
+          <button onClick={() => void loadActivity()} disabled={busyActivity}>
+            {busyActivity ? "Refreshing..." : "Refresh Activity"}
+          </button>
+        </div>
+
+        {!activityAudit ? (
+          <p className="subtle">No activity audit loaded yet.</p>
+        ) : (
+          <>
+            <div className="metrics-grid">
+              <article className="kpi-card">
+                <span>Active Sessions</span>
+                <strong>{formatNumber(activityAudit.active_sessions_count)}</strong>
+              </article>
+              <article className="kpi-card">
+                <span>Recent Trades</span>
+                <strong>{formatNumber(activityAudit.recent_transactions.length)}</strong>
+              </article>
+              <article className="kpi-card">
+                <span>Forum Posts</span>
+                <strong>{formatNumber(activityAudit.recent_forum_posts.length)}</strong>
+              </article>
+              <article className="kpi-card">
+                <span>Direct Messages</span>
+                <strong>{formatNumber(activityAudit.recent_direct_messages.length)}</strong>
+              </article>
+            </div>
+
+            <div className="admin-audit-grid">
+              <div>
+                <h4>Active Sessions</h4>
+                {!activityAudit.active_sessions.length ? (
+                  <p className="subtle">No active sessions.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Status</th>
+                          <th>Started</th>
+                          <th>Expires</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityAudit.active_sessions.map((row) => (
+                          <tr key={`active-session-${row.id}`}>
+                            <td>
+                              {row.username} (#{row.user_id})
+                            </td>
+                            <td>{row.status}</td>
+                            <td>{new Date(row.created_at).toLocaleString()}</td>
+                            <td>{new Date(row.expires_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4>Recent Sessions</h4>
+                {!activityAudit.recent_sessions.length ? (
+                  <p className="subtle">No recent sessions.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Status</th>
+                          <th>Started</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityAudit.recent_sessions.map((row) => (
+                          <tr key={`recent-session-${row.id}`}>
+                            <td>
+                              {row.username} (#{row.user_id})
+                            </td>
+                            <td>{row.status}</td>
+                            <td>{new Date(row.created_at).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="admin-audit-grid">
+              <div>
+                <h4>Recent Trades</h4>
+                {!activityAudit.recent_transactions.length ? (
+                  <p className="subtle">No recent trades.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>User</th>
+                          <th>Player</th>
+                          <th>Type</th>
+                          <th>Shares</th>
+                          <th>Net</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityAudit.recent_transactions.map((row) => (
+                          <tr key={`trade-${row.id}`}>
+                            <td>{new Date(row.created_at).toLocaleString()}</td>
+                            <td>{row.username}</td>
+                            <td>{row.player_name ?? "--"}</td>
+                            <td>{row.trade_type}</td>
+                            <td>{formatNumber(row.shares, 0)}</td>
+                            <td>{formatCurrency(row.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4>Recent Direct Messages</h4>
+                {!activityAudit.recent_direct_messages.length ? (
+                  <p className="subtle">No recent direct messages.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>From</th>
+                          <th>To</th>
+                          <th>Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityAudit.recent_direct_messages.map((row) => (
+                          <tr key={`dm-${row.id}`}>
+                            <td>{new Date(row.created_at).toLocaleString()}</td>
+                            <td>{row.sender_username}</td>
+                            <td>{row.recipient_username}</td>
+                            <td>{row.body_preview}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="admin-audit-grid">
+              <div>
+                <h4>Recent Forum Posts</h4>
+                {!activityAudit.recent_forum_posts.length ? (
+                  <p className="subtle">No recent forum posts.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>User</th>
+                          <th>Title</th>
+                          <th>Comments</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityAudit.recent_forum_posts.map((row) => (
+                          <tr key={`post-${row.id}`}>
+                            <td>{new Date(row.created_at).toLocaleString()}</td>
+                            <td>{row.username}</td>
+                            <td>{row.title}</td>
+                            <td>{formatNumber(row.comment_count)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4>Recent Forum Comments</h4>
+                {!activityAudit.recent_forum_comments.length ? (
+                  <p className="subtle">No recent forum comments.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>User</th>
+                          <th>Post</th>
+                          <th>Comment</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityAudit.recent_forum_comments.map((row) => (
+                          <tr key={`comment-${row.id}`}>
+                            <td>{new Date(row.created_at).toLocaleString()}</td>
+                            <td>{row.username}</td>
+                            <td>{row.post_title}</td>
+                            <td>{row.body_preview}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </section>
 
       <section className="table-panel">

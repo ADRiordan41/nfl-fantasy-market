@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet, clearAuthToken, isUnauthorizedError } from "@/lib/api";
+import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import type { UserProfile } from "@/lib/types";
+import type { DirectThreadSummary, UserAccount, UserProfile } from "@/lib/types";
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -21,15 +21,21 @@ export default function UserProfilePage() {
   const router = useRouter();
   const params = useParams<{ username: string }>();
   const username = (params?.username || "").trim().toLowerCase();
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [openingThread, setOpeningThread] = useState(false);
   const [error, setError] = useState("");
 
   const loadProfile = useCallback(async () => {
     if (!username) return;
     setLoading(true);
     try {
-      const nextProfile = await apiGet<UserProfile>(`/users/${encodeURIComponent(username)}/profile`);
+      const [me, nextProfile] = await Promise.all([
+        apiGet<UserAccount>("/auth/me"),
+        apiGet<UserProfile>(`/users/${encodeURIComponent(username)}/profile`),
+      ]);
+      setCurrentUser(me);
       setProfile(nextProfile);
       setError("");
     } catch (err: unknown) {
@@ -52,6 +58,31 @@ export default function UserProfilePage() {
   }, [loadProfile]);
 
   const holdingsCount = useMemo(() => profile?.holdings.length ?? 0, [profile?.holdings]);
+  const isOwnProfile = useMemo(() => {
+    if (!currentUser || !profile) return false;
+    return currentUser.username.trim().toLowerCase() === profile.username.trim().toLowerCase();
+  }, [currentUser, profile]);
+
+  async function openThread() {
+    if (!profile || isOwnProfile) return;
+    setOpeningThread(true);
+    setError("");
+    try {
+      const thread = await apiPost<DirectThreadSummary>("/inbox/threads", {
+        username: profile.username,
+      });
+      router.push(`/inbox?thread=${thread.id}`);
+    } catch (err: unknown) {
+      if (isUnauthorizedError(err)) {
+        clearAuthToken();
+        router.replace("/auth");
+        return;
+      }
+      setError(toMessage(err));
+    } finally {
+      setOpeningThread(false);
+    }
+  }
 
   if (!username) {
     return (
@@ -87,6 +118,11 @@ export default function UserProfilePage() {
           <Link href="/community" className="ghost-link">
             Back to Community
           </Link>
+          {!isOwnProfile ? (
+            <button type="button" className="primary-btn" onClick={() => void openThread()} disabled={openingThread}>
+              {openingThread ? "Opening..." : "Message User"}
+            </button>
+          ) : null}
           <button type="button" onClick={() => void loadProfile()} disabled={loading}>
             Refresh
           </button>

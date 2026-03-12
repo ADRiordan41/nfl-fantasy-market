@@ -169,6 +169,34 @@ export type ForumPostDetail = {
   comments: ForumComment[];
 };
 
+export type DirectMessage = {
+  id: number;
+  thread_id: number;
+  sender_user_id: number;
+  sender_username: string;
+  body: string;
+  created_at: string;
+  own_message: boolean;
+};
+
+export type DirectThreadSummary = {
+  id: number;
+  counterpart_user_id: number;
+  counterpart_username: string;
+  counterpart_profile_image_url: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  last_message_sender_username: string | null;
+  message_count: number;
+  unread_count: number;
+};
+
+export type DirectThreadDetail = DirectThreadSummary & {
+  messages: DirectMessage[];
+};
+
 export type UserProfileHolding = {
   player_id: number;
   player_name: string;
@@ -316,4 +344,77 @@ export type AdminModerationReport = ModerationReport & {
   target_preview: string | null;
   target_exists: boolean;
   is_content_hidden: boolean;
+};
+
+export type AdminAuditSession = {
+  id: number;
+  user_id: number;
+  username: string;
+  email: string | null;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  status: string;
+};
+
+export type AdminAuditTrade = {
+  id: number;
+  user_id: number;
+  username: string;
+  player_id: number | null;
+  player_name: string | null;
+  sport: string | null;
+  team: string | null;
+  position: string | null;
+  trade_type: string;
+  shares: number;
+  unit_price: number;
+  amount: number;
+  created_at: string;
+};
+
+export type AdminAuditForumPost = {
+  id: number;
+  user_id: number;
+  username: string;
+  title: string;
+  comment_count: number;
+  view_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminAuditForumComment = {
+  id: number;
+  post_id: number;
+  post_title: string;
+  user_id: number;
+  username: string;
+  body_preview: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminAuditDirectMessage = {
+  id: number;
+  thread_id: number;
+  sender_user_id: number;
+  sender_username: string;
+  recipient_user_id: number;
+  recipient_username: string;
+  body_preview: string;
+  created_at: string;
+};
+
+export type AdminActivityAudit = {
+  generated_at: string;
+  active_sessions_count: number;
+  active_sessions: AdminAuditSession[];
+  recent_sessions: AdminAuditSession[];
+  recent_transactions: AdminAuditTrade[];
+  recent_forum_posts: AdminAuditForumPost[];
+  recent_forum_comments: AdminAuditForumComment[];
+  recent_direct_messages: AdminAuditDirectMessage[];
+  direct_messages_supported: boolean;
+  direct_messages_note: string | null;
 };

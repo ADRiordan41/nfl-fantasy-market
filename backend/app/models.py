@@ -32,6 +32,17 @@ class User(Base):
     content_moderation_actions: Mapped[list["ContentModeration"]] = relationship(
         back_populates="moderator",
     )
+    direct_threads_as_user_one: Mapped[list["DirectThread"]] = relationship(
+        foreign_keys="DirectThread.user_one_id",
+        back_populates="user_one",
+    )
+    direct_threads_as_user_two: Mapped[list["DirectThread"]] = relationship(
+        foreign_keys="DirectThread.user_two_id",
+        back_populates="user_two",
+    )
+    sent_direct_messages: Mapped[list["DirectMessage"]] = relationship(
+        back_populates="sender",
+    )
 
 
 class UserSession(Base):
@@ -45,6 +56,48 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     user: Mapped["User"] = relationship(back_populates="sessions")
+
+
+class DirectThread(Base):
+    __tablename__ = "direct_threads"
+    __table_args__ = (UniqueConstraint("user_one_id", "user_two_id", name="uq_direct_thread_pair"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_one_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_two_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_one_last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    user_two_last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        index=True,
+    )
+
+    user_one: Mapped["User"] = relationship(
+        foreign_keys=[user_one_id],
+        back_populates="direct_threads_as_user_one",
+    )
+    user_two: Mapped["User"] = relationship(
+        foreign_keys=[user_two_id],
+        back_populates="direct_threads_as_user_two",
+    )
+    messages: Mapped[list["DirectMessage"]] = relationship(back_populates="thread")
+
+
+class DirectMessage(Base):
+    __tablename__ = "direct_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    thread_id: Mapped[int] = mapped_column(ForeignKey("direct_threads.id"), index=True)
+    sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    thread: Mapped["DirectThread"] = relationship(back_populates="messages")
+    sender: Mapped["User"] = relationship(back_populates="sent_direct_messages")
 
 
 class PasswordResetToken(Base):
