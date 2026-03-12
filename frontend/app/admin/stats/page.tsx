@@ -12,6 +12,7 @@ import type {
   AdminModerationReport,
   AdminIpoPlayers,
   AdminIpoSport,
+  AdminStatsClearSportResult,
   AdminStatsPreview,
   AdminStatsPublishResult,
   TradingStatus,
@@ -342,6 +343,21 @@ export default function AdminStatsPage() {
     }
   }
 
+  async function clearSportStats(sport: string) {
+    setBusyIpoAction(`clear-stats:${sport}`);
+    setError("");
+    try {
+      const result = await apiPost<AdminStatsClearSportResult>("/admin/stats/clear-sport", { sport });
+      setIpoMessage(result.message);
+      notifySuccess(result.message);
+      await loadIpoReview(sport);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyIpoAction("");
+    }
+  }
+
   async function updateSportTradingHalt(sport: string, halted: boolean) {
     setBusyTradingAction(`sport:${sport}`);
     setError("");
@@ -486,6 +502,13 @@ export default function AdminStatsPage() {
                   </button>
                   <button onClick={() => setReviewSport(summary.sport)} disabled={busyIpoAction.length > 0}>
                     Review Players
+                  </button>
+                  <button
+                    className="danger-btn"
+                    onClick={() => void clearSportStats(summary.sport)}
+                    disabled={busyIpoAction.length > 0}
+                  >
+                    {busyIpoAction === `clear-stats:${summary.sport}` ? "Clearing..." : `Clear ${summary.sport} Stats`}
                   </button>
                 </div>
                 <div className="admin-trading-card-controls">

@@ -73,6 +73,8 @@ from .schemas import (
     AdminIpoLaunchIn,
     AdminIpoPlayerOut,
     AdminIpoPlayersOut,
+    AdminStatsClearSportIn,
+    AdminStatsClearSportOut,
     AdminIpoSportOut,
     AdminStatsPreviewIn,
     AdminStatsPreviewOut,
@@ -4956,6 +4958,53 @@ def admin_ipo_hide(
         players_updated=updated_count,
         ipo_opened_at=None,
         message=f"{sport_code} IPO hidden.{closeout_msg} Players are no longer visible in market listings.",
+    )
+
+
+@app.post("/admin/stats/clear-sport", response_model=AdminStatsClearSportOut)
+def admin_clear_sport_stats(
+    payload: AdminStatsClearSportIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    sport_code = normalize_sport_code(payload.sport)
+    players = db.execute(
+        select(Player).where(Player.sport == sport_code)
+    ).scalars().all()
+    if not players:
+        raise HTTPException(404, f"No players found for sport '{sport_code}'.")
+
+    player_ids = {int(player.id) for player in players}
+    deleted_stats = int(
+        db.execute(
+            delete(WeeklyStat).where(WeeklyStat.player_id.in_(player_ids))
+        ).rowcount
+        or 0
+    )
+
+    for player in players:
+        player.live_now = False
+        player.live_week = None
+        player.live_game_id = None
+        player.live_game_label = None
+        player.live_game_status = None
+        player.live_game_stat_line = None
+        player.live_game_fantasy_points = 0.0
+        player.live_updated_at = None
+
+    db.flush()
+    refresh_players_after_stats_update(
+        db=db,
+        player_ids=player_ids,
+        source="ADMIN_CLEAR_STATS",
+    )
+    db.commit()
+    return AdminStatsClearSportOut(
+        sport=sport_code,
+        players_affected=len(player_ids),
+        stats_deleted=deleted_stats,
+        price_points_created=len(player_ids),
+        message=f"Cleared imported {sport_code} stats and reset live snapshots.",
     )
 
 

@@ -258,6 +258,14 @@ export type AdminStatsPublishResult = {
   error_count: number;
 };
 
+export type AdminStatsClearSportResult = {
+  sport: string;
+  players_affected: number;
+  stats_deleted: number;
+  price_points_created: number;
+  message: string;
+};
+
 export type AdminIpoSport = {
   sport: string;
   total_players: number;

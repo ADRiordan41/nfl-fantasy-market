@@ -550,6 +550,18 @@ class AdminStatsPublishOut(BaseModel):
     error_count: int
 
 
+class AdminStatsClearSportIn(BaseModel):
+    sport: str = Field(min_length=2, max_length=16)
+
+
+class AdminStatsClearSportOut(BaseModel):
+    sport: str
+    players_affected: int
+    stats_deleted: int
+    price_points_created: int
+    message: str
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int
