@@ -2310,10 +2310,18 @@ button.segment.danger-segment.danger-active {
   stroke-linejoin: round;
 }
 
+.history-line-alt {
+  stroke: #2f7fff;
+}
+
 .history-dot {
   fill: var(--accent);
   stroke: #fff;
   stroke-width: 1.5;
+}
+
+.history-dot-alt {
+  fill: #2f7fff;
 }
 
 .history-axis-labels {

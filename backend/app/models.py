@@ -315,6 +315,20 @@ class PricePoint(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
+class PlayerGamePoint(Base):
+    __tablename__ = "player_game_points"
+    __table_args__ = (UniqueConstraint("player_id", "game_id", name="uq_player_game_point"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    game_id: Mapped[str] = mapped_column(String(64), index=True)
+    game_label: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    game_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    game_fantasy_points: Mapped[float] = mapped_column(NUM, default=0)
+    season_fantasy_points: Mapped[float] = mapped_column(NUM, default=0)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class SettledWeek(Base):
     __tablename__ = "settled_weeks"
     __table_args__ = (UniqueConstraint("week", name="uq_settled_week"),)

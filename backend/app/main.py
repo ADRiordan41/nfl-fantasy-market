@@ -40,6 +40,7 @@ from .models import (
     Holding,
     PasswordResetToken,
     Player,
+    PlayerGamePoint,
     PricePoint,
     SeasonClose,
     SeasonReset,
@@ -117,6 +118,7 @@ from .schemas import (
     ModerationReportCreateIn,
     ModerationReportOut,
     PlayerLiveOut,
+    PlayerGamePointOut,
     PlayerOut,
     PricePointOut,
     PortfolioHolding,
@@ -2067,6 +2069,39 @@ def get_player_history(
             created_at=point.created_at,
         )
         for point in points
+    ]
+
+
+@app.get("/players/{player_id}/game-history", response_model=list[PlayerGamePointOut])
+def get_player_game_history(
+    player_id: int,
+    limit: int = Query(default=500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+):
+    player = db.get(Player, player_id)
+    if not player:
+        raise HTTPException(404, "Player not found")
+    if not player_is_listed(player):
+        raise HTTPException(404, "Player not found")
+
+    rows = db.execute(
+        select(PlayerGamePoint)
+        .where(PlayerGamePoint.player_id == player_id)
+        .order_by(PlayerGamePoint.recorded_at.asc(), PlayerGamePoint.id.asc())
+        .limit(limit)
+    ).scalars().all()
+
+    return [
+        PlayerGamePointOut(
+            player_id=int(row.player_id),
+            game_id=str(row.game_id),
+            game_label=normalize_optional_profile_field(row.game_label),
+            game_status=normalize_optional_profile_field(row.game_status),
+            game_fantasy_points=float(row.game_fantasy_points),
+            season_fantasy_points=float(row.season_fantasy_points),
+            recorded_at=row.recorded_at,
+        )
+        for row in rows
     ]
 
 
@@ -4604,6 +4639,46 @@ def apply_live_snapshot_from_stat(
     return changed
 
 
+def upsert_player_game_point_from_stat(
+    db: Session,
+    *,
+    player: Player,
+    stat: StatIn,
+) -> bool:
+    game_id = normalize_optional_profile_field(stat.live_game_id)
+    if not game_id:
+        return False
+
+    existing = db.execute(
+        select(PlayerGamePoint).where(
+            PlayerGamePoint.player_id == int(player.id),
+            PlayerGamePoint.game_id == game_id,
+        )
+    ).scalar_one_or_none()
+
+    if existing is None:
+        existing = PlayerGamePoint(
+            player_id=int(player.id),
+            game_id=game_id,
+        )
+        db.add(existing)
+
+    changed = False
+
+    def assign_if_changed(attribute: str, value: object) -> None:
+        nonlocal changed
+        if getattr(existing, attribute) != value:
+            setattr(existing, attribute, value)
+            changed = True
+
+    assign_if_changed("game_label", normalize_optional_profile_field(stat.live_game_label))
+    assign_if_changed("game_status", normalize_optional_profile_field(stat.live_game_status))
+    assign_if_changed("game_fantasy_points", float(stat.live_game_fantasy_points or 0.0))
+    assign_if_changed("season_fantasy_points", float(stat.fantasy_points))
+    assign_if_changed("recorded_at", datetime.utcnow())
+    return changed
+
+
 def upsert_weekly_stat_for_player(
     db: Session,
     player: Player,
@@ -4981,6 +5056,9 @@ def admin_clear_sport_stats(
         ).rowcount
         or 0
     )
+    db.execute(
+        delete(PlayerGamePoint).where(PlayerGamePoint.player_id.in_(player_ids))
+    )
 
     for player in players:
         player.live_now = False
@@ -5096,9 +5174,14 @@ def upsert_weekly_stat(
         fantasy_points=stat.fantasy_points,
     )
     live_changed = apply_live_snapshot_from_stat(player=player, stat=stat)
+    game_point_changed = upsert_player_game_point_from_stat(
+        db=db,
+        player=player,
+        stat=stat,
+    )
 
     db.flush()
-    if stat_changed:
+    if stat_changed or game_point_changed:
         refresh_players_after_stats_update(
             db=db,
             player_ids={int(player.id)},
@@ -5106,7 +5189,13 @@ def upsert_weekly_stat(
         )
 
     db.commit()
-    return {"ok": True, "status": status_label, "stats_updated": stat_changed, "live_updated": live_changed}
+    return {
+        "ok": True,
+        "status": status_label,
+        "stats_updated": stat_changed,
+        "live_updated": live_changed,
+        "game_points_updated": game_point_changed,
+    }
 
 
 @app.post("/settlement/week/{week}", response_model=SettlementOut, deprecated=True)

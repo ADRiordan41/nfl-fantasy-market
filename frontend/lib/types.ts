@@ -99,6 +99,16 @@ export type PricePoint = {
   created_at: string;
 };
 
+export type PlayerGamePoint = {
+  player_id: number;
+  game_id: string;
+  game_label: string | null;
+  game_status: string | null;
+  game_fantasy_points: number;
+  season_fantasy_points: number;
+  recorded_at: string;
+};
+
 export type MarketMover = {
   player_id: number;
   sport: string;

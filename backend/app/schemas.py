@@ -385,6 +385,16 @@ class PricePointOut(BaseModel):
     created_at: datetime
 
 
+class PlayerGamePointOut(BaseModel):
+    player_id: int
+    game_id: str
+    game_label: str | None = None
+    game_status: str | None = None
+    game_fantasy_points: float
+    season_fantasy_points: float
+    recorded_at: datetime
+
+
 class MarketMoverOut(BaseModel):
     player_id: int
     sport: str

@@ -200,6 +200,7 @@ Supported source fields (case-insensitive):
 Notes:
 - The poller only posts changed `player_id + week` values (tracked in `backend/data/live_stats_state.json` by default).
 - If live fields are present, the poller also updates `/stats` live snapshot fields for `LIVE NOW` UI badges.
+- If `live_game_id` is present, `/stats` also upserts per-game history rows used by the player page's `Fantasy Value by Game` chart.
 - If `live_game_id` and/or `live_game_label` are present, `/live/games` groups players into game cards.
 - Use `--once` for one cycle, or omit it to run continuously.
 - Use `--dry-run` to validate mappings without posting to `/stats`.

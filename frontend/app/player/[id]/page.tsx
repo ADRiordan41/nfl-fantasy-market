@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
-import type { Player, Portfolio, PricePoint, Quote } from "@/lib/types";
+import type { Player, PlayerGamePoint, Portfolio, PricePoint, Quote } from "@/lib/types";
 
 type TradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
 const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
@@ -159,6 +159,133 @@ function PriceHistoryChart({ points }: { points: PricePoint[] }) {
   );
 }
 
+function seasonGamesForSport(sport: string): number {
+  const normalized = sport.trim().toUpperCase();
+  if (normalized === "MLB") return 162;
+  if (normalized === "NFL") return 17;
+  if (normalized === "NBA" || normalized === "NHL") return 82;
+  return 100;
+}
+
+function FantasyValueHistoryChart({ sport, points }: { sport: string; points: PlayerGamePoint[] }) {
+  const sorted = useMemo(
+    () => [...points].sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()),
+    [points],
+  );
+  const maxGames = seasonGamesForSport(sport);
+
+  if (sorted.length === 0) {
+    return (
+      <article className="history-card">
+        <div className="history-head">
+          <h3>Fantasy Value by Game</h3>
+        </div>
+        <p className="subtle">
+          No per-game value points yet. This chart fills from game 0 through game {formatNumber(maxGames)} across the season.
+        </p>
+      </article>
+    );
+  }
+
+  const width = 760;
+  const height = 260;
+  const left = 44;
+  const right = 16;
+  const top = 16;
+  const bottom = 34;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+
+  const values = sorted.map((point) => point.season_fantasy_points);
+  const rawMin = Math.min(...values, 0);
+  const rawMax = Math.max(...values, 1);
+  const span = Math.max(0.0001, rawMax - rawMin);
+
+  const xAt = (gameNumber: number) => left + (gameNumber * plotWidth) / Math.max(1, maxGames);
+  const yAt = (value: number) => top + ((rawMax - value) / span) * plotHeight;
+
+  const coords = sorted.map((point, index) => ({
+    x: xAt(index + 1),
+    y: yAt(point.season_fantasy_points),
+  }));
+  const linePath = coords
+    .map((coord, index) => `${index === 0 ? "M" : "L"} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`)
+    .join(" ");
+  const areaPath = `${linePath} L ${coords[coords.length - 1].x.toFixed(2)} ${(
+    top + plotHeight
+  ).toFixed(2)} L ${coords[0].x.toFixed(2)} ${(top + plotHeight).toFixed(2)} Z`;
+
+  const latest = sorted[sorted.length - 1];
+  const latestGameNumber = sorted.length;
+  const latestGamePoints = latest.game_fantasy_points;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+    const value = rawMax - span * fraction;
+    return { value, y: yAt(value) };
+  });
+  const xTicks = [0, Math.round(maxGames / 2), maxGames];
+
+  return (
+    <article className="history-card">
+      <div className="history-head">
+        <h3>Fantasy Value by Game</h3>
+        <p className="subtle">
+          Game {formatNumber(latestGameNumber)} of {formatNumber(maxGames)} | Last update {formatStamp(latest.recorded_at)}
+        </p>
+      </div>
+
+      <div className="history-stats">
+        <span>
+          Season Value <strong>{formatCurrency(latest.season_fantasy_points)}</strong>
+        </span>
+        <span>
+          Latest Game <strong>{formatCurrency(latestGamePoints)}</strong>
+        </span>
+        <span>
+          Peak <strong>{formatCurrency(rawMax)}</strong>
+        </span>
+      </div>
+
+      <div className="history-chart-wrap">
+        <svg viewBox={`0 0 ${width} ${height}`} className="history-chart" role="img" aria-label="Player fantasy value by game chart">
+          <defs>
+            <linearGradient id="fantasy-area" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="rgba(47,127,255,0.28)" />
+              <stop offset="100%" stopColor="rgba(47,127,255,0.03)" />
+            </linearGradient>
+          </defs>
+
+          {yTicks.map((tick) => (
+            <g key={tick.y}>
+              <line x1={left} x2={width - right} y1={tick.y} y2={tick.y} className="history-grid-line" />
+              <text x={8} y={tick.y + 4} className="history-grid-label">
+                {formatCurrency(tick.value, 0)}
+              </text>
+            </g>
+          ))}
+
+          {xTicks.map((tick) => (
+            <g key={`tick-${tick}`}>
+              <line x1={xAt(tick)} x2={xAt(tick)} y1={top + plotHeight} y2={top + plotHeight + 4} className="history-grid-line" />
+              <text x={xAt(tick)} y={height - 8} textAnchor="middle" className="history-grid-label">
+                {tick}
+              </text>
+            </g>
+          ))}
+
+          <path d={areaPath} fill="url(#fantasy-area)" />
+          <path d={linePath} className="history-line history-line-alt" />
+          <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r={4} className="history-dot history-dot-alt" />
+        </svg>
+      </div>
+
+      <div className="history-axis-labels">
+        <span>Game 0</span>
+        <span>Game {formatNumber(maxGames)}</span>
+      </div>
+    </article>
+  );
+}
+
 export default function PlayerPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -167,6 +294,7 @@ export default function PlayerPage() {
 
   const [player, setPlayer] = useState<Player | null>(null);
   const [history, setHistory] = useState<PricePoint[]>([]);
+  const [gameHistory, setGameHistory] = useState<PlayerGamePoint[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [side, setSide] = useState<TradeSide>("BUY");
   const [shares, setShares] = useState("");
@@ -189,13 +317,15 @@ export default function PlayerPage() {
   const load = useCallback(async () => {
     if (!validId) return;
     try {
-      const [playerData, historyData, portfolioData] = await Promise.all([
+      const [playerData, historyData, gameHistoryData, portfolioData] = await Promise.all([
         apiGet<Player>(`/players/${playerId}`),
         apiGet<PricePoint[]>(`/players/${playerId}/history?limit=1500`),
+        apiGet<PlayerGamePoint[]>(`/players/${playerId}/game-history?limit=500`),
         apiGet<Portfolio>("/portfolio"),
       ]);
       setPlayer(playerData);
       setHistory(historyData);
+      setGameHistory(gameHistoryData);
       setPortfolio(portfolioData);
       setError("");
     } catch (err: unknown) {
@@ -397,6 +527,7 @@ export default function PlayerPage() {
       )}
 
       <PriceHistoryChart points={history} />
+      {player && <FantasyValueHistoryChart sport={player.sport} points={gameHistory} />}
 
       <section className="trade-layout">
         <article className="trade-card">
