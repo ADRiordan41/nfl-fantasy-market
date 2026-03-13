@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import os
 import re
 import smtplib
@@ -8,6 +9,7 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from decimal import Decimal
 from math import pow
+from time import perf_counter
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -141,8 +143,16 @@ from .schemas import (
 from .seed import init_db, seed
 from .settlement import run_season_closeout
 
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+logger = logging.getLogger("matchupmarket.api")
 app = FastAPI(title="MatchupMarket (Sandbox)")
 APP_READY = False
+REQUEST_LOG_SLOW_MS = max(1, int(os.environ.get("REQUEST_LOG_SLOW_MS", "500")))
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
@@ -155,6 +165,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_request_timing(request: Request, call_next):
+    started_at = perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    except Exception:
+        duration_ms = (perf_counter() - started_at) * 1000
+        logger.exception(
+            "request_failed method=%s path=%s duration_ms=%.1f client=%s",
+            request.method,
+            request.url.path,
+            duration_ms,
+            request.client.host if request.client else "-",
+        )
+        raise
+
+    duration_ms = (perf_counter() - started_at) * 1000
+    response.headers["X-Response-Time-Ms"] = f"{duration_ms:.1f}"
+    log_fn = logger.warning if duration_ms >= REQUEST_LOG_SLOW_MS else logger.info
+    log_fn(
+        "request_complete method=%s path=%s status=%s duration_ms=%.1f client=%s",
+        request.method,
+        request.url.path,
+        status_code,
+        duration_ms,
+        request.client.host if request.client else "-",
+    )
+    return response
 
 
 @app.get("/")
