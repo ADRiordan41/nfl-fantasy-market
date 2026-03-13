@@ -37,6 +37,19 @@ npm run dev
 
 Frontend: `http://localhost:3000` (or `3001` if `3000` is busy)
 
+## Scaling Knobs
+For moderate traffic, the backend now supports basic runtime tuning through env vars:
+- `WEB_CONCURRENCY`: number of API worker processes
+- `UVICORN_TIMEOUT_KEEP_ALIVE`: keep-alive timeout per worker
+- `DB_POOL_SIZE`: SQLAlchemy base connection pool size per API process
+- `DB_MAX_OVERFLOW`: extra burst connections above the base pool
+- `DB_POOL_TIMEOUT_SECONDS`: how long a request waits for a DB connection
+- `DB_POOL_RECYCLE_SECONDS`: when pooled DB connections get recycled
+
+Important:
+- These DB pool settings apply per API worker, so total possible DB connections are roughly `WEB_CONCURRENCY * (DB_POOL_SIZE + DB_MAX_OVERFLOW)`.
+- Start conservatively and size them against your Postgres limits.
+
 ## Quick API Walkthrough (`/docs`)
 1. `GET /sports`
 2. `POST /auth/register` with `{"username":"alice","password":"strong-pass-123"}`
