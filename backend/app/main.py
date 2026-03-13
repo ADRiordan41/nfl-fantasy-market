@@ -702,6 +702,49 @@ def set_cached_json(key: str, value: object, *, ttl_seconds: int) -> object:
     return value
 
 
+def invalidate_cache_keys(*keys: str) -> None:
+    normalized = [str(key).strip() for key in keys if str(key).strip()]
+    if normalized:
+        CACHE.delete_keys(normalized)
+
+
+def invalidate_cache_prefixes(*prefixes: str) -> None:
+    normalized = [str(prefix).strip() for prefix in prefixes if str(prefix).strip()]
+    if normalized:
+        CACHE.delete_prefixes(normalized)
+
+
+def invalidate_market_read_cache(
+    *,
+    player_ids: set[int] | list[int] | tuple[int, ...] = (),
+    sports: set[str] | list[str] | tuple[str, ...] = (),
+    include_sports_catalog: bool = False,
+) -> None:
+    normalized_sports = {
+        normalize_sport_code(sport)
+        for sport in sports
+        if str(sport).strip()
+    }
+    normalized_player_ids = {int(player_id) for player_id in player_ids}
+
+    keys = ["players|ALL", "live_games|ALL"]
+    prefixes = [
+        "market_movers|",
+    ]
+    if include_sports_catalog:
+        keys.append("sports")
+    for sport_code in normalized_sports:
+        keys.append(build_cache_key("players", sport_code))
+        keys.append(build_cache_key("live_games", sport_code))
+    for player_id in normalized_player_ids:
+        keys.append(build_cache_key("player", player_id))
+        prefixes.append(build_cache_key("player_history", player_id))
+        prefixes.append(build_cache_key("player_game_history", player_id))
+
+    invalidate_cache_keys(*keys)
+    invalidate_cache_prefixes(*prefixes)
+
+
 def enforce_ip_rate_limit(
     request: Request,
     *,
@@ -4445,6 +4488,10 @@ def buy(
     )
 
     db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id)},
+        sports={str(player.sport)},
+    )
     return TradeOut(
         player_id=player.id,
         shares=float(qty),
@@ -4554,6 +4601,10 @@ def sell(
     )
 
     db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id)},
+        sports={str(player.sport)},
+    )
     return TradeOut(
         player_id=player.id,
         shares=float(qty),
@@ -4667,6 +4718,10 @@ def short(
     )
 
     db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id)},
+        sports={str(player.sport)},
+    )
     return TradeOut(
         player_id=player.id,
         shares=float(qty),
@@ -4774,6 +4829,10 @@ def cover(
     )
 
     db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id)},
+        sports={str(player.sport)},
+    )
     return TradeOut(
         player_id=player.id,
         shares=float(qty),
@@ -5209,6 +5268,11 @@ def admin_ipo_launch(
         source=f"IPO_LAUNCH_{sport_code}",
     )
     db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id) for player in players},
+        sports={sport_code},
+        include_sports_catalog=True,
+    )
 
     return AdminIpoActionOut(
         sport=sport_code,
@@ -5255,6 +5319,11 @@ def admin_ipo_hide(
         source=f"IPO_HIDE_{sport_code}",
     )
     db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id) for player in players},
+        sports={sport_code},
+        include_sports_catalog=True,
+    )
     closeout_msg = (
         f" Closed out {closed_positions} position(s), {float(closed_shares):.4f} shares total."
         if closed_positions > 0
@@ -5312,6 +5381,11 @@ def admin_clear_sport_stats(
         source="ADMIN_CLEAR_STATS",
     )
     db.commit()
+    invalidate_market_read_cache(
+        player_ids=player_ids,
+        sports={sport_code},
+        include_sports_catalog=True,
+    )
     return AdminStatsClearSportOut(
         sport=sport_code,
         players_affected=len(player_ids),
@@ -5447,6 +5521,10 @@ def admin_stats_publish(
         source="STAT_UPDATE_BULK",
     )
     db.commit()
+    invalidate_market_read_cache(
+        player_ids=touched_player_ids,
+        sports={str(player.sport) for player in players_by_id.values()},
+    )
 
     applied_count = created_count + updated_count
     return AdminStatsPublishOut(
@@ -5491,6 +5569,11 @@ def upsert_weekly_stat(
         )
 
     db.commit()
+    if stat_changed or live_changed or game_point_changed:
+        invalidate_market_read_cache(
+            player_ids={int(player.id)},
+            sports={str(player.sport)},
+        )
     return {
         "ok": True,
         "status": status_label,
@@ -5527,13 +5610,14 @@ def close_season(season: int, db: Session = Depends(get_db)):
             already_closed=True,
         )
 
+    players = db.execute(select(Player)).scalars().all()
     total_payout, users_credited, positions_closed = run_season_closeout(
         db,
         payout_per_point=SEASON_CLOSE_PAYOUT_PER_POINT,
     )
     record_price_points_for_players(
         db=db,
-        players=db.execute(select(Player)).scalars().all(),
+        players=players,
         source="SEASON_CLOSE",
     )
     db.add(SeasonClose(season=season))
@@ -5549,6 +5633,12 @@ def close_season(season: int, db: Session = Depends(get_db)):
             positions_closed=0,
             already_closed=True,
         )
+
+    invalidate_market_read_cache(
+        player_ids={int(player.id) for player in players},
+        sports={str(player.sport) for player in players},
+        include_sports_catalog=True,
+    )
 
     return SeasonCloseOut(
         season=season,
@@ -5661,6 +5751,12 @@ def reset_season(season: int, db: Session = Depends(get_db)):
             players_reset=0,
             already_reset=True,
         )
+
+    invalidate_market_read_cache(
+        player_ids={int(player.id) for player in players},
+        sports={str(player.sport) for player in players},
+        include_sports_catalog=True,
+    )
 
     return SeasonResetOut(
         season=season,

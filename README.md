@@ -56,6 +56,7 @@ Important:
 - Start conservatively and size them against your Postgres limits.
 - When `REDIS_URL` is set, write/auth rate limits and a few hot read endpoints use Redis instead of per-process memory.
 - The current cache targets `/sports`, `/players`, `/market/movers`, `/live/games`, and player detail/history endpoints with short TTLs so reads can fan out across workers more cheaply.
+- Trade, stat, IPO, and season write paths now explicitly invalidate the affected cache keys/prefixes, so the UI does not have to wait for TTL expiry after core market changes.
 - Every HTTP response now includes `X-Response-Time-Ms`, and the backend logs slow requests plus slow SQL statements using the thresholds above.
 
 ## Quick API Walkthrough (`/docs`)

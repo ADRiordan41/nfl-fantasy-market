@@ -79,6 +79,25 @@ class MemoryCache:
         with self._lock:
             self._values[key] = (expires_at, payload)
 
+    def delete_keys(self, keys: list[str]) -> None:
+        if not keys:
+            return
+        with self._lock:
+            for key in keys:
+                self._values.pop(key, None)
+
+    def delete_prefixes(self, prefixes: list[str]) -> None:
+        if not prefixes:
+            return
+        with self._lock:
+            keys_to_delete = [
+                key
+                for key in self._values.keys()
+                if any(key.startswith(prefix) for prefix in prefixes)
+            ]
+            for key in keys_to_delete:
+                self._values.pop(key, None)
+
 
 class RedisCache:
     def __init__(self, client: "redis.Redis[Any]") -> None:
@@ -98,6 +117,20 @@ class RedisCache:
             max(1, int(ttl_seconds)),
             json.dumps(value, separators=(",", ":")),
         )
+
+    def delete_keys(self, keys: list[str]) -> None:
+        if not keys:
+            return
+        cache_keys = [f"cache:{key}" for key in keys]
+        self._client.delete(*cache_keys)
+
+    def delete_prefixes(self, prefixes: list[str]) -> None:
+        if not prefixes:
+            return
+        for prefix in prefixes:
+            matched_keys = list(self._client.scan_iter(match=f"cache:{prefix}*"))
+            if matched_keys:
+                self._client.delete(*matched_keys)
 
 
 def build_redis_client() -> "redis.Redis[Any] | None":
