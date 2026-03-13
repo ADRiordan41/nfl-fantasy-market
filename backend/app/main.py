@@ -464,11 +464,29 @@ def current_proceeds_to_sell(
     )
 
 
+def short_position_close_value(
+    *,
+    player: Player,
+    fundamental_price: Decimal,
+    qty: Decimal,
+    basis_amount: Decimal,
+    market_bias: Decimal,
+) -> Decimal:
+    cover_cost = current_cost_to_buy(
+        player,
+        fundamental_price=fundamental_price,
+        qty=qty,
+        market_bias=market_bias,
+    )
+    return (basis_amount * Decimal("2")) - cover_cost
+
+
 def market_value_for_position(
     *,
     player: Player,
     fundamental_price: Decimal,
     shares: Decimal,
+    basis_amount: Decimal,
     market_bias: Decimal,
 ) -> Decimal:
     if shares > 0:
@@ -479,13 +497,29 @@ def market_value_for_position(
             market_bias=market_bias,
         )
     if shares < 0:
-        return -current_cost_to_buy(
-            player,
+        return short_position_close_value(
+            player=player,
             fundamental_price=fundamental_price,
             qty=abs(shares),
+            basis_amount=basis_amount,
             market_bias=market_bias,
         )
     return Decimal("0")
+
+
+def basis_amount_closed_pro_rata(
+    *,
+    basis_amount: Decimal,
+    shares_before: Decimal,
+    shares_closed: Decimal,
+) -> Decimal:
+    abs_before = abs(shares_before)
+    abs_closed = abs(shares_closed)
+    if basis_amount <= 0 or abs_before <= 0 or abs_closed <= 0:
+        return Decimal("0")
+    if abs_closed >= abs_before:
+        return basis_amount
+    return basis_amount * abs_closed / abs_before
 
 
 def reduce_basis_pro_rata(*, basis_amount: Decimal, shares_before: Decimal, shares_closed: Decimal) -> Decimal:
@@ -1826,6 +1860,7 @@ def build_account_risk_snapshot(
             player=player,
             fundamental_price=fundamental_price,
             shares=shares,
+            basis_amount=basis_amount,
             market_bias=market_bias,
         )
         maintenance_rate = MAINTENANCE_MARGIN_LONG if shares > 0 else MAINTENANCE_MARGIN_SHORT
@@ -1945,13 +1980,19 @@ def enforce_margin_and_maybe_liquidate(
                 break
 
             qty = -position.shares
-            total_cost = current_cost_to_buy(
-                player,
+            closed_basis_amount = basis_amount_closed_pro_rata(
+                basis_amount=position.basis_amount,
+                shares_before=position.shares,
+                shares_closed=qty,
+            )
+            proceeds = short_position_close_value(
+                player=player,
                 fundamental_price=position.fundamental_price,
                 qty=qty,
+                basis_amount=closed_basis_amount,
                 market_bias=market_bias,
             )
-            user.cash_balance = float(Decimal(str(user.cash_balance)) - total_cost)
+            user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
             holding.shares_owned = 0.0
             holding.basis_amount = 0.0
             player.total_shares = float(total_shares + qty)
@@ -1962,8 +2003,8 @@ def enforce_margin_and_maybe_liquidate(
                     player_id=player.id,
                     type="LIQUIDATE_COVER",
                     shares=float(qty),
-                    unit_price=float((total_cost / qty) if qty > 0 else Decimal("0")),
-                    amount=float(-total_cost),
+                    unit_price=float((proceeds / qty) if qty > 0 else Decimal("0")),
+                    amount=float(proceeds),
                 )
             )
             add_price_point(
@@ -4239,19 +4280,19 @@ def quote_short(
         additional_shares=qty,
         spot_before=spot_before,
     )
-    raw_proceeds = current_proceeds_to_sell(
+    raw_notional = current_proceeds_to_sell(
         player,
         fundamental_price=fundamental,
         qty=qty,
         market_bias=market_bias,
     )
-    proceeds = raw_proceeds - calculate_open_position_fee(raw_proceeds)
+    total_cost = raw_notional + calculate_open_position_fee(raw_notional)
     spot_after = current_spot_price(
         player,
         fundamental_price=fundamental,
         market_bias=market_bias - qty,
     )
-    average_price = (proceeds / qty) if qty > 0 else Decimal("0")
+    average_price = (total_cost / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
         player_id=player.id,
@@ -4259,7 +4300,7 @@ def quote_short(
         spot_price_before=float(spot_before),
         spot_price_after=float(spot_after),
         average_price=float(average_price),
-        total=float(proceeds),
+        total=float(total_cost),
     )
 
 
@@ -4304,10 +4345,17 @@ def quote_cover(
         fundamental_price=fundamental,
         market_bias=market_bias,
     )
-    total_cost = current_cost_to_buy(
-        player,
+    basis_amount = holding_basis_amount(holding)
+    closed_basis_amount = basis_amount_closed_pro_rata(
+        basis_amount=basis_amount,
+        shares_before=net_shares,
+        shares_closed=qty,
+    )
+    proceeds = short_position_close_value(
+        player=player,
         fundamental_price=fundamental,
         qty=qty,
+        basis_amount=closed_basis_amount,
         market_bias=market_bias,
     )
     spot_after = current_spot_price(
@@ -4315,7 +4363,7 @@ def quote_cover(
         fundamental_price=fundamental,
         market_bias=market_bias + qty,
     )
-    average_price = (total_cost / qty) if qty > 0 else Decimal("0")
+    average_price = (proceeds / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
         player_id=player.id,
@@ -4323,7 +4371,7 @@ def quote_cover(
         spot_price_before=float(spot_before),
         spot_price_after=float(spot_after),
         average_price=float(average_price),
-        total=float(total_cost),
+        total=float(proceeds),
     )
 
 
@@ -4603,24 +4651,26 @@ def short(
         spot_before=spot_before,
     )
 
-    raw_proceeds = current_proceeds_to_sell(
+    raw_notional = current_proceeds_to_sell(
         player,
         fundamental_price=fundamental,
         qty=qty,
         market_bias=market_bias,
     )
-    proceeds = raw_proceeds - calculate_open_position_fee(raw_proceeds)
+    total_cost = raw_notional + calculate_open_position_fee(raw_notional)
 
     cash = Decimal(str(user.cash_balance))
-    user.cash_balance = float(cash + proceeds)
+    if total_cost > cash:
+        raise HTTPException(400, f"Insufficient cash. Need {float(total_cost):.2f}, have {float(cash):.2f}")
+    user.cash_balance = float(cash - total_cost)
 
     previous_basis_amount = holding_basis_amount(holding)
     holding.shares_owned = float(net_shares - qty)
-    holding.basis_amount = float(previous_basis_amount + proceeds)
+    holding.basis_amount = float(previous_basis_amount + raw_notional)
     player.total_shares = float(total_shares - qty)
     apply_market_bias_delta(player, delta=-qty)
 
-    unit_estimate = (proceeds / qty) if qty > 0 else Decimal("0")
+    unit_estimate = (total_cost / qty) if qty > 0 else Decimal("0")
     db.add(
         Transaction(
             user_id=user.id,
@@ -4628,7 +4678,7 @@ def short(
             type="SHORT",
             shares=float(qty),
             unit_price=float(unit_estimate),
-            amount=float(proceeds),
+            amount=float(-total_cost),
         )
     )
     add_price_point(
@@ -4649,7 +4699,7 @@ def short(
         player_id=player.id,
         shares=float(qty),
         unit_price_estimate=float(unit_estimate),
-        total_cost_or_proceeds=float(proceeds),
+        total_cost_or_proceeds=float(total_cost),
         new_cash_balance=float(user.cash_balance),
         new_total_shares=float(player.total_shares),
     )
@@ -4699,20 +4749,23 @@ def cover(
 
     total_shares = Decimal(str(player.total_shares))
     market_bias = current_market_bias(player)
-    total_cost = current_cost_to_buy(
-        player,
+    previous_basis_amount = holding_basis_amount(holding)
+    closed_basis_amount = basis_amount_closed_pro_rata(
+        basis_amount=previous_basis_amount,
+        shares_before=net_shares,
+        shares_closed=qty,
+    )
+    proceeds = short_position_close_value(
+        player=player,
         fundamental_price=fundamental,
         qty=qty,
+        basis_amount=closed_basis_amount,
         market_bias=market_bias,
     )
 
     cash = Decimal(str(user.cash_balance))
-    if total_cost > cash:
-        raise HTTPException(400, f"Insufficient cash. Need {float(total_cost):.2f}, have {float(cash):.2f}")
+    user.cash_balance = float(cash + proceeds)
 
-    user.cash_balance = float(cash - total_cost)
-
-    previous_basis_amount = holding_basis_amount(holding)
     holding.shares_owned = float(net_shares + qty)
     holding.basis_amount = float(
         reduce_basis_pro_rata(
@@ -4724,7 +4777,7 @@ def cover(
     player.total_shares = float(total_shares + qty)
     apply_market_bias_delta(player, delta=qty)
 
-    unit_estimate = (total_cost / qty) if qty > 0 else Decimal("0")
+    unit_estimate = (proceeds / qty) if qty > 0 else Decimal("0")
     db.add(
         Transaction(
             user_id=user.id,
@@ -4732,7 +4785,7 @@ def cover(
             type="COVER",
             shares=float(qty),
             unit_price=float(unit_estimate),
-            amount=float(-total_cost),
+            amount=float(proceeds),
         )
     )
     add_price_point(
@@ -4753,7 +4806,7 @@ def cover(
         player_id=player.id,
         shares=float(qty),
         unit_price_estimate=float(unit_estimate),
-        total_cost_or_proceeds=float(total_cost),
+        total_cost_or_proceeds=float(proceeds),
         new_cash_balance=float(user.cash_balance),
         new_total_shares=float(player.total_shares),
     )
@@ -5046,17 +5099,19 @@ def close_out_sport_holdings_for_ipo_hide(
 
             if shares < 0:
                 qty = -shares
-                total_cost = current_cost_to_buy(
-                    player,
+                basis_amount = holding_basis_amount(holding)
+                proceeds = short_position_close_value(
+                    player=player,
                     fundamental_price=fundamental,
                     qty=qty,
+                    basis_amount=basis_amount,
                     market_bias=market_bias,
                 )
-                user.cash_balance = float(Decimal(str(user.cash_balance)) - total_cost)
+                user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
                 player.total_shares = float(total_shares + qty)
                 apply_market_bias_delta(player, delta=qty)
-                unit_price = (total_cost / qty) if qty > 0 else Decimal("0")
-                amount = -total_cost
+                unit_price = (proceeds / qty) if qty > 0 else Decimal("0")
+                amount = proceeds
                 tx_type = "IPO_HIDE_COVER"
             else:
                 qty = shares

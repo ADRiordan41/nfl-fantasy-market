@@ -77,10 +77,6 @@ function parseWholeShares(value: string): number | null {
   return parsed > 0 ? parsed : null;
 }
 
-function isCostSide(side: PortfolioTradeSide): boolean {
-  return side === "COVER";
-}
-
 function sideForRow(row: HoldingRow): PortfolioTradeSide {
   return row.shares < 0 ? "COVER" : "SELL";
 }
@@ -190,7 +186,7 @@ export default function PortfolioPage() {
               : Number.NaN;
         const spot = Number(holding.spot_price || player.spot_price);
         const marketValue = Number(holding.market_value);
-        const pnl = shares >= 0 ? marketValue - basisNotional : basisNotional + marketValue;
+        const pnl = marketValue - basisNotional;
         const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
         return {
           id: player.id,
@@ -278,7 +274,7 @@ export default function PortfolioPage() {
     const holdingSlices = rowsWithAllocation
       .map((row) => ({
         key: `player-${row.id}`,
-        label: `${row.name} (${row.team})`,
+        label: `${row.shares < 0 ? "Short " : ""}${row.name} (${row.team})`,
         color: teamPrimaryColor(row.team, row.sport),
         value: Math.max(0, row.marketValue),
         gainLossPct: Number.isFinite(row.pnlPct) ? row.pnlPct : null,
@@ -678,7 +674,7 @@ export default function PortfolioPage() {
                           </div>
                           {quoteById[row.id] && (
                             <p className="subtle portfolio-trade-quote">
-                              {isCostSide(sideForRow(row)) ? "Cost" : "Net"}: {formatCurrency(quoteById[row.id]!.total)} | Avg{" "}
+                              Net: {formatCurrency(quoteById[row.id]!.total)} | Avg{" "}
                               {formatCurrency(quoteById[row.id]!.average_price, 3)}
                             </p>
                           )}
@@ -791,7 +787,7 @@ export default function PortfolioPage() {
                                   <div className="market-quote-with-action">
                                     <div className="market-quote-text">
                                       <p className="market-quote-main">
-                                        {isCostSide(sideForRow(row)) ? "Cost" : "Net"}: {formatCurrency(quoteById[row.id]!.total)}
+                                        Net: {formatCurrency(quoteById[row.id]!.total)}
                                       </p>
                                       <p className="market-quote-sub">Avg {formatCurrency(quoteById[row.id]!.average_price, 3)}</p>
                                     </div>

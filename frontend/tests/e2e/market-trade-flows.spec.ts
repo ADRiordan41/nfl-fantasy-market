@@ -41,7 +41,7 @@ test.describe("Market trade flows", () => {
     ]);
   });
 
-  test("sell flow: preview then execute reduces held shares and increases cash", async ({ page }) => {
+  test("sell flow: preview then execute reduces held shares and releases cash", async ({ page }) => {
     const { playerName, tradeCalls } = await setupMarketTradeMockApi(page, { initialSharesOwned: 9 });
     await loadMarket(page);
 
@@ -52,7 +52,7 @@ test.describe("Market trade flows", () => {
     await expect(row.locator(".market-quote-main")).toContainText("Net: $1,200.00");
 
     await row.getByRole("button", { name: "Execute" }).click();
-    await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$101,200.00");
+    await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$98,500.00");
     await expect(sharesHeldCell(row)).toHaveText("5");
     await expect(sharesShortCell(row)).toHaveText("0");
     await expect(row.getByRole("button", { name: "Preview" })).toBeVisible();
@@ -63,7 +63,7 @@ test.describe("Market trade flows", () => {
     ]);
   });
 
-  test("short flow: preview then execute increases short shares and cash", async ({ page }) => {
+  test("short flow: preview then execute increases short shares and reduces cash", async ({ page }) => {
     const { playerName, tradeCalls } = await setupMarketTradeMockApi(page, { initialSharesOwned: 0 });
     await loadMarket(page);
 
@@ -71,10 +71,10 @@ test.describe("Market trade flows", () => {
     await row.locator(".market-side-select").selectOption("SHORT");
     await row.locator(".market-qty-input").fill("3");
     await row.getByRole("button", { name: "Preview" }).click();
-    await expect(row.locator(".market-quote-main")).toContainText("Net: $900.00");
+    await expect(row.locator(".market-quote-main")).toContainText("Cost: $900.00");
 
     await row.getByRole("button", { name: "Execute" }).click();
-    await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$100,900.00");
+    await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$99,100.00");
     await expect(sharesHeldCell(row)).toHaveText("0");
     await expect(sharesShortCell(row)).toHaveText("3");
     await expect(row.getByRole("button", { name: "Preview" })).toBeVisible();
@@ -85,7 +85,7 @@ test.describe("Market trade flows", () => {
     ]);
   });
 
-  test("cover flow: preview then execute reduces short shares and cash", async ({ page }) => {
+  test("cover flow: preview then execute reduces short shares and releases cash", async ({ page }) => {
     const { playerName, tradeCalls } = await setupMarketTradeMockApi(page, { initialSharesOwned: -7 });
     await loadMarket(page);
 
@@ -93,10 +93,10 @@ test.describe("Market trade flows", () => {
     await row.locator(".market-side-select").selectOption("COVER");
     await row.locator(".market-qty-input").fill("2");
     await row.getByRole("button", { name: "Preview" }).click();
-    await expect(row.locator(".market-quote-main")).toContainText("Cost: $600.00");
+    await expect(row.locator(".market-quote-main")).toContainText("Net: $600.00");
 
     await row.getByRole("button", { name: "Execute" }).click();
-    await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$99,400.00");
+    await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$98,500.00");
     await expect(sharesHeldCell(row)).toHaveText("0");
     await expect(sharesShortCell(row)).toHaveText("5");
     await expect(row.getByRole("button", { name: "Preview" })).toBeVisible();

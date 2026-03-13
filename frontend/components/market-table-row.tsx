@@ -49,7 +49,7 @@ type MarketTableRowProps = {
 export const DEFAULT_MARKET_ROW_HEIGHT = 44;
 
 function isCostSide(side: MarketTradeSide): boolean {
-  return side === "BUY" || side === "COVER";
+  return side === "BUY" || side === "SHORT";
 }
 
 function parseWholeShares(value: string): number | null {

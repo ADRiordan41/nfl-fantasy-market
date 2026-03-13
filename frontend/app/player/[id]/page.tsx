@@ -45,7 +45,7 @@ function formatStamp(value: string): string {
 }
 
 function isCostSide(side: TradeSide): boolean {
-  return side === "BUY" || side === "COVER";
+  return side === "BUY" || side === "SHORT";
 }
 
 function PriceHistoryChart({ points }: { points: PricePoint[] }) {

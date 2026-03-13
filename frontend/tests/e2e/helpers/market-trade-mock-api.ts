@@ -79,11 +79,13 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
   ];
 
   const holdings = new Map<number, number>();
+  const basisByPlayer = new Map<number, number>();
   if (initialSharesOwned !== 0) {
     holdings.set(playerId, initialSharesOwned);
+    basisByPlayer.set(playerId, Math.abs(initialSharesOwned) * spotPrice);
   }
 
-  let cashBalance = 100000;
+  let cashBalance = 100000 - Math.abs(initialSharesOwned) * spotPrice;
   const tradeCalls: TradeCall[] = [];
 
   function computePortfolio() {
@@ -92,10 +94,13 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
       .map(([holdingPlayerId, sharesOwned]) => {
         const player = players.find((row) => row.id === holdingPlayerId);
         const price = player?.spot_price ?? spotPrice;
-        const marketValue = sharesOwned * price;
+        const basisAmount = basisByPlayer.get(holdingPlayerId) ?? Math.abs(sharesOwned) * price;
+        const marketValue = sharesOwned >= 0 ? sharesOwned * price : basisAmount + (basisAmount - Math.abs(sharesOwned) * price);
         return {
           player_id: holdingPlayerId,
           shares_owned: sharesOwned,
+          average_entry_price: Math.abs(sharesOwned) > 0 ? basisAmount / Math.abs(sharesOwned) : 0,
+          basis_amount: basisAmount,
           spot_price: price,
           market_value: marketValue,
           maintenance_margin_required: 0,
@@ -142,24 +147,30 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
 
   function applyTrade(side: TradeSide, shares: number, nextPlayerId: number) {
     const existing = holdings.get(nextPlayerId) ?? 0;
+    const existingBasis = basisByPlayer.get(nextPlayerId) ?? 0;
     const notional = shares * spotPrice;
 
     if (side === "buy") {
       holdings.set(nextPlayerId, existing + shares);
+      basisByPlayer.set(nextPlayerId, existingBasis + notional);
       cashBalance -= notional;
     } else if (side === "sell") {
       holdings.set(nextPlayerId, existing - shares);
+      basisByPlayer.set(nextPlayerId, Math.max(0, existingBasis - (existingBasis * shares) / Math.max(1, Math.abs(existing))));
       cashBalance += notional;
     } else if (side === "short") {
       holdings.set(nextPlayerId, existing - shares);
-      cashBalance += notional;
+      basisByPlayer.set(nextPlayerId, existingBasis + notional);
+      cashBalance -= notional;
     } else {
       holdings.set(nextPlayerId, existing + shares);
-      cashBalance -= notional;
+      basisByPlayer.set(nextPlayerId, Math.max(0, existingBasis - (existingBasis * shares) / Math.max(1, Math.abs(existing))));
+      cashBalance += notional;
     }
 
     if ((holdings.get(nextPlayerId) ?? 0) === 0) {
       holdings.delete(nextPlayerId);
+      basisByPlayer.delete(nextPlayerId);
     }
 
     syncAggregates();
