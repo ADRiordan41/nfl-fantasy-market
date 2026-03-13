@@ -39,6 +39,7 @@ Frontend: `http://localhost:3000` (or `3001` if `3000` is busy)
 
 ## Scaling Knobs
 For moderate traffic, the backend now supports basic runtime tuning through env vars:
+- `REDIS_URL`: optional shared Redis for rate limiting and hot-endpoint caching
 - `WEB_CONCURRENCY`: number of API worker processes
 - `UVICORN_TIMEOUT_KEEP_ALIVE`: keep-alive timeout per worker
 - `DB_POOL_SIZE`: SQLAlchemy base connection pool size per API process
@@ -49,6 +50,8 @@ For moderate traffic, the backend now supports basic runtime tuning through env 
 Important:
 - These DB pool settings apply per API worker, so total possible DB connections are roughly `WEB_CONCURRENCY * (DB_POOL_SIZE + DB_MAX_OVERFLOW)`.
 - Start conservatively and size them against your Postgres limits.
+- When `REDIS_URL` is set, write/auth rate limits and a few hot read endpoints use Redis instead of per-process memory.
+- The current cache targets `/sports`, `/players`, `/market/movers`, `/live/games`, and player detail/history endpoints with short TTLs so reads can fan out across workers more cheaply.
 
 ## Quick API Walkthrough (`/docs`)
 1. `GET /sports`

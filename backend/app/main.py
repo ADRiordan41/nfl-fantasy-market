@@ -3,15 +3,14 @@ import io
 import os
 import re
 import smtplib
-from collections import defaultdict, deque
+from collections import defaultdict
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from decimal import Decimal
 from math import pow
-from threading import Lock
-from time import monotonic
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import and_, delete, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +24,7 @@ from .auth import (
     verify_password,
 )
 from .db import SessionLocal, get_db
+from .infra import CACHE, RATE_LIMITER
 from .mailer import SmtpSettings, build_password_reset_email, send_smtp_message
 from .models import (
     ArchivedHolding,
@@ -276,26 +276,6 @@ RATE_LIMIT_MODERATION_REPORT_CREATE_WINDOW_SECONDS = int(
 )
 
 
-class SlidingWindowRateLimiter:
-    def __init__(self) -> None:
-        self._events: dict[str, deque[float]] = defaultdict(deque)
-        self._lock = Lock()
-
-    def allow(self, key: str, *, limit: int, window_seconds: int) -> tuple[bool, int]:
-        now = monotonic()
-        cutoff = now - window_seconds
-        with self._lock:
-            window = self._events[key]
-            while window and window[0] <= cutoff:
-                window.popleft()
-            if len(window) >= limit:
-                retry_after = max(1, int(window[0] + window_seconds - now))
-                return False, retry_after
-            window.append(now)
-            return True, 0
-
-
-RATE_LIMITER = SlidingWindowRateLimiter()
 SMTP_SETTINGS = SmtpSettings(
     host=SMTP_HOST,
     port=SMTP_PORT,
@@ -660,6 +640,24 @@ def enforce_rate_limit(*, key: str, limit: int, window_seconds: int, label: str)
         detail=f"Rate limit exceeded for {label}. Try again in {retry_after_seconds} seconds.",
         headers={"Retry-After": str(retry_after_seconds)},
     )
+
+
+def build_cache_key(*parts: object) -> str:
+    normalized_parts: list[str] = []
+    for part in parts:
+        text = str(part).strip()
+        normalized_parts.append(text or "-")
+    return "|".join(normalized_parts)
+
+
+def get_cached_json(key: str) -> object | None:
+    return CACHE.get_json(key)
+
+
+def set_cached_json(key: str, value: object, *, ttl_seconds: int) -> object:
+    encoded = jsonable_encoder(value)
+    CACHE.set_json(key, encoded, ttl_seconds)
+    return value
 
 
 def enforce_ip_rate_limit(
@@ -1928,12 +1926,17 @@ def enforce_margin_and_maybe_liquidate(
 
 @app.get("/sports", response_model=list[str])
 def list_sports(db: Session = Depends(get_db)):
+    cache_key = build_cache_key("sports")
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
     sports = db.execute(
         select(Player.sport)
         .distinct()
         .order_by(Player.sport.asc())
     ).scalars().all()
-    return [str(sport).strip().upper() for sport in sports if str(sport).strip()]
+    result = [str(sport).strip().upper() for sport in sports if str(sport).strip()]
+    return set_cached_json(cache_key, result, ttl_seconds=60)
 
 
 @app.get("/players", response_model=list[PlayerOut])
@@ -1941,6 +1944,11 @@ def list_players(
     sport: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    normalized_sport = normalize_sport_code(sport) if sport and sport.strip().upper() != "ALL" else "ALL"
+    cache_key = build_cache_key("players", normalized_sport)
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
     stmt = select(Player).where(Player.ipo_open.is_(True))
     if sport and sport.strip().upper() != "ALL":
         stmt = stmt.where(Player.sport == normalize_sport_code(sport))
@@ -1963,7 +1971,7 @@ def list_players(
                 shares_short=shares_short,
             )
         )
-    return out
+    return set_cached_json(cache_key, out, ttl_seconds=5)
 
 
 @app.get("/market/movers", response_model=MarketMoversOut)
@@ -1973,6 +1981,11 @@ def market_movers(
     sport: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    normalized_sport = normalize_sport_code(sport) if sport and sport.strip().upper() != "ALL" else "ALL"
+    cache_key = build_cache_key("market_movers", limit, window_hours, normalized_sport)
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
     stmt = select(Player).where(Player.ipo_open.is_(True))
     if sport and sport.strip().upper() != "ALL":
         stmt = stmt.where(Player.sport == normalize_sport_code(sport))
@@ -1994,12 +2007,13 @@ def market_movers(
         movers,
         key=lambda row: (row.change_percent, row.change, row.name.lower()),
     )[:limit]
-    return MarketMoversOut(
+    result = MarketMoversOut(
         generated_at=datetime.utcnow(),
         window_hours=window_hours,
         gainers=gainers,
         losers=losers,
     )
+    return set_cached_json(cache_key, result, ttl_seconds=15)
 
 
 @app.get("/live/games", response_model=LiveGamesOut)
@@ -2008,6 +2022,11 @@ def list_live_games(
     _auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
+    normalized_sport = normalize_sport_code(sport) if sport and sport.strip().upper() != "ALL" else "ALL"
+    cache_key = build_cache_key("live_games", normalized_sport)
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
     stmt = select(Player).where(
         Player.ipo_open.is_(True),
         Player.live_now.is_(True),
@@ -2025,12 +2044,13 @@ def list_live_games(
     ).scalars().all()
     generated_at = datetime.utcnow()
     if not players:
-        return LiveGamesOut(
+        result = LiveGamesOut(
             generated_at=generated_at,
             live_games_count=0,
             live_players_count=0,
             games=[],
         )
+        return set_cached_json(cache_key, result, ttl_seconds=5)
 
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id for player in players])
     grouped: dict[str, dict[str, object]] = {}
@@ -2129,16 +2149,21 @@ def list_live_games(
         )
 
     games.sort(key=lambda game: (game.sport, game.game_label.lower(), game.game_id.lower()))
-    return LiveGamesOut(
+    result = LiveGamesOut(
         generated_at=generated_at,
         live_games_count=len(games),
         live_players_count=len(players),
         games=games,
     )
+    return set_cached_json(cache_key, result, ttl_seconds=5)
 
 
 @app.get("/players/{player_id}", response_model=PlayerOut)
 def get_player(player_id: int, db: Session = Depends(get_db)):
+    cache_key = build_cache_key("player", player_id)
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(404, "Player not found")
@@ -2149,7 +2174,7 @@ def get_player(player_id: int, db: Session = Depends(get_db)):
     holdings_snapshot = get_aggregate_holdings_by_player(db, [player_id])
     fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
     shares_held, shares_short = holdings_snapshot.get(player_id, (Decimal("0"), Decimal("0")))
-    return player_to_out(
+    result = player_to_out(
         player=player,
         fundamental_price=fundamental,
         points_to_date=points_to_date,
@@ -2157,6 +2182,7 @@ def get_player(player_id: int, db: Session = Depends(get_db)):
         shares_held=shares_held,
         shares_short=shares_short,
     )
+    return set_cached_json(cache_key, result, ttl_seconds=5)
 
 
 @app.get("/players/{player_id}/history", response_model=list[PricePointOut])
@@ -2165,6 +2191,10 @@ def get_player_history(
     limit: int = Query(default=500, ge=1, le=5000),
     db: Session = Depends(get_db),
 ):
+    cache_key = build_cache_key("player_history", player_id, limit)
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(404, "Player not found")
@@ -2178,7 +2208,7 @@ def get_player_history(
         .limit(limit)
     ).scalars().all()
 
-    return [
+    result = [
         PricePointOut(
             player_id=point.player_id,
             source=point.source,
@@ -2191,6 +2221,7 @@ def get_player_history(
         )
         for point in points
     ]
+    return set_cached_json(cache_key, result, ttl_seconds=15)
 
 
 @app.get("/players/{player_id}/game-history", response_model=list[PlayerGamePointOut])
@@ -2199,6 +2230,10 @@ def get_player_game_history(
     limit: int = Query(default=500, ge=1, le=5000),
     db: Session = Depends(get_db),
 ):
+    cache_key = build_cache_key("player_game_history", player_id, limit)
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
     player = db.get(Player, player_id)
     if not player:
         raise HTTPException(404, "Player not found")
@@ -2212,7 +2247,7 @@ def get_player_game_history(
         .limit(limit)
     ).scalars().all()
 
-    return [
+    result = [
         PlayerGamePointOut(
             player_id=int(row.player_id),
             game_id=str(row.game_id),
@@ -2224,6 +2259,7 @@ def get_player_game_history(
         )
         for row in rows
     ]
+    return set_cached_json(cache_key, result, ttl_seconds=10)
 
 
 def user_to_out(user: User) -> UserOut:
