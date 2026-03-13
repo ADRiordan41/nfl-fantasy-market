@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from sqlalchemy import String, Integer, Numeric, DateTime, ForeignKey, Text, UniqueConstraint, Boolean
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
@@ -240,6 +240,19 @@ class ContentModeration(Base):
 
 class Player(Base):
     __tablename__ = "players"
+    __table_args__ = (
+        Index("ix_players_ipo_open_sport_name", "ipo_open", "sport", "name"),
+        Index(
+            "ix_players_live_board",
+            "ipo_open",
+            "live_now",
+            "sport",
+            "live_game_label",
+            "live_game_status",
+            "name",
+        ),
+    )
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sport: Mapped[str] = mapped_column(String(16), index=True, default="NFL")
     name: Mapped[str] = mapped_column(String(128), index=True)
@@ -267,7 +280,11 @@ class Player(Base):
 
 class Holding(Base):
     __tablename__ = "holdings"
-    __table_args__ = (UniqueConstraint("user_id", "player_id", name="uq_user_player"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "player_id", name="uq_user_player"),
+        Index("ix_holdings_user_player_shares", "user_id", "player_id", "shares_owned"),
+        Index("ix_holdings_player_user_shares", "player_id", "user_id", "shares_owned"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -280,6 +297,9 @@ class Holding(Base):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        Index("ix_transactions_user_player_type_created", "user_id", "player_id", "type", "created_at", "id"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     player_id: Mapped[int | None] = mapped_column(ForeignKey("players.id"), nullable=True, index=True)
@@ -303,6 +323,9 @@ class WeeklyStat(Base):
 
 class PricePoint(Base):
     __tablename__ = "price_points"
+    __table_args__ = (
+        Index("ix_price_points_player_created_id", "player_id", "created_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
@@ -317,7 +340,10 @@ class PricePoint(Base):
 
 class PlayerGamePoint(Base):
     __tablename__ = "player_game_points"
-    __table_args__ = (UniqueConstraint("player_id", "game_id", name="uq_player_game_point"),)
+    __table_args__ = (
+        UniqueConstraint("player_id", "game_id", name="uq_player_game_point"),
+        Index("ix_player_game_points_player_recorded_id", "player_id", "recorded_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)

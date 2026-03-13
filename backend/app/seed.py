@@ -429,6 +429,48 @@ def init_db():
         conn.execute(text("UPDATE players SET market_bias=0 WHERE market_bias IS NULL"))
         conn.execute(text("UPDATE forum_posts SET view_count=0 WHERE view_count IS NULL"))
         conn.execute(text("UPDATE holdings SET basis_amount=0 WHERE basis_amount IS NULL"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_players_ipo_open_sport_name "
+                "ON players(ipo_open, sport, name)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_players_live_board "
+                "ON players(ipo_open, live_now, sport, live_game_label, live_game_status, name)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_holdings_user_player_shares "
+                "ON holdings(user_id, player_id, shares_owned)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_holdings_player_user_shares "
+                "ON holdings(player_id, user_id, shares_owned)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_transactions_user_player_type_created "
+                "ON transactions(user_id, player_id, type, created_at, id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_price_points_player_created_id "
+                "ON price_points(player_id, created_at, id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_player_game_points_player_recorded_id "
+                "ON player_game_points(player_id, recorded_at, id)"
+            )
+        )
     with Session(engine) as db:
         backfill_holding_basis_amounts(db)
         db.commit()
