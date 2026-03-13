@@ -1,0 +1,272 @@
+import os
+import unittest
+from datetime import datetime, timedelta
+from pathlib import Path
+
+TEST_DB_PATH = Path(__file__).resolve().with_name("test_dynamic_pricing.sqlite3")
+os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
+
+from sqlalchemy import select
+
+try:
+    from backend.app.db import Base, SessionLocal, engine
+    from backend.app.main import (
+        AuthContext,
+        admin_stats_publish,
+        get_pricing_context,
+        get_stats_snapshot_by_player,
+        portfolio,
+        short,
+        upsert_weekly_stat,
+    )
+    from backend.app.models import Player, PlayerGamePoint, User, WeeklyStat
+    from backend.app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
+except ModuleNotFoundError:
+    from app.db import Base, SessionLocal, engine
+    from app.main import (
+        AuthContext,
+        admin_stats_publish,
+        get_pricing_context,
+        get_stats_snapshot_by_player,
+        portfolio,
+        short,
+        upsert_weekly_stat,
+    )
+    from app.models import Player, PlayerGamePoint, User, WeeklyStat
+    from app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
+
+
+class DynamicPricingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+        if TEST_DB_PATH.exists():
+            TEST_DB_PATH.unlink()
+
+    def setUp(self) -> None:
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+        self.db = SessionLocal()
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def make_user(self, *, username: str = "foreverhopeful", cash_balance: float = 100000.0) -> User:
+        user = User(
+            username=username,
+            email=f"{username}@example.com",
+            cash_balance=cash_balance,
+            password_hash="test",
+        )
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def make_player(
+        self,
+        *,
+        name: str = "Test Player",
+        team: str = "BUF",
+        sport: str = "NFL",
+        position: str = "QB",
+        base_price: float = 120.0,
+        k: float = 0.002,
+    ) -> Player:
+        player = Player(
+            sport=sport,
+            name=name,
+            team=team,
+            position=position,
+            ipo_open=True,
+            ipo_season=2026,
+            ipo_opened_at=datetime.utcnow() - timedelta(days=1),
+            live_now=False,
+            base_price=base_price,
+            k=k,
+            total_shares=0.0,
+        )
+        self.db.add(player)
+        self.db.commit()
+        self.db.refresh(player)
+        return player
+
+    def auth_for(self, user: User) -> AuthContext:
+        return AuthContext(user=user, session=None)  # type: ignore[arg-type]
+
+    def test_stats_upsert_updates_game_history_and_dynamic_price(self) -> None:
+        admin = self.make_user()
+        player = self.make_player()
+
+        baseline_fundamental, _, _ = get_pricing_context(
+            player,
+            get_stats_snapshot_by_player(self.db, [int(player.id)]),
+        )
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(player.id),
+                week=1,
+                fantasy_points=0.0,
+                live_game_id="BUF-W1",
+                live_game_label="BUF @ NYJ",
+                live_game_status="Final",
+                live_game_fantasy_points=0.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        low_fundamental, _, _ = get_pricing_context(
+            player,
+            get_stats_snapshot_by_player(self.db, [int(player.id)]),
+        )
+        game_rows = self.db.execute(
+            select(PlayerGamePoint).where(PlayerGamePoint.player_id == int(player.id))
+        ).scalars().all()
+
+        self.assertEqual(1, len(game_rows))
+        self.assertLess(float(low_fundamental), float(baseline_fundamental))
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(player.id),
+                week=1,
+                fantasy_points=30.0,
+                live_game_id="BUF-W1",
+                live_game_label="BUF @ NYJ",
+                live_game_status="Final",
+                live_game_fantasy_points=30.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        high_fundamental, _, _ = get_pricing_context(
+            player,
+            get_stats_snapshot_by_player(self.db, [int(player.id)]),
+        )
+        updated_game_rows = self.db.execute(
+            select(PlayerGamePoint).where(PlayerGamePoint.player_id == int(player.id))
+        ).scalars().all()
+
+        self.assertEqual(1, len(updated_game_rows))
+        self.assertGreater(float(high_fundamental), float(low_fundamental))
+        self.assertGreater(float(high_fundamental), float(baseline_fundamental))
+
+    def test_short_position_pnl_moves_with_dynamic_price(self) -> None:
+        user = self.make_user(cash_balance=100000.0)
+        admin = self.make_user(username="admin2", cash_balance=50000.0)
+        player = self.make_player(base_price=120.0)
+
+        short(
+            TradeIn(player_id=int(player.id), shares=5),
+            self.auth_for(user),
+            self.db,
+        )
+        after_open = portfolio(self.auth_for(user), self.db)
+        opened_row = next(row for row in after_open.holdings if row.player_id == int(player.id))
+
+        self.assertLess(after_open.cash_balance, 100000.0)
+        self.assertLess(opened_row.shares_owned, 0)
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(player.id),
+                week=1,
+                fantasy_points=0.0,
+                live_game_id="BUF-W1",
+                live_game_label="BUF @ NYJ",
+                live_game_status="Final",
+                live_game_fantasy_points=0.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+        favorable = portfolio(self.auth_for(user), self.db)
+        favorable_row = next(row for row in favorable.holdings if row.player_id == int(player.id))
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(player.id),
+                week=1,
+                fantasy_points=30.0,
+                live_game_id="BUF-W1",
+                live_game_label="BUF @ NYJ",
+                live_game_status="Final",
+                live_game_fantasy_points=30.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+        adverse = portfolio(self.auth_for(user), self.db)
+        adverse_row = next(row for row in adverse.holdings if row.player_id == int(player.id))
+
+        self.assertGreater(favorable_row.market_value, opened_row.market_value)
+        self.assertGreater(favorable.equity, after_open.equity)
+        self.assertLess(adverse_row.market_value, favorable_row.market_value)
+        self.assertLess(adverse.equity, favorable.equity)
+
+    def test_admin_publish_accepts_multiple_games_same_week(self) -> None:
+        admin = self.make_user()
+        player = self.make_player(name="Josh Allen", team="BUF")
+
+        payload = AdminStatsPreviewIn(
+            csv_text=(
+                "player_name,team,week,fantasy_points,game_id,game_label,game_status,game_fantasy_points,season_fantasy_points\n"
+                "Josh Allen,BUF,1,10,GAME-1,BUF @ NYJ,Final,10,10\n"
+                "Josh Allen,BUF,1,12,GAME-2,MIA @ BUF,Final,12,22\n"
+            ),
+            week_override=None,
+        )
+        result = admin_stats_publish(payload, self.auth_for(admin), self.db)
+
+        weekly_row = self.db.execute(
+            select(WeeklyStat).where(WeeklyStat.player_id == int(player.id), WeeklyStat.week == 1)
+        ).scalar_one()
+        game_rows = self.db.execute(
+            select(PlayerGamePoint)
+            .where(PlayerGamePoint.player_id == int(player.id))
+            .order_by(PlayerGamePoint.game_id.asc())
+        ).scalars().all()
+        snapshot = get_stats_snapshot_by_player(self.db, [int(player.id)])[int(player.id)]
+
+        self.assertEqual(1, result.applied_count)
+        self.assertEqual(1, result.created_count)
+        self.assertEqual(22.0, float(weekly_row.fantasy_points))
+        self.assertEqual(2, len(game_rows))
+        self.assertEqual(22.0, float(snapshot.points_to_date))
+        self.assertEqual(2, snapshot.latest_week)
+
+    def test_weekly_stats_fallback_without_game_history(self) -> None:
+        player = self.make_player()
+        self.db.add(
+            WeeklyStat(
+                player_id=int(player.id),
+                week=3,
+                fantasy_points=18.5,
+            )
+        )
+        self.db.commit()
+
+        snapshot = get_stats_snapshot_by_player(self.db, [int(player.id)])[int(player.id)]
+        fundamental, points_to_date, latest_week = get_pricing_context(
+            player,
+            get_stats_snapshot_by_player(self.db, [int(player.id)]),
+        )
+
+        self.assertEqual(18.5, float(snapshot.points_to_date))
+        self.assertEqual(3, snapshot.latest_week)
+        self.assertEqual(18.5, float(points_to_date))
+        self.assertEqual(3, latest_week)
+        self.assertGreater(float(fundamental), 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
