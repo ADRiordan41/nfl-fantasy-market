@@ -171,7 +171,13 @@ VALID_USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 VALID_SPORT_CODE = re.compile(r"^[A-Z0-9_-]{2,16}$")
 VALID_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-SEASON_WEEKS = int(os.environ.get("SEASON_WEEKS", "18"))
+DEFAULT_SEASON_PROGRESS_UNITS = int(os.environ.get("DEFAULT_SEASON_PROGRESS_UNITS", "100"))
+SPORT_SEASON_PROGRESS_UNITS = {
+    "MLB": int(os.environ.get("MLB_SEASON_GAMES", "162")),
+    "NFL": int(os.environ.get("NFL_SEASON_GAMES", "17")),
+    "NBA": int(os.environ.get("NBA_SEASON_GAMES", "82")),
+    "NHL": int(os.environ.get("NHL_SEASON_GAMES", "82")),
+}
 PERFORMANCE_WEIGHT = Decimal(os.environ.get("PERFORMANCE_WEIGHT", "1.0"))
 SEASON_CLOSE_PAYOUT_PER_POINT = Decimal(os.environ.get("SEASON_CLOSE_PAYOUT_PER_POINT", "1.0"))
 MIN_SPOT_PRICE = Decimal(os.environ.get("MIN_SPOT_PRICE", "1.0"))
@@ -334,6 +340,8 @@ class PlayerStatsSnapshot:
     latest_week: int
     recent_points: Decimal
     recent_sample_size: int
+    latest_game_id: str | None = None
+    uses_game_history: bool = False
 
 
 def calculate_open_position_fee(notional: Decimal) -> Decimal:
@@ -883,6 +891,11 @@ def normalize_text(value: str | None) -> str:
     return " ".join((value or "").strip().lower().split())
 
 
+def season_progress_units_for_sport(sport: str | None) -> int:
+    sport_code = (sport or "").strip().upper()
+    return max(1, SPORT_SEASON_PROGRESS_UNITS.get(sport_code, DEFAULT_SEASON_PROGRESS_UNITS))
+
+
 def detect_column(sample_row: dict[str, str], candidates: tuple[str, ...]) -> str:
     keys_by_normalized = {normalize_text(key): key for key in sample_row.keys()}
     for candidate in candidates:
@@ -1254,22 +1267,61 @@ def get_stats_snapshot_by_player(
     if not player_ids:
         return {}
 
-    rows = db.execute(
+    snapshots: dict[int, PlayerStatsSnapshot] = {}
+    game_rows = db.execute(
+        select(
+            PlayerGamePoint.player_id,
+            PlayerGamePoint.game_id,
+            PlayerGamePoint.game_fantasy_points,
+            PlayerGamePoint.season_fantasy_points,
+        )
+        .where(PlayerGamePoint.player_id.in_(player_ids))
+        .order_by(PlayerGamePoint.player_id.asc(), PlayerGamePoint.recorded_at.asc(), PlayerGamePoint.id.asc())
+    ).all()
+
+    game_rows_by_player: dict[int, list[tuple[str, Decimal, Decimal]]] = defaultdict(list)
+    for player_id, game_id, game_fantasy_points, season_fantasy_points in game_rows:
+        game_rows_by_player[int(player_id)].append(
+            (
+                str(game_id),
+                Decimal(str(game_fantasy_points)),
+                Decimal(str(season_fantasy_points)),
+            )
+        )
+
+    players_with_game_history = set(game_rows_by_player.keys())
+    for player_id, stat_rows in game_rows_by_player.items():
+        latest_game_id, _, season_points = stat_rows[-1]
+        recent_rows = stat_rows[-RECENT_FORM_WINDOW:]
+        recent_points = sum((game_points for _, game_points, _ in recent_rows), Decimal("0"))
+        snapshots[player_id] = PlayerStatsSnapshot(
+            points_to_date=season_points,
+            latest_week=len(stat_rows),
+            recent_points=recent_points,
+            recent_sample_size=len(recent_rows),
+            latest_game_id=latest_game_id,
+            uses_game_history=True,
+        )
+
+    remaining_player_ids = [player_id for player_id in player_ids if player_id not in players_with_game_history]
+    if not remaining_player_ids:
+        return snapshots
+
+    weekly_rows = db.execute(
         select(
             WeeklyStat.player_id,
             WeeklyStat.week,
             WeeklyStat.fantasy_points,
         )
-        .where(WeeklyStat.player_id.in_(player_ids))
+        .where(WeeklyStat.player_id.in_(remaining_player_ids))
         .order_by(WeeklyStat.player_id.asc(), WeeklyStat.week.asc(), WeeklyStat.id.asc())
     ).all()
 
-    by_player: dict[int, list[tuple[int, Decimal]]] = defaultdict(list)
-    for player_id, week, fantasy_points in rows:
-        by_player[int(player_id)].append((int(week), Decimal(str(fantasy_points))))
+    weekly_rows_by_player: dict[int, list[tuple[int, Decimal]]] = defaultdict(list)
+    for player_id, week, fantasy_points in weekly_rows:
+        weekly_rows_by_player[int(player_id)].append((int(week), Decimal(str(fantasy_points))))
 
-    snapshots: dict[int, PlayerStatsSnapshot] = {}
-    for player_id, stat_rows in by_player.items():
+    for player_id, stat_rows in weekly_rows_by_player.items():
         points_to_date = sum((points for _, points in stat_rows), Decimal("0"))
         latest_week = max((week for week, _ in stat_rows), default=0)
         recent_rows = stat_rows[-RECENT_FORM_WINDOW:]
@@ -1279,6 +1331,8 @@ def get_stats_snapshot_by_player(
             latest_week=latest_week,
             recent_points=recent_points,
             recent_sample_size=len(recent_rows),
+            latest_game_id=None,
+            uses_game_history=False,
         )
 
     return snapshots
@@ -1324,33 +1378,40 @@ def get_pricing_context(
             latest_week=0,
             recent_points=Decimal("0"),
             recent_sample_size=0,
+            latest_game_id=None,
+            uses_game_history=False,
         ),
     )
     points_to_date = snapshot.points_to_date
     latest_week = snapshot.latest_week
     recent_points = snapshot.recent_points
     recent_sample_size = snapshot.recent_sample_size
+    live_game_id = normalize_optional_profile_field(player.live_game_id)
 
     if bool(player.live_now) and player.live_game_fantasy_points is not None:
-        live_points = Decimal(str(player.live_game_fantasy_points)) * LIVE_POINTS_WEIGHT
-        points_to_date += live_points
-        recent_points += live_points
-        recent_sample_size = max(1, recent_sample_size)
-        if player.live_week is not None:
-            latest_week = max(latest_week, int(player.live_week))
+        should_overlay_live_points = not snapshot.uses_game_history
+        if snapshot.uses_game_history and live_game_id and snapshot.latest_game_id:
+            should_overlay_live_points = live_game_id != snapshot.latest_game_id
+        if should_overlay_live_points:
+            live_points = Decimal(str(player.live_game_fantasy_points)) * LIVE_POINTS_WEIGHT
+            points_to_date += live_points
+            recent_points += live_points
+            recent_sample_size = max(1, recent_sample_size)
+            if player.live_week is not None:
+                latest_week = max(latest_week, int(player.live_week))
 
     season_anchor = adjusted_base_price(
         projected_points=projected_points,
         points_to_date=points_to_date,
         latest_week=latest_week,
-        season_weeks=SEASON_WEEKS,
+        season_weeks=season_progress_units_for_sport(player.sport),
         performance_weight=PERFORMANCE_WEIGHT,
     )
     recent_anchor = recent_form_anchor(
         projected_points=projected_points,
         recent_points=recent_points,
         recent_sample_size=recent_sample_size,
-        season_weeks=SEASON_WEEKS,
+        season_weeks=season_progress_units_for_sport(player.sport),
         performance_weight=PERFORMANCE_WEIGHT,
     )
     fundamental = blended_fair_value(
@@ -1358,7 +1419,7 @@ def get_pricing_context(
         season_anchor=season_anchor,
         recent_anchor=recent_anchor,
         latest_week=latest_week,
-        season_weeks=SEASON_WEEKS,
+        season_weeks=season_progress_units_for_sport(player.sport),
     )
     return fundamental, points_to_date, latest_week
 

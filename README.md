@@ -126,6 +126,7 @@ docker compose up --build -d api
   - Preview: `POST /admin/stats/preview`
   - Publish: `POST /admin/stats/publish`
   - Direct `POST /stats` is admin-only
+  - Pricing prefers per-game history when `game_id` / `live_game_id` rows exist, so valuations can move with in-progress stat updates instead of waiting for weekly aggregates.
 
 ## Automating Stat Imports
 Use the importer script with a CSV export. `week` remains the pricing progress bucket, but the import can also include per-game fields such as `game_id`, `game_label`, `game_status`, `game_fantasy_points`, and `season_fantasy_points`.
