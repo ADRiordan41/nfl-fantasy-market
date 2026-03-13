@@ -1833,7 +1833,6 @@ def build_account_risk_snapshot(
     positions: list[PositionRisk] = []
     net_exposure = Decimal("0")
     gross_exposure = Decimal("0")
-    margin_used = Decimal("0")
 
     for holding in holdings:
         player = players_by_id.get(int(holding.player_id))
@@ -1863,12 +1862,10 @@ def build_account_risk_snapshot(
             basis_amount=basis_amount,
             market_bias=market_bias,
         )
-        maintenance_rate = MAINTENANCE_MARGIN_LONG if shares > 0 else MAINTENANCE_MARGIN_SHORT
-        maintenance_margin_required = abs(market_value) * maintenance_rate
+        maintenance_margin_required = Decimal("0")
 
         net_exposure += market_value
         gross_exposure += abs(market_value)
-        margin_used += maintenance_margin_required
         positions.append(
             PositionRisk(
                 holding=holding,
@@ -1886,8 +1883,9 @@ def build_account_risk_snapshot(
         )
 
     equity = cash_balance + net_exposure
-    available_buying_power = max(Decimal("0"), equity - margin_used)
-    margin_call = margin_used > 0 and equity < margin_used
+    margin_used = Decimal("0")
+    available_buying_power = max(Decimal("0"), cash_balance)
+    margin_call = False
 
     return AccountRiskSnapshot(
         cash_balance=cash_balance,
@@ -1905,122 +1903,6 @@ def enforce_margin_and_maybe_liquidate(
     db: Session,
     user: User,
 ) -> AccountRiskSnapshot:
-    for _ in range(64):
-        snapshot = build_account_risk_snapshot(
-            db=db,
-            user=user,
-            for_update=True,
-        )
-        if not snapshot.margin_call:
-            return snapshot
-        if not snapshot.positions:
-            return snapshot
-
-        long_positions = sorted(
-            [position for position in snapshot.positions if position.shares > 0],
-            key=lambda position: abs(position.market_value),
-            reverse=True,
-        )
-        short_positions = sorted(
-            [position for position in snapshot.positions if position.shares < 0],
-            key=lambda position: abs(position.market_value),
-            reverse=True,
-        )
-        liquidation_candidates = [*long_positions, *short_positions]
-
-        progressed = False
-        for position in liquidation_candidates:
-            player = position.player
-            holding = position.holding
-            market_bias = current_market_bias(player)
-            total_shares = Decimal(str(player.total_shares))
-
-            if position.shares > 0:
-                qty = position.shares
-                try:
-                    ensure_sell_side_allowed_or_raise(
-                        player=player,
-                        market_bias=market_bias,
-                        qty=qty,
-                        fundamental_price=position.fundamental_price,
-                    )
-                except HTTPException:
-                    continue
-
-                proceeds = current_proceeds_to_sell(
-                    player,
-                    fundamental_price=position.fundamental_price,
-                    qty=qty,
-                    market_bias=market_bias,
-                )
-                user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
-                holding.shares_owned = 0.0
-                holding.basis_amount = 0.0
-                player.total_shares = float(total_shares - qty)
-                apply_market_bias_delta(player, delta=-qty)
-                db.add(
-                    Transaction(
-                        user_id=user.id,
-                        player_id=player.id,
-                        type="LIQUIDATE_SELL",
-                        shares=float(qty),
-                        unit_price=float((proceeds / qty) if qty > 0 else Decimal("0")),
-                        amount=float(proceeds),
-                    )
-                )
-                add_price_point(
-                    db=db,
-                    player=player,
-                    source="MARGIN_LIQUIDATION_SELL",
-                    fundamental_price=position.fundamental_price,
-                    points_to_date=position.points_to_date,
-                    latest_week=position.latest_week,
-                )
-                progressed = True
-                break
-
-            qty = -position.shares
-            closed_basis_amount = basis_amount_closed_pro_rata(
-                basis_amount=position.basis_amount,
-                shares_before=position.shares,
-                shares_closed=qty,
-            )
-            proceeds = short_position_close_value(
-                player=player,
-                fundamental_price=position.fundamental_price,
-                qty=qty,
-                basis_amount=closed_basis_amount,
-                market_bias=market_bias,
-            )
-            user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
-            holding.shares_owned = 0.0
-            holding.basis_amount = 0.0
-            player.total_shares = float(total_shares + qty)
-            apply_market_bias_delta(player, delta=qty)
-            db.add(
-                Transaction(
-                    user_id=user.id,
-                    player_id=player.id,
-                    type="LIQUIDATE_COVER",
-                    shares=float(qty),
-                    unit_price=float((proceeds / qty) if qty > 0 else Decimal("0")),
-                    amount=float(proceeds),
-                )
-            )
-            add_price_point(
-                db=db,
-                player=player,
-                source="MARGIN_LIQUIDATION_COVER",
-                fundamental_price=position.fundamental_price,
-                points_to_date=position.points_to_date,
-                latest_week=position.latest_week,
-            )
-            progressed = True
-            break
-
-        if not progressed:
-            return snapshot
-
     return build_account_risk_snapshot(
         db=db,
         user=user,

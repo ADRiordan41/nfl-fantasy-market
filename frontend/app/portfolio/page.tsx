@@ -265,7 +265,6 @@ export default function PortfolioPage() {
 
   const cash = portfolio?.cash_balance ?? 0;
   const holdings = portfolio?.net_exposure ?? computedNetExposure;
-  const marginCall = portfolio?.margin_call ?? false;
   const totalAccount = portfolio?.equity ?? cash + holdings;
   const pnl = rows.reduce((sum, row) => sum + row.pnl, 0);
   const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
@@ -457,11 +456,6 @@ export default function PortfolioPage() {
 
       {error && <p className="error-box" role="alert">{error}</p>}
 
-      {marginCall && (
-        <p className="error-box" role="alert">
-          Margin call active. Positions may be auto-liquidated until requirements are satisfied.
-        </p>
-      )}
       {globalHalt && (
         <p className="error-box" role="status">
           Trading paused across all sports.{globalHalt.reason ? ` ${globalHalt.reason}` : ""}

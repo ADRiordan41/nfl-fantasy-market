@@ -547,7 +547,6 @@ export default function MarketPage() {
     () => (portfolio?.holdings ?? []).reduce((sum, holding) => sum + Number(holding.market_value || 0), 0),
     [portfolio],
   );
-  const marginCall = portfolio?.margin_call ?? false;
   const equity = portfolio?.equity ?? cashBalance + holdingsValue;
 
   const virtualizationEnabled = visibleRows.length > MARKET_VIRTUALIZATION_THRESHOLD;
@@ -591,11 +590,6 @@ export default function MarketPage() {
         </div>
       </section>
 
-      {marginCall && (
-        <p className="error-box" role="alert">
-          Margin call active. Positions may be automatically liquidated until maintenance requirements are met.
-        </p>
-      )}
       {activeSportTradingHalted && <p className="error-box" role="status">{activeSportHaltMessage}</p>}
 
       <section className="toolbar">

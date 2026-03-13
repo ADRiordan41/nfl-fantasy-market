@@ -117,7 +117,7 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
       net_exposure: netExposure,
       gross_exposure: grossExposure,
       margin_used: 0,
-      available_buying_power: equity,
+      available_buying_power: cashBalance,
       margin_call: false,
       holdings: holdingRows,
     };
