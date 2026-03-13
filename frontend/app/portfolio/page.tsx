@@ -8,7 +8,7 @@ import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
 import { notifySuccess } from "@/lib/toast";
-import type { Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
+import type { AdminAuditTrade, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
 
 type PortfolioTradeSide = "SELL" | "COVER";
 
@@ -118,6 +118,7 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [recentTransactions, setRecentTransactions] = useState<AdminAuditTrade[]>([]);
   const [playersById, setPlayersById] = useState<Record<number, Player>>({});
   const [qtyById, setQtyById] = useState<Record<number, string>>({});
   const [quoteById, setQuoteById] = useState<Record<number, Quote | null>>({});
@@ -142,12 +143,14 @@ export default function PortfolioPage() {
   const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
     try {
-      const [portfolioData, players, me, statusData] = await Promise.all([
+      const [portfolioData, transactions, players, me, statusData] = await Promise.all([
         apiGet<Portfolio>("/portfolio"),
+        apiGet<AdminAuditTrade[]>("/transactions/me?limit=50"),
         apiGet<Player[]>("/players"),
         apiGet<UserAccount>("/auth/me"),
         apiGet<TradingStatus>("/trading/status").catch(() => null),
       ]);
+      setRecentTransactions(transactions);
       setPortfolio(portfolioData);
       setPlayersById(Object.fromEntries(players.map((player) => [player.id, player])));
       setCurrentUser(me);
@@ -583,6 +586,57 @@ export default function PortfolioPage() {
                 })}
               </div>
             </div>
+          </section>
+
+          <section className="table-panel">
+            <div className="portfolio-sport-group-head">
+              <h3>Recent Trades</h3>
+              <p className="subtle portfolio-sport-summary">
+                {recentTransactions.length
+                  ? `${formatNumber(recentTransactions.length)} most recent transactions`
+                  : "No trades recorded yet."}
+              </p>
+            </div>
+            {recentTransactions.length ? (
+              <div className="table-wrap">
+                <table className="portfolio-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Type</th>
+                      <th>Player</th>
+                      <th>Shares</th>
+                      <th>Unit Price</th>
+                      <th>Cash Impact</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTransactions.map((transaction) => (
+                      <tr key={transaction.id}>
+                        <td>{formatStamp(transaction.created_at)}</td>
+                        <td>{transaction.trade_type}</td>
+                        <td>
+                          {transaction.player_id && transaction.player_name ? (
+                            <Link href={`/player/${transaction.player_id}`} className="card-title">
+                              {transaction.player_name}
+                            </Link>
+                          ) : (
+                            <span>{transaction.player_name ?? "System"}</span>
+                          )}
+                        </td>
+                        <td>{formatNumber(transaction.shares, 0)}</td>
+                        <td>{formatCurrency(transaction.unit_price)}</td>
+                        <td className={transaction.amount >= 0 ? "up" : "down"}>
+                          {formatSignedCurrency(transaction.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="subtle">Executed trades will appear here.</p>
+            )}
           </section>
 
           {rowsWithAllocation.length === 0 ? (

@@ -4113,6 +4113,29 @@ def portfolio(
     )
 
 
+@app.get("/transactions/me", response_model=list[AdminAuditTradeOut])
+def list_my_transactions(
+    limit: int = Query(default=100, ge=1, le=500),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(Transaction, Player)
+        .outerjoin(Player, Transaction.player_id == Player.id)
+        .where(Transaction.user_id == int(auth.user.id))
+        .order_by(Transaction.created_at.desc(), Transaction.id.desc())
+        .limit(limit)
+    ).all()
+    return [
+        admin_audit_trade_to_out(
+            transaction=transaction,
+            username=str(auth.user.username),
+            player=player,
+        )
+        for transaction, player in rows
+    ]
+
+
 @app.post("/quote/buy", response_model=QuoteOut)
 def quote_buy(
     trade: TradeIn,
