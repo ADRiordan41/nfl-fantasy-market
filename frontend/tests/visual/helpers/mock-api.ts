@@ -79,13 +79,10 @@ const PORTFOLIO = {
   equity: 101234.11,
   net_exposure: 2145.62,
   gross_exposure: 4120.55,
-  margin_used: 0,
-  available_buying_power: 101234.11,
-  margin_call: false,
   holdings: [
-    { player_id: 101, shares_owned: 14, spot_price: 318.4, market_value: 4457.6, maintenance_margin_required: 0 },
-    { player_id: 102, shares_owned: 9, spot_price: 287.9, market_value: 2591.1, maintenance_margin_required: 0 },
-    { player_id: 103, shares_owned: -6, spot_price: 258.4, market_value: -1550.4, maintenance_margin_required: 0 },
+    { player_id: 101, shares_owned: 14, average_entry_price: 300, basis_amount: 4200, spot_price: 318.4, market_value: 4457.6 },
+    { player_id: 102, shares_owned: 9, average_entry_price: 280, basis_amount: 2520, spot_price: 287.9, market_value: 2591.1 },
+    { player_id: 103, shares_owned: -6, average_entry_price: 260, basis_amount: 1560, spot_price: 258.4, market_value: -1550.4 },
   ],
 };
 

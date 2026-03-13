@@ -3962,9 +3962,6 @@ def portfolio(
         equity=float(snapshot.equity),
         net_exposure=float(snapshot.net_exposure),
         gross_exposure=float(snapshot.gross_exposure),
-        margin_used=float(snapshot.margin_used),
-        available_buying_power=float(snapshot.available_buying_power),
-        margin_call=snapshot.margin_call,
         holdings=[
             PortfolioHolding(
                 player_id=position.player.id,
@@ -3973,7 +3970,6 @@ def portfolio(
                 basis_amount=float(position.basis_amount),
                 spot_price=float(position.spot_price),
                 market_value=float(position.market_value),
-                maintenance_margin_required=float(position.maintenance_margin_required),
             )
             for position in sorted(snapshot.positions, key=lambda position: abs(position.market_value), reverse=True)
         ],

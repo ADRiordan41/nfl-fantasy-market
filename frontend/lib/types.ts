@@ -65,9 +65,6 @@ export type Portfolio = {
   equity: number;
   net_exposure: number;
   gross_exposure: number;
-  margin_used: number;
-  available_buying_power: number;
-  margin_call: boolean;
   holdings: {
     player_id: number;
     shares_owned: number;
@@ -75,7 +72,6 @@ export type Portfolio = {
     basis_amount: number;
     spot_price: number;
     market_value: number;
-    maintenance_margin_required: number;
   }[];
 };
 

@@ -423,16 +423,12 @@ class PortfolioHolding(BaseModel):
     basis_amount: float
     spot_price: float
     market_value: float
-    maintenance_margin_required: float
 
 class PortfolioOut(BaseModel):
     cash_balance: float
     equity: float
     net_exposure: float
     gross_exposure: float
-    margin_used: float
-    available_buying_power: float
-    margin_call: bool
     holdings: list[PortfolioHolding]
 
 class TradeIn(BaseModel):

@@ -103,7 +103,6 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
           basis_amount: basisAmount,
           spot_price: price,
           market_value: marketValue,
-          maintenance_margin_required: 0,
         };
       });
 
@@ -116,9 +115,6 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
       equity,
       net_exposure: netExposure,
       gross_exposure: grossExposure,
-      margin_used: 0,
-      available_buying_power: cashBalance,
-      margin_call: false,
       holdings: holdingRows,
     };
   }
