@@ -441,9 +441,9 @@ export default function AdminStatsPage() {
       <section className="hero-panel">
         <div>
           <p className="eyebrow">Admin</p>
-          <h1>IPO + Weekly Stats Control</h1>
+          <h1>IPO + Stats Control</h1>
           <p className="subtle">
-            Review players by sport, launch IPO visibility per sport/season, and manage weekly stat imports.
+            Review players by sport, launch IPO visibility per sport/season, and import stat rows for pricing and game history.
           </p>
         </div>
       </section>
@@ -1020,13 +1020,13 @@ export default function AdminStatsPage() {
           className="admin-textarea"
           value={csvText}
           onChange={(event) => setCsvText(event.target.value)}
-          placeholder={"player_name,team,week,fantasy_points\nJosh Allen,BUF,1,27.4"}
+          placeholder={"player_name,team,week,fantasy_points,game_id,game_fantasy_points\nJosh Allen,BUF,1,27.4,BUF-KC-W1,27.4"}
         />
 
         <div className="admin-input-row">
           <div>
             <label className="field-label" htmlFor="week-override">
-              Week Override (optional)
+              Progress Week (optional)
             </label>
             <input
               id="week-override"
@@ -1049,7 +1049,7 @@ export default function AdminStatsPage() {
             {busyPreview ? "Previewing..." : "Preview Import"}
           </button>
           <button className="primary-btn" onClick={() => void publishImport()} disabled={busyPublish || busyPreview}>
-            {busyPublish ? "Publishing..." : "Publish Stats"}
+            {busyPublish ? "Publishing..." : "Publish Import"}
           </button>
         </div>
 

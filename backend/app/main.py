@@ -509,7 +509,12 @@ class ParsedStatRow:
     fantasy_points: float | None
     existing_points: float | None
     delta_points: float | None
-    message: str | None
+    game_id: str | None = None
+    game_label: str | None = None
+    game_status: str | None = None
+    game_fantasy_points: float | None = None
+    season_fantasy_points: float | None = None
+    message: str | None = None
 
 
 @app.on_event("startup")
@@ -887,6 +892,21 @@ def detect_column(sample_row: dict[str, str], candidates: tuple[str, ...]) -> st
     return ""
 
 
+def parse_non_negative_float(value: object) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = float(text)
+    except ValueError:
+        return None
+    if parsed < 0:
+        return None
+    return parsed
+
+
 def parse_stats_csv(
     db: Session,
     csv_text: str,
@@ -903,6 +923,17 @@ def parse_stats_csv(
     col_team = detect_column(sample, ("team", "team_abbr", "team_code"))
     col_week = detect_column(sample, ("week",))
     col_points = detect_column(sample, ("fantasy_points", "points", "fpts", "half_ppr_points"))
+    col_game_id = detect_column(sample, ("game_id", "live_game_id", "event_id"))
+    col_game_label = detect_column(sample, ("game_label", "live_game_label", "matchup", "game"))
+    col_game_status = detect_column(sample, ("game_status", "live_game_status", "status"))
+    col_game_points = detect_column(
+        sample,
+        ("game_fantasy_points", "live_game_fantasy_points", "current_fantasy_points", "fantasy_points_game"),
+    )
+    col_season_points = detect_column(
+        sample,
+        ("season_fantasy_points", "points_to_date", "season_points", "total_points"),
+    )
 
     if not col_name or not col_points:
         raise HTTPException(
@@ -920,12 +951,15 @@ def parse_stats_csv(
         by_name.setdefault(key_name, []).append(player)
 
     parsed: list[ParsedStatRow] = []
-    seen_player_week: set[tuple[int, int]] = set()
+    seen_import_rows: set[tuple[int, int, str | None]] = set()
 
     for row_number, row in enumerate(rows, start=2):
         input_name = str(row.get(col_name, "")).strip()
         input_team = str(row.get(col_team, "")).strip() if col_team else ""
         points_raw = str(row.get(col_points, "")).strip()
+        game_id = normalize_optional_profile_field(row.get(col_game_id)) if col_game_id else None
+        game_label = normalize_optional_profile_field(row.get(col_game_label)) if col_game_label else None
+        game_status = normalize_optional_profile_field(row.get(col_game_status)) if col_game_status else None
 
         if not input_name or not points_raw:
             parsed.append(
@@ -941,6 +975,9 @@ def parse_stats_csv(
                     fantasy_points=None,
                     existing_points=None,
                     delta_points=None,
+                    game_id=game_id,
+                    game_label=game_label,
+                    game_status=game_status,
                     message="Missing player name or fantasy points.",
                 )
             )
@@ -962,6 +999,9 @@ def parse_stats_csv(
                         fantasy_points=None,
                         existing_points=None,
                         delta_points=None,
+                        game_id=game_id,
+                        game_label=game_label,
+                        game_status=game_status,
                         message="Missing week and no week override supplied.",
                     )
                 )
@@ -984,6 +1024,9 @@ def parse_stats_csv(
                         fantasy_points=None,
                         existing_points=None,
                         delta_points=None,
+                        game_id=game_id,
+                        game_label=game_label,
+                        game_status=game_status,
                         message="Invalid week value.",
                     )
                 )
@@ -1007,7 +1050,56 @@ def parse_stats_csv(
                     fantasy_points=None,
                     existing_points=None,
                     delta_points=None,
+                    game_id=game_id,
+                    game_label=game_label,
+                    game_status=game_status,
                     message="Invalid fantasy points value.",
+                )
+            )
+            continue
+
+        game_fantasy_points = parse_non_negative_float(row.get(col_game_points)) if col_game_points else None
+        season_fantasy_points = parse_non_negative_float(row.get(col_season_points)) if col_season_points else None
+        if col_game_points and row.get(col_game_points) not in (None, "") and game_fantasy_points is None:
+            parsed.append(
+                ParsedStatRow(
+                    row_number=row_number,
+                    status="ERROR",
+                    input_name=input_name,
+                    input_team=input_team or None,
+                    player_id=None,
+                    matched_name=None,
+                    matched_team=None,
+                    week=row_week,
+                    fantasy_points=float(fantasy_points),
+                    existing_points=None,
+                    delta_points=None,
+                    game_id=game_id,
+                    game_label=game_label,
+                    game_status=game_status,
+                    message="Invalid game fantasy points value.",
+                )
+            )
+            continue
+        if col_season_points and row.get(col_season_points) not in (None, "") and season_fantasy_points is None:
+            parsed.append(
+                ParsedStatRow(
+                    row_number=row_number,
+                    status="ERROR",
+                    input_name=input_name,
+                    input_team=input_team or None,
+                    player_id=None,
+                    matched_name=None,
+                    matched_team=None,
+                    week=row_week,
+                    fantasy_points=float(fantasy_points),
+                    existing_points=None,
+                    delta_points=None,
+                    game_id=game_id,
+                    game_label=game_label,
+                    game_status=game_status,
+                    game_fantasy_points=game_fantasy_points,
+                    message="Invalid season fantasy points value.",
                 )
             )
             continue
@@ -1038,13 +1130,18 @@ def parse_stats_csv(
                     fantasy_points=fantasy_points,
                     existing_points=None,
                     delta_points=None,
+                    game_id=game_id,
+                    game_label=game_label,
+                    game_status=game_status,
+                    game_fantasy_points=game_fantasy_points,
+                    season_fantasy_points=season_fantasy_points,
                     message="No unique player match found.",
                 )
             )
             continue
 
-        dedupe_key = (int(matched_player.id), int(row_week))
-        if dedupe_key in seen_player_week:
+        dedupe_key = (int(matched_player.id), int(row_week), game_id)
+        if dedupe_key in seen_import_rows:
             parsed.append(
                 ParsedStatRow(
                     row_number=row_number,
@@ -1058,23 +1155,42 @@ def parse_stats_csv(
                     fantasy_points=fantasy_points,
                     existing_points=None,
                     delta_points=None,
-                    message="Duplicate player/week row in CSV.",
+                    game_id=game_id,
+                    game_label=game_label,
+                    game_status=game_status,
+                    game_fantasy_points=game_fantasy_points,
+                    season_fantasy_points=season_fantasy_points,
+                    message=(
+                        "Duplicate player/week/game row in CSV."
+                        if game_id
+                        else "Duplicate player/week row in CSV. Add a game_id to import multiple games in one week."
+                    ),
                 )
             )
             continue
-        seen_player_week.add(dedupe_key)
+        seen_import_rows.add(dedupe_key)
 
-        existing = db.execute(
-            select(WeeklyStat).where(
-                WeeklyStat.player_id == matched_player.id,
-                WeeklyStat.week == row_week,
-            )
-        ).scalar_one_or_none()
-        existing_points = float(existing.fantasy_points) if existing else None
+        existing_points: float | None = None
+        if game_id:
+            existing_game = db.execute(
+                select(PlayerGamePoint).where(
+                    PlayerGamePoint.player_id == matched_player.id,
+                    PlayerGamePoint.game_id == game_id,
+                )
+            ).scalar_one_or_none()
+            existing_points = float(existing_game.game_fantasy_points) if existing_game else None
+        else:
+            existing = db.execute(
+                select(WeeklyStat).where(
+                    WeeklyStat.player_id == matched_player.id,
+                    WeeklyStat.week == row_week,
+                )
+            ).scalar_one_or_none()
+            existing_points = float(existing.fantasy_points) if existing else None
         delta_points = (
-            float(fantasy_points - existing_points)
+            float((game_fantasy_points if game_id and game_fantasy_points is not None else fantasy_points) - existing_points)
             if existing_points is not None
-            else float(fantasy_points)
+            else float(game_fantasy_points if game_id and game_fantasy_points is not None else fantasy_points)
         )
 
         parsed.append(
@@ -1090,6 +1206,11 @@ def parse_stats_csv(
                 fantasy_points=float(fantasy_points),
                 existing_points=existing_points,
                 delta_points=delta_points,
+                game_id=game_id,
+                game_label=game_label,
+                game_status=game_status,
+                game_fantasy_points=game_fantasy_points,
+                season_fantasy_points=season_fantasy_points,
                 message=None,
             )
         )
@@ -4649,16 +4770,42 @@ def upsert_player_game_point_from_stat(
     if not game_id:
         return False
 
+    return upsert_player_game_point(
+        db=db,
+        player_id=int(player.id),
+        game_id=game_id,
+        game_label=normalize_optional_profile_field(stat.live_game_label),
+        game_status=normalize_optional_profile_field(stat.live_game_status),
+        game_fantasy_points=float(stat.live_game_fantasy_points or 0.0),
+        season_fantasy_points=float(stat.fantasy_points),
+        recorded_at=datetime.utcnow(),
+    )
+
+
+def upsert_player_game_point(
+    db: Session,
+    *,
+    player_id: int,
+    game_id: str,
+    game_label: str | None,
+    game_status: str | None,
+    game_fantasy_points: float,
+    season_fantasy_points: float,
+    recorded_at: datetime,
+) -> bool:
+    if not game_id:
+        return False
+
     existing = db.execute(
         select(PlayerGamePoint).where(
-            PlayerGamePoint.player_id == int(player.id),
+            PlayerGamePoint.player_id == int(player_id),
             PlayerGamePoint.game_id == game_id,
         )
     ).scalar_one_or_none()
 
     if existing is None:
         existing = PlayerGamePoint(
-            player_id=int(player.id),
+            player_id=int(player_id),
             game_id=game_id,
         )
         db.add(existing)
@@ -4671,11 +4818,11 @@ def upsert_player_game_point_from_stat(
             setattr(existing, attribute, value)
             changed = True
 
-    assign_if_changed("game_label", normalize_optional_profile_field(stat.live_game_label))
-    assign_if_changed("game_status", normalize_optional_profile_field(stat.live_game_status))
-    assign_if_changed("game_fantasy_points", float(stat.live_game_fantasy_points or 0.0))
-    assign_if_changed("season_fantasy_points", float(stat.fantasy_points))
-    assign_if_changed("recorded_at", datetime.utcnow())
+    assign_if_changed("game_label", game_label)
+    assign_if_changed("game_status", game_status)
+    assign_if_changed("game_fantasy_points", float(game_fantasy_points))
+    assign_if_changed("season_fantasy_points", float(season_fantasy_points))
+    assign_if_changed("recorded_at", recorded_at)
     return changed
 
 
@@ -5112,31 +5259,98 @@ def admin_stats_publish(
         week_override=payload.week_override,
     )
 
-    ready_rows = [row for row in parsed_rows if row.status == "READY" and row.player_id and row.week and row.fantasy_points is not None]
+    ready_rows = [
+        row
+        for row in parsed_rows
+        if row.status == "READY" and row.player_id and row.week and row.fantasy_points is not None
+    ]
     skipped_count = sum(1 for row in parsed_rows if row.status == "SKIPPED")
     error_count = sum(1 for row in parsed_rows if row.status == "ERROR")
 
     created_count = 0
     updated_count = 0
     touched_player_ids: set[int] = set()
+    weekly_totals: dict[tuple[int, int], float] = defaultdict(float)
+    players_by_id: dict[int, Player] = {}
+    game_rows_by_player: dict[int, list[ParsedStatRow]] = defaultdict(list)
 
     for row in ready_rows:
-        player = db.get(Player, int(row.player_id))
-        if not player:
-            error_count += 1
-            continue
+        player = players_by_id.get(int(row.player_id))
+        if player is None:
+            player = db.get(Player, int(row.player_id))
+            if not player:
+                error_count += 1
+                continue
+            players_by_id[int(row.player_id)] = player
+        weekly_totals[(int(row.player_id), int(row.week))] += float(row.fantasy_points)
+        if row.game_id:
+            game_rows_by_player[int(row.player_id)].append(row)
+
+    for (player_id, week), fantasy_points in weekly_totals.items():
+        player = players_by_id[player_id]
         status_label, stat_changed = upsert_weekly_stat_for_player(
             db=db,
             player=player,
-            week=int(row.week),
-            fantasy_points=float(row.fantasy_points),
+            week=week,
+            fantasy_points=float(fantasy_points),
         )
         if status_label == "created":
             created_count += 1
         else:
             updated_count += 1
         if stat_changed:
-            touched_player_ids.add(int(player.id))
+            touched_player_ids.add(player_id)
+
+    if game_rows_by_player:
+        player_ids = sorted(game_rows_by_player.keys())
+        existing_rows = db.execute(
+            select(WeeklyStat.player_id, WeeklyStat.week, WeeklyStat.fantasy_points).where(
+                WeeklyStat.player_id.in_(player_ids)
+            )
+        ).all()
+        final_week_totals: dict[int, dict[int, float]] = defaultdict(dict)
+        for player_id, week, fantasy_points in existing_rows:
+            final_week_totals[int(player_id)][int(week)] = float(fantasy_points)
+        for (player_id, week), fantasy_points in weekly_totals.items():
+            final_week_totals[player_id][week] = float(fantasy_points)
+
+        for player_id, rows in game_rows_by_player.items():
+            cumulative_before_week: dict[int, float] = {}
+            running_total = 0.0
+            for week in sorted(final_week_totals[player_id]):
+                cumulative_before_week[week] = running_total
+                running_total += float(final_week_totals[player_id][week])
+
+            running_within_week = 0.0
+            active_week: int | None = None
+            for row in sorted(rows, key=lambda item: (int(item.week or 0), int(item.row_number))):
+                week = int(row.week or 0)
+                if week != active_week:
+                    active_week = week
+                    running_within_week = 0.0
+                game_points = (
+                    float(row.game_fantasy_points)
+                    if row.game_fantasy_points is not None
+                    else float(row.fantasy_points or 0.0)
+                )
+                running_within_week += float(row.fantasy_points or 0.0)
+                season_points = (
+                    float(row.season_fantasy_points)
+                    if row.season_fantasy_points is not None
+                    else float(cumulative_before_week.get(week, 0.0) + running_within_week)
+                )
+                game_changed = upsert_player_game_point(
+                    db=db,
+                    player_id=player_id,
+                    game_id=str(row.game_id),
+                    game_label=row.game_label,
+                    game_status=row.game_status,
+                    game_fantasy_points=game_points,
+                    season_fantasy_points=season_points,
+                    recorded_at=datetime.utcnow(),
+                )
+                if game_changed:
+                    touched_player_ids.add(player_id)
 
     db.flush()
     refresh_players_after_stats_update(

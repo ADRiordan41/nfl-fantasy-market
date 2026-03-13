@@ -127,8 +127,8 @@ docker compose up --build -d api
   - Publish: `POST /admin/stats/publish`
   - Direct `POST /stats` is admin-only
 
-## Automating Weekly Stat Imports
-Use the importer script with a CSV export:
+## Automating Stat Imports
+Use the importer script with a CSV export. `week` remains the pricing progress bucket, but the import can also include per-game fields such as `game_id`, `game_label`, `game_status`, `game_fantasy_points`, and `season_fantasy_points`.
 
 ```bash
 python backend/scripts/import_weekly_stats.py --file backend/data/weekly_stats_template.csv --api-base http://localhost:8000 --dry-run

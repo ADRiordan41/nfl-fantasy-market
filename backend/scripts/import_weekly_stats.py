@@ -71,10 +71,10 @@ def resolve_player(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Import weekly fantasy stats into /stats endpoint")
+    parser = argparse.ArgumentParser(description="Import fantasy stat rows into /stats endpoint")
     parser.add_argument("--file", required=True, help="CSV file path")
     parser.add_argument("--api-base", default="http://localhost:8000", help="API base URL")
-    parser.add_argument("--week", type=int, default=None, help="Optional week override for all rows")
+    parser.add_argument("--week", type=int, default=None, help="Optional progress-week override for all rows")
     parser.add_argument("--token", default=None, help="Bearer token for admin-authenticated /stats endpoint")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print without posting")
     args = parser.parse_args()
