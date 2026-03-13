@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { apiGet, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { LiveGames } from "@/lib/types";
 
 function toMessage(err: unknown): string {
@@ -50,18 +51,7 @@ export default function LivePage() {
     }
   }, [router]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void load();
-    }, 0);
-    const intervalId = window.setInterval(() => {
-      void load();
-    }, 30000);
-    return () => {
-      window.clearTimeout(timer);
-      window.clearInterval(intervalId);
-    };
-  }, [load]);
+  useAdaptivePolling(load, { activeMs: 30_000, hiddenMs: 120_000 });
 
   const sports = useMemo(
     () => ["ALL", ...Array.from(new Set((payload?.games ?? []).map((game) => game.sport))).sort()],

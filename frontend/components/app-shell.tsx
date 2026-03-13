@@ -16,6 +16,7 @@ import {
 import { apiGet, apiPost, clearAuthToken, getAuthToken, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatSignedPercent } from "@/lib/format";
 import { getToastEventName, type ToastEventDetail } from "@/lib/toast";
+import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { MarketMover, MarketMovers, Player, SearchResult, UserAccount } from "@/lib/types";
 
 type NavItem = {
@@ -382,58 +383,47 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [mobileHomeMenuOpen]);
 
-  useEffect(() => {
+  const loadMovers = useCallback(async () => {
     if (pathname === "/auth") {
       setMovers(null);
       return;
     }
-    let cancelled = false;
-    async function loadMovers() {
-      try {
-        const response = await apiGet<MarketMovers>("/market/movers?limit=25&window_hours=24");
-        if (cancelled) return;
-        if (response.gainers.length + response.losers.length > 0) {
-          setMovers(response);
-          return;
-        }
-
-        const players = await apiGet<Player[]>("/players");
-        if (cancelled) return;
-        const fallbackRows: MarketMover[] = [...players]
-          .sort((a, b) => b.spot_price - a.spot_price)
-          .slice(0, 10)
-          .map((player) => ({
-            player_id: player.id,
-            sport: player.sport,
-            name: player.name,
-            team: player.team,
-            position: player.position,
-            spot_price: player.spot_price,
-            reference_price: player.spot_price,
-            change: 0,
-            change_percent: 0,
-            current_at: new Date().toISOString(),
-            reference_at: null,
-          }));
-        setMovers({
-          generated_at: response.generated_at,
-          window_hours: response.window_hours,
-          gainers: fallbackRows,
-          losers: [],
-        });
-      } catch {
-        if (!cancelled) setMovers(null);
+    try {
+      const response = await apiGet<MarketMovers>("/market/movers?limit=25&window_hours=24");
+      if (response.gainers.length + response.losers.length > 0) {
+        setMovers(response);
+        return;
       }
+
+      const players = await apiGet<Player[]>("/players");
+      const fallbackRows: MarketMover[] = [...players]
+        .sort((a, b) => b.spot_price - a.spot_price)
+        .slice(0, 10)
+        .map((player) => ({
+          player_id: player.id,
+          sport: player.sport,
+          name: player.name,
+          team: player.team,
+          position: player.position,
+          spot_price: player.spot_price,
+          reference_price: player.spot_price,
+          change: 0,
+          change_percent: 0,
+          current_at: new Date().toISOString(),
+          reference_at: null,
+        }));
+      setMovers({
+        generated_at: response.generated_at,
+        window_hours: response.window_hours,
+        gainers: fallbackRows,
+        losers: [],
+      });
+    } catch {
+      setMovers(null);
     }
-    void loadMovers();
-    const intervalId = window.setInterval(() => {
-      void loadMovers();
-    }, 60_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
   }, [pathname]);
+
+  useAdaptivePolling(loadMovers, { activeMs: 60_000, hiddenMs: 240_000 });
 
   useEffect(() => {
     const eventName = getToastEventName();

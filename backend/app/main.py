@@ -142,6 +142,7 @@ from .seed import init_db, seed
 from .settlement import run_season_closeout
 
 app = FastAPI(title="MatchupMarket (Sandbox)")
+APP_READY = False
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
@@ -561,6 +562,7 @@ class ParsedStatRow:
 
 @app.on_event("startup")
 def on_startup():
+    global APP_READY
     init_db()
     db = SessionLocal()
     try:
@@ -568,6 +570,20 @@ def on_startup():
         ensure_initial_price_history(db)
     finally:
         db.close()
+    APP_READY = True
+
+
+@app.get("/health", response_model=dict)
+def healthcheck():
+    return {"ok": True}
+
+
+@app.get("/ready", response_model=dict)
+def readiness_check(db: Session = Depends(get_db)):
+    if not APP_READY:
+        raise HTTPException(status_code=503, detail="Application startup is not complete.")
+    db.execute(select(1)).scalar_one()
+    return {"ok": True, "db": "ok"}
 
 
 def normalize_username(raw_username: str | None) -> str:

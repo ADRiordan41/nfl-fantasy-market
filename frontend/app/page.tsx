@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, getAuthToken } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
+import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { ForumPostSummary, Player } from "@/lib/types";
 
 function toMessage(err: unknown): string {
@@ -61,13 +62,7 @@ export default function HomePage() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadSnapshots();
-    const intervalId = window.setInterval(() => {
-      void loadSnapshots();
-    }, 60000);
-    return () => window.clearInterval(intervalId);
-  }, [loadSnapshots]);
+  useAdaptivePolling(loadSnapshots, { activeMs: 60_000, hiddenMs: 240_000 });
 
   useEffect(() => {
     setIsLoggedIn(Boolean(getAuthToken()));

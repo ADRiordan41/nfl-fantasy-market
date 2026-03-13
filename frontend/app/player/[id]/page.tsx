@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
+import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { Player, PlayerGamePoint, Portfolio, PricePoint, Quote } from "@/lib/types";
 
 type TradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
@@ -333,13 +334,7 @@ export default function PlayerPage() {
     }
   }, [handleRequestError, playerId, validId]);
 
-  useEffect(() => {
-    void load();
-    const intervalId = window.setInterval(() => {
-      void load();
-    }, 30000);
-    return () => window.clearInterval(intervalId);
-  }, [load]);
+  useAdaptivePolling(load, { activeMs: 30_000, hiddenMs: 120_000 });
 
   const owned = useMemo(
     () => portfolio?.holdings.find((holding) => holding.player_id === playerId)?.shares_owned ?? 0,

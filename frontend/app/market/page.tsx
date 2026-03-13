@@ -12,6 +12,7 @@ import EmptyStatePanel from "@/components/empty-state-panel";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { notifySuccess } from "@/lib/toast";
+import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
 
 type MarketSortColumn = "name" | "team" | "position" | "spot_price" | "change_pct" | "change_24h_pct";
@@ -224,13 +225,10 @@ export default function MarketPage() {
     [activeSport, handleRequestError, schedulePriceFlashes],
   );
 
-  useEffect(() => {
-    void load();
-    const intervalId = window.setInterval(() => {
-      void load({ silent: true });
-    }, 30000);
-    return () => window.clearInterval(intervalId);
-  }, [load]);
+  useAdaptivePolling(
+    () => load({ silent: true }),
+    { activeMs: 30_000, hiddenMs: 120_000 },
+  );
 
   useEffect(() => {
     let cancelled = false;
