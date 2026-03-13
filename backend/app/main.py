@@ -2056,7 +2056,7 @@ def list_players(
                 shares_short=shares_short,
             )
         )
-    return set_cached_json(cache_key, out, ttl_seconds=5)
+    return set_cached_json(cache_key, out, ttl_seconds=60)
 
 
 @app.get("/market/movers", response_model=MarketMoversOut)
@@ -2098,7 +2098,7 @@ def market_movers(
         gainers=gainers,
         losers=losers,
     )
-    return set_cached_json(cache_key, result, ttl_seconds=15)
+    return set_cached_json(cache_key, result, ttl_seconds=30)
 
 
 @app.get("/live/games", response_model=LiveGamesOut)
@@ -2135,7 +2135,7 @@ def list_live_games(
             live_players_count=0,
             games=[],
         )
-        return set_cached_json(cache_key, result, ttl_seconds=5)
+        return set_cached_json(cache_key, result, ttl_seconds=15)
 
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id for player in players])
     grouped: dict[str, dict[str, object]] = {}
@@ -2240,7 +2240,7 @@ def list_live_games(
         live_players_count=len(players),
         games=games,
     )
-    return set_cached_json(cache_key, result, ttl_seconds=5)
+    return set_cached_json(cache_key, result, ttl_seconds=15)
 
 
 @app.get("/players/{player_id}", response_model=PlayerOut)
@@ -2267,7 +2267,7 @@ def get_player(player_id: int, db: Session = Depends(get_db)):
         shares_held=shares_held,
         shares_short=shares_short,
     )
-    return set_cached_json(cache_key, result, ttl_seconds=5)
+    return set_cached_json(cache_key, result, ttl_seconds=30)
 
 
 @app.get("/players/{player_id}/history", response_model=list[PricePointOut])
@@ -2306,7 +2306,7 @@ def get_player_history(
         )
         for point in points
     ]
-    return set_cached_json(cache_key, result, ttl_seconds=15)
+    return set_cached_json(cache_key, result, ttl_seconds=30)
 
 
 @app.get("/players/{player_id}/game-history", response_model=list[PlayerGamePointOut])
@@ -2344,7 +2344,7 @@ def get_player_game_history(
         )
         for row in rows
     ]
-    return set_cached_json(cache_key, result, ttl_seconds=10)
+    return set_cached_json(cache_key, result, ttl_seconds=30)
 
 
 def user_to_out(user: User) -> UserOut:
