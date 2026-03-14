@@ -2,11 +2,14 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
+import { apiGet, apiPatch, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedNumber } from "@/lib/format";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import type {
   AdminActivityAudit,
+  AdminBotPersona,
+  AdminBotProfile,
+  AdminBotSimulationStatus,
   AdminFeedbackMessage,
   AdminIpoActionResult,
   AdminModerationReport,
@@ -62,6 +65,19 @@ export default function AdminStatsPage() {
   const [busyModerationAction, setBusyModerationAction] = useState("");
   const [activityAudit, setActivityAudit] = useState<AdminActivityAudit | null>(null);
   const [busyActivity, setBusyActivity] = useState(false);
+  const [botProfiles, setBotProfiles] = useState<AdminBotProfile[]>([]);
+  const [botPersonas, setBotPersonas] = useState<AdminBotPersona[]>([]);
+  const [busyBots, setBusyBots] = useState(false);
+  const [busyBotAction, setBusyBotAction] = useState("");
+  const [newBotName, setNewBotName] = useState("");
+  const [newBotUsername, setNewBotUsername] = useState("");
+  const [newBotPersona, setNewBotPersona] = useState("lurker");
+  const [newBotActive, setNewBotActive] = useState(true);
+  const [botRunStatus, setBotRunStatus] = useState<AdminBotSimulationStatus | null>(null);
+  const [botRunDurationSeconds, setBotRunDurationSeconds] = useState("300");
+  const [botRunMinDelayMs, setBotRunMinDelayMs] = useState("800");
+  const [botRunMaxDelayMs, setBotRunMaxDelayMs] = useState("2400");
+  const [botRunStartupStaggerMs, setBotRunStartupStaggerMs] = useState("250");
 
   const [error, setError] = useState("");
 
@@ -189,6 +205,32 @@ export default function AdminStatsPage() {
     }
   }, [handleApiError]);
 
+  const loadBotControl = useCallback(async () => {
+    setBusyBots(true);
+    try {
+      const [personas, bots] = await Promise.all([
+        apiGet<AdminBotPersona[]>("/admin/bots/personas"),
+        apiGet<AdminBotProfile[]>("/admin/bots"),
+      ]);
+      setBotPersonas(personas);
+      setBotProfiles(bots);
+      setNewBotPersona((previous) => previous || personas[0]?.key || "lurker");
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyBots(false);
+    }
+  }, [handleApiError]);
+
+  const loadBotRunStatus = useCallback(async () => {
+    try {
+      const status = await apiGet<AdminBotSimulationStatus>("/admin/bots/run/status");
+      setBotRunStatus(status);
+    } catch (err: unknown) {
+      handleApiError(err);
+    }
+  }, [handleApiError]);
+
   useEffect(() => {
     void loadIpoSports();
     void loadTradingStatus();
@@ -210,6 +252,21 @@ export default function AdminStatsPage() {
   useEffect(() => {
     void loadActivity();
   }, [loadActivity]);
+
+  useEffect(() => {
+    void loadBotControl();
+  }, [loadBotControl]);
+
+  useEffect(() => {
+    void loadBotRunStatus();
+  }, [loadBotRunStatus]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void loadBotRunStatus();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [loadBotRunStatus]);
 
   function buildPayload(): { csv_text: string; week_override: number | null } | null {
     const trimmed = csvText.trim();
@@ -431,9 +488,155 @@ export default function AdminStatsPage() {
     }
   }
 
+  function updateBotDraft(botId: number, patch: Partial<AdminBotProfile>) {
+    setBotProfiles((previous) =>
+      previous.map((bot) => (bot.id === botId ? { ...bot, ...patch } : bot)),
+    );
+  }
+
+  async function createBotProfile() {
+    const name = newBotName.trim();
+    if (!name) {
+      setError("Bot name is required.");
+      return;
+    }
+    if (!newBotPersona.trim()) {
+      setError("Choose a bot persona.");
+      return;
+    }
+
+    setBusyBotAction("create");
+    setError("");
+    try {
+      const created = await apiPost<AdminBotProfile>("/admin/bots", {
+        name,
+        username: newBotUsername.trim() || null,
+        persona: newBotPersona,
+        is_active: newBotActive,
+      });
+      setBotProfiles((previous) => [created, ...previous]);
+      setNewBotName("");
+      setNewBotUsername("");
+      setNewBotActive(true);
+      notifySuccess(`Added bot profile ${created.name}.`);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyBotAction("");
+    }
+  }
+
+  function parseRunNumber(raw: string, label: string): number | null {
+    const parsed = Number.parseInt(raw.trim(), 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setError(`${label} must be a non-negative integer.`);
+      return null;
+    }
+    return parsed;
+  }
+
+  async function saveBotProfile(bot: AdminBotProfile) {
+    setBusyBotAction(`save:${bot.id}`);
+    setError("");
+    try {
+      const updated = await apiPatch<AdminBotProfile>(`/admin/bots/${bot.id}`, {
+        name: bot.name.trim(),
+        persona: bot.persona,
+        is_active: bot.is_active,
+      });
+      setBotProfiles((previous) => previous.map((row) => (row.id === bot.id ? updated : row)));
+      notifySuccess(`Saved ${updated.name}.`);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyBotAction("");
+    }
+  }
+
+  async function toggleBotProfile(bot: AdminBotProfile, isActive: boolean) {
+    setBusyBotAction(`toggle:${bot.id}`);
+    setError("");
+    try {
+      const updated = await apiPatch<AdminBotProfile>(`/admin/bots/${bot.id}`, {
+        name: bot.name.trim(),
+        persona: bot.persona,
+        is_active: isActive,
+      });
+      setBotProfiles((previous) => previous.map((row) => (row.id === bot.id ? updated : row)));
+      notifySuccess(isActive ? `${updated.name} activated.` : `${updated.name} deactivated.`);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyBotAction("");
+    }
+  }
+
+  async function startBotRun() {
+    const durationSeconds = parseRunNumber(botRunDurationSeconds, "Duration");
+    const minDelayMs = parseRunNumber(botRunMinDelayMs, "Min delay");
+    const maxDelayMs = parseRunNumber(botRunMaxDelayMs, "Max delay");
+    const startupStaggerMs = parseRunNumber(botRunStartupStaggerMs, "Startup stagger");
+    if (
+      durationSeconds == null ||
+      minDelayMs == null ||
+      maxDelayMs == null ||
+      startupStaggerMs == null
+    ) {
+      return;
+    }
+    if (durationSeconds < 10) {
+      setError("Duration must be at least 10 seconds.");
+      return;
+    }
+
+    setBusyBotAction("run:start");
+    setError("");
+    try {
+      const status = await apiPost<AdminBotSimulationStatus>("/admin/bots/run/start", {
+        duration_seconds: durationSeconds,
+        min_delay_ms: minDelayMs,
+        max_delay_ms: maxDelayMs,
+        startup_stagger_ms: startupStaggerMs,
+        reuse_existing: true,
+        spoof_forwarded_for: true,
+      });
+      setBotRunStatus(status);
+      notifySuccess(status.message ?? "Bot simulation started.");
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyBotAction("");
+    }
+  }
+
+  async function stopBotRun(force: boolean) {
+    setBusyBotAction(force ? "run:force-stop" : "run:stop");
+    setError("");
+    try {
+      const status = await apiPost<AdminBotSimulationStatus>(
+        `/admin/bots/run/stop?force=${force ? "true" : "false"}`,
+        {},
+      );
+      setBotRunStatus(status);
+      notifySuccess(status.message ?? "Bot simulation updated.");
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyBotAction("");
+    }
+  }
+
   const activeSportOptions = useMemo(
     () => sportSummaries.map((sport) => sport.sport),
     [sportSummaries],
+  );
+
+  const availableBotPersonas = useMemo<AdminBotPersona[]>(
+    () =>
+      botPersonas.length
+        ? botPersonas
+        : [{ key: "lurker", label: "Lurker", description: "", market_maker: false }],
+    [botPersonas],
   );
 
   return (
@@ -823,6 +1026,297 @@ export default function AdminStatsPage() {
               </div>
             </div>
           </>
+        )}
+      </section>
+
+      <section className="table-panel">
+        <h3>Synthetic Bot Control</h3>
+        <p className="subtle">
+          Create named bot profiles, choose personas, and toggle which profiles are active for simulator runs.
+          Active profiles can be loaded by `python backend/scripts/simulate_users.py --use-admin-bots --admin-token &lt;token&gt;`.
+        </p>
+
+        <div className="admin-input-row">
+          <div>
+            <label className="field-label" htmlFor="new-bot-name">
+              Bot Name
+            </label>
+            <input
+              id="new-bot-name"
+              value={newBotName}
+              onChange={(event) => setNewBotName(event.target.value)}
+              placeholder="Market Maker Alpha"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="new-bot-username">
+              Username Override
+            </label>
+            <input
+              id="new-bot-username"
+              value={newBotUsername}
+              onChange={(event) => setNewBotUsername(event.target.value)}
+              placeholder="optional custom username"
+            />
+          </div>
+        </div>
+
+        <div className="admin-input-row">
+          <div>
+            <label className="field-label" htmlFor="new-bot-persona">
+              Persona
+            </label>
+            <select id="new-bot-persona" value={newBotPersona} onChange={(event) => setNewBotPersona(event.target.value)}>
+              {availableBotPersonas.map((persona) => (
+                <option key={persona.key} value={persona.key}>
+                  {persona.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="new-bot-status">
+              Status
+            </label>
+            <select
+              id="new-bot-status"
+              value={newBotActive ? "active" : "inactive"}
+              onChange={(event) => setNewBotActive(event.target.value === "active")}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="admin-actions">
+          <button className="primary-btn" onClick={() => void createBotProfile()} disabled={busyBotAction.length > 0}>
+            {busyBotAction === "create" ? "Adding..." : "Add Bot Profile"}
+          </button>
+          <button onClick={() => void loadBotControl()} disabled={busyBots || busyBotAction.length > 0}>
+            {busyBots ? "Refreshing..." : "Refresh Bot Profiles"}
+          </button>
+        </div>
+
+        <div className="admin-input-row">
+          <div>
+            <label className="field-label" htmlFor="bot-run-duration">
+              Run Duration (seconds)
+            </label>
+            <input
+              id="bot-run-duration"
+              inputMode="numeric"
+              value={botRunDurationSeconds}
+              onChange={(event) => setBotRunDurationSeconds(event.target.value)}
+              placeholder="300"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bot-run-min-delay">
+              Min Delay (ms)
+            </label>
+            <input
+              id="bot-run-min-delay"
+              inputMode="numeric"
+              value={botRunMinDelayMs}
+              onChange={(event) => setBotRunMinDelayMs(event.target.value)}
+              placeholder="800"
+            />
+          </div>
+        </div>
+
+        <div className="admin-input-row">
+          <div>
+            <label className="field-label" htmlFor="bot-run-max-delay">
+              Max Delay (ms)
+            </label>
+            <input
+              id="bot-run-max-delay"
+              inputMode="numeric"
+              value={botRunMaxDelayMs}
+              onChange={(event) => setBotRunMaxDelayMs(event.target.value)}
+              placeholder="2400"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bot-run-stagger">
+              Startup Stagger (ms)
+            </label>
+            <input
+              id="bot-run-stagger"
+              inputMode="numeric"
+              value={botRunStartupStaggerMs}
+              onChange={(event) => setBotRunStartupStaggerMs(event.target.value)}
+              placeholder="250"
+            />
+          </div>
+        </div>
+
+        <div className="admin-actions">
+          <button
+            className="primary-btn"
+            onClick={() => void startBotRun()}
+            disabled={busyBotAction.length > 0 || botRunStatus?.running === true}
+          >
+            {busyBotAction === "run:start" ? "Starting..." : "Start Background Simulation"}
+          </button>
+          <button
+            onClick={() => void stopBotRun(false)}
+            disabled={busyBotAction.length > 0 || botRunStatus?.running !== true}
+          >
+            {busyBotAction === "run:stop" ? "Stopping..." : "Stop Simulation"}
+          </button>
+          <button
+            className="danger-btn"
+            onClick={() => void stopBotRun(true)}
+            disabled={busyBotAction.length > 0 || botRunStatus?.running !== true}
+          >
+            {busyBotAction === "run:force-stop" ? "Stopping..." : "Force Stop"}
+          </button>
+          <button onClick={() => void loadBotRunStatus()} disabled={busyBotAction.length > 0}>
+            Refresh Run Status
+          </button>
+        </div>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>PID</th>
+                <th>Bots</th>
+                <th>Started</th>
+                <th>Completed</th>
+                <th>Files</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <span className={botRunStatus?.running ? "admin-status ready" : "admin-status skipped"}>
+                    {botRunStatus?.running ? "Running" : "Idle"}
+                  </span>
+                  {botRunStatus?.exit_code != null && !botRunStatus.running ? (
+                    <div className="subtle">Exit code: {botRunStatus.exit_code}</div>
+                  ) : null}
+                  {botRunStatus?.message ? <div className="subtle">{botRunStatus.message}</div> : null}
+                </td>
+                <td>{botRunStatus?.pid ?? "--"}</td>
+                <td>{botRunStatus?.active_bot_count ?? 0}</td>
+                <td>{botRunStatus?.started_at ? new Date(botRunStatus.started_at).toLocaleString() : "--"}</td>
+                <td>{botRunStatus?.completed_at ? new Date(botRunStatus.completed_at).toLocaleString() : "--"}</td>
+                <td>
+                  <div className="subtle">Log: {botRunStatus?.log_file ?? "--"}</div>
+                  <div className="subtle">Summary: {botRunStatus?.summary_file ?? "--"}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {!!botPersonas.length && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Persona</th>
+                  <th>Description</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {botPersonas.map((persona) => (
+                  <tr key={persona.key}>
+                    <td>{persona.label}</td>
+                    <td>{persona.description}</td>
+                    <td>{persona.market_maker ? "Market Maker" : "User Sim"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {!botProfiles.length ? (
+          <p className="subtle">No bot profiles yet. Add one above to start building a saved bot roster.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Username</th>
+                  <th>Persona</th>
+                  <th>Status</th>
+                  <th>Account</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {botProfiles.map((bot) => (
+                  <tr key={bot.id}>
+                    <td>
+                      <input
+                        value={bot.name}
+                        onChange={(event) => updateBotDraft(bot.id, { name: event.target.value })}
+                        aria-label={`Bot name for ${bot.username}`}
+                      />
+                    </td>
+                    <td>
+                      <div>{bot.username}</div>
+                      <div className="subtle">Saved username</div>
+                    </td>
+                    <td>
+                      <select
+                        value={bot.persona}
+                        onChange={(event) => updateBotDraft(bot.id, { persona: event.target.value })}
+                        aria-label={`Persona for ${bot.name}`}
+                      >
+                        {availableBotPersonas.map((persona) => (
+                          <option key={persona.key} value={persona.key}>
+                            {persona.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <span className={bot.is_active ? "admin-status ready" : "admin-status skipped"}>
+                        {bot.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={bot.account_exists ? "admin-status ready" : "admin-status skipped"}>
+                        {bot.account_exists ? "Created" : "Pending"}
+                      </span>
+                    </td>
+                    <td>{new Date(bot.updated_at).toLocaleString()}</td>
+                    <td>
+                      <div className="admin-actions">
+                        <button
+                          className="primary-btn"
+                          onClick={() => void saveBotProfile(bot)}
+                          disabled={busyBotAction.length > 0}
+                        >
+                          {busyBotAction === `save:${bot.id}` ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          onClick={() => void toggleBotProfile(bot, !bot.is_active)}
+                          disabled={busyBotAction.length > 0}
+                        >
+                          {busyBotAction === `toggle:${bot.id}`
+                            ? "Saving..."
+                            : bot.is_active
+                              ? "Deactivate"
+                              : "Activate"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

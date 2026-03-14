@@ -4,11 +4,14 @@ import logging
 import os
 import re
 import smtplib
+import subprocess
+import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from decimal import Decimal
 from math import pow
+from pathlib import Path
 from time import perf_counter
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
@@ -31,6 +34,7 @@ from .mailer import SmtpSettings, build_password_reset_email, send_smtp_message
 from .models import (
     ArchivedHolding,
     ArchivedWeeklyStat,
+    BotProfile,
     ContentModeration,
     ContentReport,
     DirectMessage,
@@ -66,6 +70,12 @@ from .pricing import (
 )
 from .schemas import (
     AdminActivityAuditOut,
+    AdminBotPersonaOut,
+    AdminBotProfileCreateIn,
+    AdminBotProfileOut,
+    AdminBotProfileUpdateIn,
+    AdminBotSimulationStartIn,
+    AdminBotSimulationStatusOut,
     AdminAuditDirectMessageOut,
     AdminAuditForumCommentOut,
     AdminAuditForumPostOut,
@@ -213,6 +223,99 @@ SYNTHETIC_PLAYER_NAME = re.compile(r"^[A-Z]{2,3} (QB|RB|WR|TE)\d$")
 VALID_USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 VALID_SPORT_CODE = re.compile(r"^[A-Z0-9_-]{2,16}$")
 VALID_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+BOT_PERSONA_CATALOG = {
+    "lurker": {
+        "label": "Lurker",
+        "description": "Mostly browses the market and community with only occasional trades.",
+        "market_maker": False,
+    },
+    "casual": {
+        "label": "Casual Trader",
+        "description": "Makes light long and short trades while checking portfolio often.",
+        "market_maker": False,
+    },
+    "aggressive": {
+        "label": "Aggressive Trader",
+        "description": "Trades frequently, takes larger positions, and leans into short exposure.",
+        "market_maker": False,
+    },
+    "community": {
+        "label": "Community Regular",
+        "description": "Spends more time in forum, feedback, and inbox flows than on trading.",
+        "market_maker": False,
+    },
+    "market_maker_balanced": {
+        "label": "Market Maker Balanced",
+        "description": "Recycles inventory with two-sided flow to keep the market feeling active.",
+        "market_maker": True,
+    },
+    "market_maker_long": {
+        "label": "Market Maker Long",
+        "description": "Provides steadier long-side liquidity while trimming oversized inventory.",
+        "market_maker": True,
+    },
+}
+BOT_SIMULATION_RUN_DIR = Path(__file__).resolve().parent.parent / "data" / "bot_runs"
+
+
+@dataclass
+class BotSimulationRunState:
+    process: subprocess.Popen | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    requested_by_username: str | None = None
+    duration_seconds: int | None = None
+    min_delay_ms: int | None = None
+    max_delay_ms: int | None = None
+    startup_stagger_ms: int | None = None
+    active_bot_count: int = 0
+    config_file: str | None = None
+    summary_file: str | None = None
+    log_file: str | None = None
+    exit_code: int | None = None
+    message: str | None = None
+    _log_handle: object | None = None
+
+    def refresh(self) -> None:
+        if self.process is None:
+            return
+        next_exit_code = self.process.poll()
+        if next_exit_code is None:
+            return
+        self.exit_code = int(next_exit_code)
+        self.completed_at = self.completed_at or datetime.utcnow()
+        self.process = None
+        if self._log_handle is not None:
+            try:
+                self._log_handle.close()
+            except Exception:
+                pass
+            self._log_handle = None
+
+    def status_out(self) -> AdminBotSimulationStatusOut:
+        self.refresh()
+        running = self.process is not None and self.process.poll() is None
+        pid = int(self.process.pid) if self.process is not None and running else None
+        return AdminBotSimulationStatusOut(
+            running=running,
+            pid=pid,
+            started_at=self.started_at,
+            requested_by_username=self.requested_by_username,
+            duration_seconds=self.duration_seconds,
+            min_delay_ms=self.min_delay_ms,
+            max_delay_ms=self.max_delay_ms,
+            startup_stagger_ms=self.startup_stagger_ms,
+            active_bot_count=self.active_bot_count,
+            config_file=self.config_file,
+            summary_file=self.summary_file,
+            log_file=self.log_file,
+            exit_code=self.exit_code,
+            completed_at=self.completed_at,
+            message=self.message,
+        )
+
+
+BOT_SIMULATION_STATE = BotSimulationRunState()
 
 DEFAULT_SEASON_PROGRESS_UNITS = int(os.environ.get("DEFAULT_SEASON_PROGRESS_UNITS", "100"))
 SPORT_SEASON_PROGRESS_UNITS = {
@@ -621,6 +724,43 @@ def normalize_username(raw_username: str | None) -> str:
             ),
         )
     return username
+
+
+def slugify_bot_name(raw_name: str | None) -> str:
+    collapsed = re.sub(r"[^a-z0-9_-]+", "-", (raw_name or "").strip().lower())
+    collapsed = re.sub(r"-{2,}", "-", collapsed).strip("-_")
+    if not collapsed:
+        collapsed = "bot"
+    return collapsed[:48]
+
+
+def normalize_bot_name(raw_name: str | None) -> str:
+    name = " ".join((raw_name or "").strip().split())
+    if not name:
+        raise HTTPException(400, "Bot name is required.")
+    if len(name) > 64:
+        raise HTTPException(400, "Bot name must be 64 characters or fewer.")
+    return name
+
+
+def normalize_bot_persona(raw_persona: str | None) -> str:
+    persona = (raw_persona or "").strip().lower()
+    if persona not in BOT_PERSONA_CATALOG:
+        raise HTTPException(400, "Invalid bot persona.")
+    return persona
+
+
+def unique_bot_username(db: Session, raw_name: str, *, exclude_bot_id: int | None = None) -> str:
+    base_username = normalize_username(f"bot_{slugify_bot_name(raw_name)}")
+    candidate = base_username
+    suffix = 2
+    while True:
+        stmt = select(BotProfile).where(BotProfile.username == candidate)
+        existing_bot = db.execute(stmt).scalar_one_or_none()
+        if not existing_bot or (exclude_bot_id is not None and int(existing_bot.id) == exclude_bot_id):
+            return candidate
+        candidate = normalize_username(f"{base_username[:58]}-{suffix}")
+        suffix += 1
 
 
 def normalize_email(raw_email: str | None) -> str:
@@ -2754,6 +2894,126 @@ def admin_audit_direct_message_to_out(
     )
 
 
+def bot_profile_to_out(db: Session, profile: BotProfile) -> AdminBotProfileOut:
+    account_exists = db.execute(
+        select(exists().where(User.username == str(profile.username)))
+    ).scalar_one()
+    return AdminBotProfileOut(
+        id=int(profile.id),
+        name=str(profile.name),
+        username=str(profile.username),
+        persona=str(profile.persona),
+        is_active=bool(profile.is_active),
+        account_exists=bool(account_exists),
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
+
+
+def bot_profiles_to_simulation_config(profiles: list[BotProfile]) -> list[dict[str, str]]:
+    return [
+        {
+            "name": str(profile.name),
+            "username": str(profile.username),
+            "persona": str(profile.persona),
+        }
+        for profile in profiles
+    ]
+
+
+def write_bot_simulation_config(run_stamp: str, profiles: list[BotProfile]) -> tuple[Path, int]:
+    BOT_SIMULATION_RUN_DIR.mkdir(parents=True, exist_ok=True)
+    config_path = BOT_SIMULATION_RUN_DIR / f"bot-config-{run_stamp}.json"
+    payload = bot_profiles_to_simulation_config(profiles)
+    config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return config_path, len(payload)
+
+
+def start_bot_simulation_process(
+    *,
+    admin_username: str,
+    profiles: list[BotProfile],
+    payload: AdminBotSimulationStartIn,
+) -> AdminBotSimulationStatusOut:
+    BOT_SIMULATION_STATE.refresh()
+    if BOT_SIMULATION_STATE.process is not None and BOT_SIMULATION_STATE.process.poll() is None:
+        raise HTTPException(409, "A bot simulation is already running.")
+
+    if not profiles:
+        raise HTTPException(400, "No active bot profiles are available to simulate.")
+
+    BOT_SIMULATION_RUN_DIR.mkdir(parents=True, exist_ok=True)
+    run_stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    config_path, active_bot_count = write_bot_simulation_config(run_stamp, profiles)
+    summary_path = BOT_SIMULATION_RUN_DIR / f"bot-summary-{run_stamp}.json"
+    log_path = BOT_SIMULATION_RUN_DIR / f"bot-run-{run_stamp}.log"
+    script_path = Path(__file__).resolve().parent.parent / "scripts" / "simulate_users.py"
+
+    command = [
+        sys.executable,
+        str(script_path),
+        "--base-url",
+        "http://127.0.0.1:8000",
+        "--bot-config-file",
+        str(config_path),
+        "--duration-seconds",
+        str(int(payload.duration_seconds)),
+        "--min-delay-ms",
+        str(int(payload.min_delay_ms)),
+        "--max-delay-ms",
+        str(int(payload.max_delay_ms)),
+        "--startup-stagger-ms",
+        str(int(payload.startup_stagger_ms)),
+        "--summary-file",
+        str(summary_path),
+    ]
+    if payload.reuse_existing:
+        command.append("--reuse-existing")
+    if payload.spoof_forwarded_for:
+        command.append("--spoof-forwarded-for")
+
+    log_handle = open(log_path, "a", encoding="utf-8")
+    process = subprocess.Popen(
+        command,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        cwd=str(Path(__file__).resolve().parent.parent.parent),
+    )
+    BOT_SIMULATION_STATE.process = process
+    BOT_SIMULATION_STATE.started_at = datetime.utcnow()
+    BOT_SIMULATION_STATE.completed_at = None
+    BOT_SIMULATION_STATE.requested_by_username = admin_username
+    BOT_SIMULATION_STATE.duration_seconds = int(payload.duration_seconds)
+    BOT_SIMULATION_STATE.min_delay_ms = int(payload.min_delay_ms)
+    BOT_SIMULATION_STATE.max_delay_ms = int(payload.max_delay_ms)
+    BOT_SIMULATION_STATE.startup_stagger_ms = int(payload.startup_stagger_ms)
+    BOT_SIMULATION_STATE.active_bot_count = int(active_bot_count)
+    BOT_SIMULATION_STATE.config_file = str(config_path)
+    BOT_SIMULATION_STATE.summary_file = str(summary_path)
+    BOT_SIMULATION_STATE.log_file = str(log_path)
+    BOT_SIMULATION_STATE.exit_code = None
+    BOT_SIMULATION_STATE.message = f"Started bot simulation with {active_bot_count} active bot profile(s)."
+    BOT_SIMULATION_STATE._log_handle = log_handle
+    return BOT_SIMULATION_STATE.status_out()
+
+
+def stop_bot_simulation_process(*, force: bool = False) -> AdminBotSimulationStatusOut:
+    BOT_SIMULATION_STATE.refresh()
+    process = BOT_SIMULATION_STATE.process
+    if process is None or process.poll() is not None:
+        BOT_SIMULATION_STATE.message = "No bot simulation is currently running."
+        return BOT_SIMULATION_STATE.status_out()
+
+    if force:
+        process.kill()
+        BOT_SIMULATION_STATE.message = "Bot simulation force-stopped."
+    else:
+        process.terminate()
+        BOT_SIMULATION_STATE.message = "Bot simulation stop requested."
+    BOT_SIMULATION_STATE.completed_at = datetime.utcnow()
+    return BOT_SIMULATION_STATE.status_out()
+
+
 @app.post("/auth/register", response_model=AuthSessionOut)
 def register(
     payload: AuthRegisterIn,
@@ -3456,6 +3716,109 @@ def admin_feedback_list(
         )
         for feedback, username in rows
     ]
+
+
+@app.get("/admin/bots/personas", response_model=list[AdminBotPersonaOut])
+def admin_bot_personas(_admin: AuthContext = Depends(get_admin_context)):
+    return [
+        AdminBotPersonaOut(
+            key=key,
+            label=str(meta["label"]),
+            description=str(meta["description"]),
+            market_maker=bool(meta["market_maker"]),
+        )
+        for key, meta in BOT_PERSONA_CATALOG.items()
+    ]
+
+
+@app.get("/admin/bots", response_model=list[AdminBotProfileOut])
+def admin_bot_list(
+    active_only: bool = Query(default=False),
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    stmt = select(BotProfile).order_by(BotProfile.is_active.desc(), BotProfile.updated_at.desc(), BotProfile.id.desc())
+    if active_only:
+        stmt = stmt.where(BotProfile.is_active.is_(True))
+    profiles = db.execute(stmt).scalars().all()
+    return [bot_profile_to_out(db, profile) for profile in profiles]
+
+
+@app.post("/admin/bots", response_model=AdminBotProfileOut)
+def admin_bot_create(
+    payload: AdminBotProfileCreateIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    name = normalize_bot_name(payload.name)
+    persona = normalize_bot_persona(payload.persona)
+    username = normalize_username(payload.username) if payload.username else unique_bot_username(db, name)
+
+    existing = db.execute(select(BotProfile).where(BotProfile.username == username)).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, f"Bot username '{username}' already exists.")
+
+    profile = BotProfile(
+        name=name,
+        username=username,
+        persona=persona,
+        is_active=bool(payload.is_active),
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return bot_profile_to_out(db, profile)
+
+
+@app.patch("/admin/bots/{bot_id}", response_model=AdminBotProfileOut)
+def admin_bot_update(
+    bot_id: int,
+    payload: AdminBotProfileUpdateIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    profile = db.get(BotProfile, int(bot_id))
+    if not profile:
+        raise HTTPException(404, "Bot not found.")
+
+    profile.name = normalize_bot_name(payload.name)
+    profile.persona = normalize_bot_persona(payload.persona)
+    profile.is_active = bool(payload.is_active)
+    profile.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(profile)
+    return bot_profile_to_out(db, profile)
+
+
+@app.get("/admin/bots/run/status", response_model=AdminBotSimulationStatusOut)
+def admin_bot_run_status(_admin: AuthContext = Depends(get_admin_context)):
+    return BOT_SIMULATION_STATE.status_out()
+
+
+@app.post("/admin/bots/run/start", response_model=AdminBotSimulationStatusOut)
+def admin_bot_run_start(
+    payload: AdminBotSimulationStartIn,
+    admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    profiles = db.execute(
+        select(BotProfile)
+        .where(BotProfile.is_active.is_(True))
+        .order_by(BotProfile.updated_at.desc(), BotProfile.id.desc())
+    ).scalars().all()
+    return start_bot_simulation_process(
+        admin_username=str(admin.user.username),
+        profiles=profiles,
+        payload=payload,
+    )
+
+
+@app.post("/admin/bots/run/stop", response_model=AdminBotSimulationStatusOut)
+def admin_bot_run_stop(
+    force: bool = Query(default=False),
+    _admin: AuthContext = Depends(get_admin_context),
+):
+    return stop_bot_simulation_process(force=bool(force))
 
 
 @app.get("/admin/activity", response_model=AdminActivityAuditOut)

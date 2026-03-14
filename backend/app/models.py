@@ -184,6 +184,24 @@ class FeedbackMessage(Base):
     user: Mapped["User"] = relationship(back_populates="feedback_messages")
 
 
+class BotProfile(Base):
+    __tablename__ = "bot_profiles"
+    __table_args__ = (UniqueConstraint("username", name="uq_bot_profile_username"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), index=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    persona: Mapped[str] = mapped_column(String(48), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        index=True,
+    )
+
+
 class ContentReport(Base):
     __tablename__ = "content_reports"
 

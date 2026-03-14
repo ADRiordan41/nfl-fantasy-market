@@ -110,6 +110,64 @@ class AdminFeedbackOut(FeedbackOut):
     username: str
 
 
+class AdminBotPersonaOut(BaseModel):
+    key: str
+    label: str
+    description: str
+    market_maker: bool = False
+
+
+class AdminBotProfileCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    username: str | None = Field(default=None, min_length=1, max_length=64)
+    persona: str = Field(min_length=2, max_length=48)
+    is_active: bool = True
+
+
+class AdminBotProfileUpdateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    persona: str = Field(min_length=2, max_length=48)
+    is_active: bool
+
+
+class AdminBotProfileOut(BaseModel):
+    id: int
+    name: str
+    username: str
+    persona: str
+    is_active: bool
+    account_exists: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminBotSimulationStartIn(BaseModel):
+    duration_seconds: int = Field(default=300, ge=10, le=86_400)
+    min_delay_ms: int = Field(default=800, ge=0, le=60_000)
+    max_delay_ms: int = Field(default=2400, ge=0, le=60_000)
+    startup_stagger_ms: int = Field(default=250, ge=0, le=60_000)
+    reuse_existing: bool = True
+    spoof_forwarded_for: bool = True
+
+
+class AdminBotSimulationStatusOut(BaseModel):
+    running: bool
+    pid: int | None = None
+    started_at: datetime | None = None
+    requested_by_username: str | None = None
+    duration_seconds: int | None = None
+    min_delay_ms: int | None = None
+    max_delay_ms: int | None = None
+    startup_stagger_ms: int | None = None
+    active_bot_count: int = 0
+    config_file: str | None = None
+    summary_file: str | None = None
+    log_file: str | None = None
+    exit_code: int | None = None
+    completed_at: datetime | None = None
+    message: str | None = None
+
+
 class AdminAuditSessionOut(BaseModel):
     id: int
     user_id: int

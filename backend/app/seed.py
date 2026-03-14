@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .auth import hash_password
 from .db import Base, engine
-from .models import Holding, Player, Transaction, User
+from .models import BotProfile, Holding, Player, Transaction, User
 
 STAR_PLAYER_CATALOG: list[dict[str, object]] = [
     # Quarterbacks
@@ -423,12 +423,21 @@ def init_db():
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS market_bias NUMERIC(18,6) DEFAULT 0"))
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS market_bias_updated_at TIMESTAMP"))
         conn.execute(text("ALTER TABLE holdings ADD COLUMN IF NOT EXISTS basis_amount NUMERIC(18,6) DEFAULT 0"))
+        conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS name VARCHAR(64)"))
+        conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS username VARCHAR(64)"))
+        conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS persona VARCHAR(48)"))
+        conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
+        conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP"))
         conn.execute(text("UPDATE players SET sport='NFL' WHERE sport IS NULL OR sport=''"))
         conn.execute(text("UPDATE players SET ipo_open=FALSE WHERE ipo_open IS NULL"))
         conn.execute(text("UPDATE players SET live_now=FALSE WHERE live_now IS NULL"))
         conn.execute(text("UPDATE players SET market_bias=0 WHERE market_bias IS NULL"))
         conn.execute(text("UPDATE forum_posts SET view_count=0 WHERE view_count IS NULL"))
         conn.execute(text("UPDATE holdings SET basis_amount=0 WHERE basis_amount IS NULL"))
+        conn.execute(text("UPDATE bot_profiles SET is_active=TRUE WHERE is_active IS NULL"))
+        conn.execute(text("UPDATE bot_profiles SET created_at=NOW() WHERE created_at IS NULL"))
+        conn.execute(text("UPDATE bot_profiles SET updated_at=NOW() WHERE updated_at IS NULL"))
         conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_players_ipo_open_sport_name "
@@ -471,6 +480,7 @@ def init_db():
                 "ON player_game_points(player_id, recorded_at, id)"
             )
         )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_bot_profiles_username_unique ON bot_profiles(username)"))
     with Session(engine) as db:
         backfill_holding_basis_amounts(db)
         db.commit()

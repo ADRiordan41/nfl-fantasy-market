@@ -335,6 +335,42 @@ export type AdminFeedbackMessage = FeedbackMessage & {
   username: string;
 };
 
+export type AdminBotPersona = {
+  key: string;
+  label: string;
+  description: string;
+  market_maker: boolean;
+};
+
+export type AdminBotProfile = {
+  id: number;
+  name: string;
+  username: string;
+  persona: string;
+  is_active: boolean;
+  account_exists: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminBotSimulationStatus = {
+  running: boolean;
+  pid: number | null;
+  started_at: string | null;
+  requested_by_username: string | null;
+  duration_seconds: number | null;
+  min_delay_ms: number | null;
+  max_delay_ms: number | null;
+  startup_stagger_ms: number | null;
+  active_bot_count: number;
+  config_file: string | null;
+  summary_file: string | null;
+  log_file: string | null;
+  exit_code: number | null;
+  completed_at: string | null;
+  message: string | null;
+};
+
 export type ModerationReport = {
   id: number;
   content_type: string;
