@@ -2929,6 +2929,14 @@ def write_bot_simulation_config(run_stamp: str, profiles: list[BotProfile]) -> t
     return config_path, len(payload)
 
 
+def bot_simulation_api_base() -> str:
+    configured = (os.environ.get("BOT_SIMULATION_API_BASE") or "").strip().rstrip("/")
+    if configured:
+        return configured
+    port = (os.environ.get("PORT") or "8000").strip() or "8000"
+    return f"http://127.0.0.1:{port}"
+
+
 def start_bot_simulation_process(
     *,
     admin_username: str,
@@ -2953,7 +2961,7 @@ def start_bot_simulation_process(
         sys.executable,
         str(script_path),
         "--base-url",
-        "http://127.0.0.1:8000",
+        bot_simulation_api_base(),
         "--bot-config-file",
         str(config_path),
         "--duration-seconds",
