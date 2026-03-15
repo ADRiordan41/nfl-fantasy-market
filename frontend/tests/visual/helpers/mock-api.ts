@@ -19,6 +19,8 @@ const PLAYERS = [
     shares_held: 184.0,
     shares_short: 39.0,
     spot_price: 318.4,
+    bid_price: 317.2,
+    ask_price: 319.5,
     live: null,
   },
   {
@@ -36,6 +38,8 @@ const PLAYERS = [
     shares_held: 121.0,
     shares_short: 28.0,
     spot_price: 287.9,
+    bid_price: 286.8,
+    ask_price: 289.1,
     live: null,
   },
   {
@@ -53,6 +57,8 @@ const PLAYERS = [
     shares_held: 92.0,
     shares_short: 110.0,
     spot_price: 258.4,
+    bid_price: 257.5,
+    ask_price: 259.4,
     live: null,
   },
   {
@@ -70,6 +76,8 @@ const PLAYERS = [
     shares_held: 54.0,
     shares_short: 12.0,
     spot_price: 328.9,
+    bid_price: 327.8,
+    ask_price: 330.2,
     live: null,
   },
 ];
@@ -277,6 +285,104 @@ const PLAYER_HISTORY_BY_ID: Record<number, Array<{
   ],
 };
 
+const PLAYER_GAME_HISTORY_BY_ID: Record<number, Array<{
+  player_id: number;
+  game_id: string;
+  game_label: string | null;
+  game_status: string | null;
+  game_fantasy_points: number;
+  season_fantasy_points: number;
+  recorded_at: string;
+}>> = {
+  101: [
+    {
+      player_id: 101,
+      game_id: "mlb-nyy-bos-1",
+      game_label: "NYY @ BOS",
+      game_status: "Final",
+      game_fantasy_points: 12.4,
+      season_fantasy_points: 63.8,
+      recorded_at: "2026-02-18T00:00:00Z",
+    },
+    {
+      player_id: 101,
+      game_id: "mlb-nyy-tor-1",
+      game_label: "NYY @ TOR",
+      game_status: "Final",
+      game_fantasy_points: 14.6,
+      season_fantasy_points: 78.4,
+      recorded_at: "2026-02-21T00:00:00Z",
+    },
+    {
+      player_id: 101,
+      game_id: "mlb-nyy-bos-2",
+      game_label: "NYY @ BOS",
+      game_status: "Final",
+      game_fantasy_points: 17.6,
+      season_fantasy_points: 96.0,
+      recorded_at: "2026-02-25T00:00:00Z",
+    },
+  ],
+};
+
+const RECENT_TRANSACTIONS = [
+  {
+    id: 501,
+    user_id: 1,
+    username: "foreverhopeful",
+    player_id: 101,
+    player_name: "Aaron Judge",
+    sport: "MLB",
+    team: "NYY",
+    position: "OF",
+    trade_type: "BUY",
+    shares: 4,
+    unit_price: 316.2,
+    amount: -1264.8,
+    created_at: "2026-02-25T15:45:00Z",
+  },
+  {
+    id: 502,
+    user_id: 1,
+    username: "foreverhopeful",
+    player_id: 102,
+    player_name: "Ronald Acuna Jr.",
+    sport: "MLB",
+    team: "ATL",
+    position: "OF",
+    trade_type: "BUY",
+    shares: 3,
+    unit_price: 286.5,
+    amount: -859.5,
+    created_at: "2026-02-24T20:18:00Z",
+  },
+  {
+    id: 503,
+    user_id: 1,
+    username: "foreverhopeful",
+    player_id: 103,
+    player_name: "Mookie Betts",
+    sport: "MLB",
+    team: "LAD",
+    position: "OF",
+    trade_type: "SHORT",
+    shares: 2,
+    unit_price: 260.1,
+    amount: 520.2,
+    created_at: "2026-02-23T13:02:00Z",
+  },
+];
+
+const TRADING_STATUS = {
+  global_halt: {
+    sport: "ALL",
+    halted: false,
+    reason: null,
+    updated_at: "2026-02-25T00:00:00Z",
+  },
+  sport_halts: [],
+};
+
 function json(route: Route, payload: unknown, status = 200): Promise<void> {
   return route.fulfill({
     status,
@@ -294,18 +400,24 @@ async function mockApi(page: Page, authEnabled: boolean): Promise<void> {
       const playerPathParts = pathname.split("/").filter(Boolean);
       const playerId = Number(playerPathParts[1]);
       const isHistoryPath = playerPathParts.length >= 3 && playerPathParts[2] === "history";
+      const isGameHistoryPath = playerPathParts.length >= 3 && playerPathParts[2] === "game-history";
       if (!Number.isFinite(playerId) || playerId <= 0) {
         return json(route, { detail: "Player not found" }, 404);
       }
       if (isHistoryPath) {
         return json(route, PLAYER_HISTORY_BY_ID[playerId] ?? []);
       }
+      if (isGameHistoryPath) {
+        return json(route, PLAYER_GAME_HISTORY_BY_ID[playerId] ?? []);
+      }
       const player = PLAYERS.find((row) => row.id === playerId);
       if (!player) return json(route, { detail: "Player not found" }, 404);
       return json(route, player);
     }
     if (pathname === "/portfolio") return authEnabled ? json(route, PORTFOLIO) : json(route, { detail: "Authentication required." }, 401);
+    if (pathname === "/transactions/me") return authEnabled ? json(route, RECENT_TRANSACTIONS) : json(route, { detail: "Authentication required." }, 401);
     if (pathname === "/market/movers") return json(route, MARKET_MOVERS);
+    if (pathname === "/trading/status") return json(route, TRADING_STATUS);
     if (pathname === "/live/games") return authEnabled ? json(route, LIVE_GAMES) : json(route, { detail: "Authentication required." }, 401);
     if (pathname === "/forum/posts") return json(route, FORUM_POSTS);
     if (pathname === "/users/me/profile") {
