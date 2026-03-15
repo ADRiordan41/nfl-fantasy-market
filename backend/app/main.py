@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import logging
 import os
 import re
@@ -2950,43 +2951,51 @@ def start_bot_simulation_process(
     if not profiles:
         raise HTTPException(400, "No active bot profiles are available to simulate.")
 
-    BOT_SIMULATION_RUN_DIR.mkdir(parents=True, exist_ok=True)
-    run_stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    config_path, active_bot_count = write_bot_simulation_config(run_stamp, profiles)
-    summary_path = BOT_SIMULATION_RUN_DIR / f"bot-summary-{run_stamp}.json"
-    log_path = BOT_SIMULATION_RUN_DIR / f"bot-run-{run_stamp}.log"
-    script_path = Path(__file__).resolve().parent.parent / "scripts" / "simulate_users.py"
+    try:
+        BOT_SIMULATION_RUN_DIR.mkdir(parents=True, exist_ok=True)
+        run_stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        config_path, active_bot_count = write_bot_simulation_config(run_stamp, profiles)
+        summary_path = BOT_SIMULATION_RUN_DIR / f"bot-summary-{run_stamp}.json"
+        log_path = BOT_SIMULATION_RUN_DIR / f"bot-run-{run_stamp}.log"
+        script_path = Path(__file__).resolve().parent.parent / "scripts" / "simulate_users.py"
 
-    command = [
-        sys.executable,
-        str(script_path),
-        "--base-url",
-        bot_simulation_api_base(),
-        "--bot-config-file",
-        str(config_path),
-        "--duration-seconds",
-        str(int(payload.duration_seconds)),
-        "--min-delay-ms",
-        str(int(payload.min_delay_ms)),
-        "--max-delay-ms",
-        str(int(payload.max_delay_ms)),
-        "--startup-stagger-ms",
-        str(int(payload.startup_stagger_ms)),
-        "--summary-file",
-        str(summary_path),
-    ]
-    if payload.reuse_existing:
-        command.append("--reuse-existing")
-    if payload.spoof_forwarded_for:
-        command.append("--spoof-forwarded-for")
+        command = [
+            sys.executable,
+            str(script_path),
+            "--base-url",
+            bot_simulation_api_base(),
+            "--bot-config-file",
+            str(config_path),
+            "--duration-seconds",
+            str(int(payload.duration_seconds)),
+            "--min-delay-ms",
+            str(int(payload.min_delay_ms)),
+            "--max-delay-ms",
+            str(int(payload.max_delay_ms)),
+            "--startup-stagger-ms",
+            str(int(payload.startup_stagger_ms)),
+            "--summary-file",
+            str(summary_path),
+        ]
+        if payload.reuse_existing:
+            command.append("--reuse-existing")
+        if payload.spoof_forwarded_for:
+            command.append("--spoof-forwarded-for")
 
-    log_handle = open(log_path, "a", encoding="utf-8")
-    process = subprocess.Popen(
-        command,
-        stdout=log_handle,
-        stderr=subprocess.STDOUT,
-        cwd=str(Path(__file__).resolve().parent.parent.parent),
-    )
+        log_handle = open(log_path, "a", encoding="utf-8")
+        process = subprocess.Popen(
+            command,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+        )
+    except Exception as exc:
+        BOT_SIMULATION_STATE.process = None
+        BOT_SIMULATION_STATE.completed_at = datetime.utcnow()
+        BOT_SIMULATION_STATE.exit_code = 1
+        BOT_SIMULATION_STATE.message = f"Unable to start bot simulation: {exc}"
+        raise HTTPException(500, BOT_SIMULATION_STATE.message) from exc
+
     BOT_SIMULATION_STATE.process = process
     BOT_SIMULATION_STATE.started_at = datetime.utcnow()
     BOT_SIMULATION_STATE.completed_at = None
