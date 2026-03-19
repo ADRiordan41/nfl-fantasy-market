@@ -429,6 +429,73 @@ def init_db():
         conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
         conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
         conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE friendships ADD COLUMN IF NOT EXISTS user_low_id INTEGER"))
+        conn.execute(text("ALTER TABLE friendships ADD COLUMN IF NOT EXISTS user_high_id INTEGER"))
+        conn.execute(text("ALTER TABLE friendships ADD COLUMN IF NOT EXISTS requested_by_user_id INTEGER"))
+        conn.execute(text("ALTER TABLE friendships ADD COLUMN IF NOT EXISTS status VARCHAR(16) DEFAULT 'PENDING'"))
+        conn.execute(text("ALTER TABLE friendships ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE friendships ADD COLUMN IF NOT EXISTS created_at TIMESTAMP"))
+        conn.execute(text("ALTER TABLE friendships ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP"))
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = 'friendships' AND column_name = 'user_id'
+                    ) AND EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = 'friendships' AND column_name = 'friend_user_id'
+                    ) THEN
+                        EXECUTE '
+                            UPDATE friendships
+                            SET
+                                user_low_id = LEAST(user_id, friend_user_id),
+                                user_high_id = GREATEST(user_id, friend_user_id)
+                            WHERE
+                                (user_low_id IS NULL OR user_high_id IS NULL)
+                                AND user_id IS NOT NULL
+                                AND friend_user_id IS NOT NULL
+                        ';
+                        EXECUTE '
+                            UPDATE friendships
+                            SET requested_by_user_id = user_id
+                            WHERE requested_by_user_id IS NULL AND user_id IS NOT NULL
+                        ';
+                    END IF;
+
+                    IF EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = 'friendships' AND column_name = 'requester_user_id'
+                    ) AND EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = 'friendships' AND column_name = 'recipient_user_id'
+                    ) THEN
+                        EXECUTE '
+                            UPDATE friendships
+                            SET
+                                user_low_id = LEAST(requester_user_id, recipient_user_id),
+                                user_high_id = GREATEST(requester_user_id, recipient_user_id)
+                            WHERE
+                                (user_low_id IS NULL OR user_high_id IS NULL)
+                                AND requester_user_id IS NOT NULL
+                                AND recipient_user_id IS NOT NULL
+                        ';
+                        EXECUTE '
+                            UPDATE friendships
+                            SET requested_by_user_id = requester_user_id
+                            WHERE requested_by_user_id IS NULL AND requester_user_id IS NOT NULL
+                        ';
+                    END IF;
+                END $$;
+                """
+            )
+        )
         conn.execute(text("UPDATE players SET sport='NFL' WHERE sport IS NULL OR sport=''"))
         conn.execute(text("UPDATE players SET ipo_open=FALSE WHERE ipo_open IS NULL"))
         conn.execute(text("UPDATE players SET live_now=FALSE WHERE live_now IS NULL"))
@@ -438,6 +505,10 @@ def init_db():
         conn.execute(text("UPDATE bot_profiles SET is_active=TRUE WHERE is_active IS NULL"))
         conn.execute(text("UPDATE bot_profiles SET created_at=NOW() WHERE created_at IS NULL"))
         conn.execute(text("UPDATE bot_profiles SET updated_at=NOW() WHERE updated_at IS NULL"))
+        conn.execute(text("UPDATE friendships SET requested_by_user_id=user_low_id WHERE requested_by_user_id IS NULL AND user_low_id IS NOT NULL"))
+        conn.execute(text("UPDATE friendships SET status='PENDING' WHERE status IS NULL"))
+        conn.execute(text("UPDATE friendships SET created_at=NOW() WHERE created_at IS NULL"))
+        conn.execute(text("UPDATE friendships SET updated_at=NOW() WHERE updated_at IS NULL"))
         conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_players_ipo_open_sport_name "
@@ -481,6 +552,11 @@ def init_db():
             )
         )
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_bot_profiles_username_unique ON bot_profiles(username)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_friendships_user_low_id ON friendships(user_low_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_friendships_user_high_id ON friendships(user_high_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_friendships_requested_by_user_id ON friendships(requested_by_user_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_friendships_status ON friendships(status)"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_friendships_pair_unique ON friendships(user_low_id, user_high_id)"))
     with Session(engine) as db:
         backfill_holding_basis_amounts(db)
         db.commit()

@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
-import type { DirectMessage, DirectThreadDetail, DirectThreadSummary, UserAccount } from "@/lib/types";
+import type { DirectMessage, DirectThreadDetail, DirectThreadSummary, FriendsDashboard, UserAccount } from "@/lib/types";
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -40,9 +40,11 @@ function InboxPageContent() {
   const [loadingThread, setLoadingThread] = useState(false);
   const [openingThread, setOpeningThread] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [busyFriendAction, setBusyFriendAction] = useState("");
   const [error, setError] = useState("");
   const [newThreadUsername, setNewThreadUsername] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
+  const [friendsDashboard, setFriendsDashboard] = useState<FriendsDashboard | null>(null);
 
   const handleApiError = useCallback(
     (err: unknown) => {
@@ -59,12 +61,14 @@ function InboxPageContent() {
   const loadInbox = useCallback(async () => {
     setLoadingInbox(true);
     try {
-      const [me, nextThreads] = await Promise.all([
+      const [me, nextThreads, friends] = await Promise.all([
         apiGet<UserAccount>("/auth/me"),
         apiGet<DirectThreadSummary[]>("/inbox/threads?limit=200"),
+        apiGet<FriendsDashboard>("/friends"),
       ]);
       setCurrentUser(me);
       setThreads(nextThreads);
+      setFriendsDashboard(friends);
       setError("");
     } catch (err: unknown) {
       handleApiError(err);
@@ -173,13 +177,26 @@ function InboxPageContent() {
     }
   }
 
+  async function respondToRequest(friendshipId: number, action: "accept" | "decline") {
+    setBusyFriendAction(`${action}:${friendshipId}`);
+    setError("");
+    try {
+      await apiPost(`/friends/requests/${friendshipId}/${action}`, {});
+      await loadInbox();
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyFriendAction("");
+    }
+  }
+
   return (
     <main className="page-shell">
       <section className="hero-panel">
         <div>
           <p className="eyebrow">Inbox</p>
           <h1>Direct Messages</h1>
-          <p className="subtle">Open threads, reply from the inbox, and keep private conversations in one place.</p>
+          <p className="subtle">Accept friend requests, open threads with friends, and keep private conversations in one place.</p>
         </div>
       </section>
 
@@ -210,27 +227,80 @@ function InboxPageContent() {
 
             <form className="inbox-compose-form" onSubmit={(event) => void handleOpenThread(event)}>
               <label className="field-label" htmlFor="inbox-username">
-                Start or open a thread
+                Start or open a thread with a friend
               </label>
               <div className="inbox-compose-row">
                 <input
                   id="inbox-username"
                   value={newThreadUsername}
                   onChange={(event) => setNewThreadUsername(event.target.value)}
-                  placeholder="Username"
-                  disabled={openingThread}
+                  placeholder={friendsDashboard?.friends.length ? "Friend username" : "Accept a request first"}
+                  disabled={openingThread || !friendsDashboard?.friends.length}
                 />
-                <button type="submit" className="primary-btn" disabled={openingThread}>
+                <button type="submit" className="primary-btn" disabled={openingThread || !friendsDashboard?.friends.length}>
                   {openingThread ? "Opening..." : "Open"}
                 </button>
               </div>
             </form>
 
+            <div className="inbox-friends-panel">
+              <h4>Incoming Requests</h4>
+              {!friendsDashboard?.incoming_requests.length ? (
+                <p className="subtle">No incoming requests.</p>
+              ) : (
+                <div className="inbox-friend-list">
+                  {friendsDashboard.incoming_requests.map((request) => (
+                    <div key={request.friendship_id} className="inbox-friend-row">
+                      <span>{request.username}</span>
+                      <div className="inbox-friend-actions">
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          onClick={() => void respondToRequest(request.friendship_id, "accept")}
+                          disabled={Boolean(busyFriendAction)}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void respondToRequest(request.friendship_id, "decline")}
+                          disabled={Boolean(busyFriendAction)}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="inbox-friends-panel">
+              <h4>Friends</h4>
+              {!friendsDashboard?.friends.length ? (
+                <p className="subtle">Once requests are accepted, friends will appear here.</p>
+              ) : (
+                <div className="inbox-friend-list">
+                  {friendsDashboard.friends.map((friend) => (
+                    <button
+                      key={friend.friendship_id}
+                      type="button"
+                      className="inbox-friend-row inbox-friend-open"
+                      onClick={() => setNewThreadUsername(friend.username)}
+                    >
+                      <span>{friend.username}</span>
+                      <span className="subtle">Use in compose</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {!threads.length ? (
               <EmptyStatePanel
                 kind="inbox"
                 title="No conversations yet"
-                description="Open a user profile or type a username above to start a direct thread."
+                description="Accept a friend request, then open a thread with a friend."
                 actionHref="/community"
                 actionLabel="Go to Community"
               />
@@ -270,7 +340,7 @@ function InboxPageContent() {
               <EmptyStatePanel
                 kind="inbox"
                 title="Select a thread"
-                description="Choose an existing conversation or open a new thread by username."
+                description="Choose an existing conversation or open a new thread with a friend."
               />
             ) : loadingThread || !selectedThread ? (
               <div className="skeleton-stack" aria-busy="true">
