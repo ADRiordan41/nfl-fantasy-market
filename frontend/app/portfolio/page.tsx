@@ -588,57 +588,6 @@ export default function PortfolioPage() {
             </div>
           </section>
 
-          <section className="table-panel">
-            <div className="portfolio-sport-group-head">
-              <h3>Recent Trades</h3>
-              <p className="subtle portfolio-sport-summary">
-                {recentTransactions.length
-                  ? `${formatNumber(recentTransactions.length)} most recent transactions`
-                  : "No trades recorded yet."}
-              </p>
-            </div>
-            {recentTransactions.length ? (
-              <div className="table-wrap">
-                <table className="portfolio-table">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Type</th>
-                      <th>Player</th>
-                      <th>Shares</th>
-                      <th>Unit Price</th>
-                      <th>Cash Impact</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentTransactions.map((transaction) => (
-                      <tr key={transaction.id}>
-                        <td>{formatStamp(transaction.created_at)}</td>
-                        <td>{transaction.trade_type}</td>
-                        <td>
-                          {transaction.player_id && transaction.player_name ? (
-                            <Link href={`/player/${transaction.player_id}`} className="card-title">
-                              {transaction.player_name}
-                            </Link>
-                          ) : (
-                            <span>{transaction.player_name ?? "System"}</span>
-                          )}
-                        </td>
-                        <td>{formatNumber(transaction.shares, 0)}</td>
-                        <td>{formatCurrency(transaction.unit_price)}</td>
-                        <td className={transaction.amount >= 0 ? "up" : "down"}>
-                          {formatSignedCurrency(transaction.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="subtle">Executed trades will appear here.</p>
-            )}
-          </section>
-
           {rowsWithAllocation.length === 0 ? (
             <EmptyStatePanel
               kind="portfolio"
@@ -871,6 +820,57 @@ export default function PortfolioPage() {
               </section>
             </>
           )}
+
+          <section className="table-panel">
+            <div className="portfolio-sport-group-head">
+              <h3>Recent Trades</h3>
+              <p className="subtle portfolio-sport-summary">
+                {recentTransactions.length
+                  ? `${formatNumber(recentTransactions.length)} most recent transactions`
+                  : "No trades recorded yet."}
+              </p>
+            </div>
+            {recentTransactions.length ? (
+              <div className="table-wrap">
+                <table className="portfolio-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Type</th>
+                      <th>Player</th>
+                      <th>Shares</th>
+                      <th>Unit Price</th>
+                      <th>Cash Impact</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTransactions.map((transaction) => (
+                      <tr key={transaction.id}>
+                        <td>{formatStamp(transaction.created_at)}</td>
+                        <td>{transaction.trade_type}</td>
+                        <td>
+                          {transaction.player_id && transaction.player_name ? (
+                            <Link href={`/player/${transaction.player_id}`} className="card-title">
+                              {transaction.player_name}
+                            </Link>
+                          ) : (
+                            <span>{transaction.player_name ?? "System"}</span>
+                          )}
+                        </td>
+                        <td>{formatNumber(transaction.shares, 0)}</td>
+                        <td>{formatCurrency(transaction.unit_price)}</td>
+                        <td className={transaction.amount >= 0 ? "up" : "down"}>
+                          {formatSignedCurrency(transaction.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="subtle">Executed trades will appear here.</p>
+            )}
+          </section>
         </>
       )}
     </main>
