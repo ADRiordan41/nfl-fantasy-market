@@ -211,6 +211,7 @@ const MOBILE_HOME_MENU_HREFS = new Set([
   "/watchlist",
   "/inbox",
   "/settings",
+  "/admin/stats",
 ]);
 
 const FOOTER_LINKS = [
