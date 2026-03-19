@@ -1706,6 +1706,39 @@ h1 {
   gap: 0.6rem;
 }
 
+.inbox-friends-panel {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.inbox-friend-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.inbox-friend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(28, 51, 84, 0.12);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.inbox-friend-open {
+  width: 100%;
+  text-align: left;
+}
+
+.inbox-friend-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .inbox-thread-list {
   display: grid;
   gap: 0.65rem;
@@ -3929,7 +3962,68 @@ td {
     gap: 8px;
   }
 
-  .app-footer-copy {
-    width: 100%;
-  }
+.app-footer-copy {
+  width: 100%;
+}
+}
+
+.header-icon-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.header-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.header-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #d74d32;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+.leaderboard-row-active {
+  background: rgba(47, 127, 255, 0.08);
+}
+
+.notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  text-align: left;
+}
+
+.notification-row.unread {
+  border-color: rgba(47, 127, 255, 0.35);
+  background: rgba(47, 127, 255, 0.08);
 }

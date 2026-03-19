@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import type { DirectThreadSummary, UserAccount, UserProfile } from "@/lib/types";
+import type { DirectThreadSummary, FriendshipStatus, UserAccount, UserProfile } from "@/lib/types";
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -25,6 +25,7 @@ export default function UserProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [openingThread, setOpeningThread] = useState(false);
+  const [friendActionBusy, setFriendActionBusy] = useState(false);
   const [error, setError] = useState("");
 
   const loadProfile = useCallback(async () => {
@@ -57,14 +58,61 @@ export default function UserProfilePage() {
     return () => window.clearTimeout(timer);
   }, [loadProfile]);
 
-  const holdingsCount = useMemo(() => profile?.holdings.length ?? 0, [profile?.holdings]);
+  const friendship = profile?.friendship;
   const isOwnProfile = useMemo(() => {
     if (!currentUser || !profile) return false;
     return currentUser.username.trim().toLowerCase() === profile.username.trim().toLowerCase();
   }, [currentUser, profile]);
 
-  async function openThread() {
+  function applyFriendship(nextFriendship: FriendshipStatus) {
+    setProfile((previous) => (previous ? { ...previous, friendship: nextFriendship } : previous));
+  }
+
+  async function sendFriendRequest() {
     if (!profile || isOwnProfile) return;
+    setFriendActionBusy(true);
+    setError("");
+    try {
+      const nextFriendship = await apiPost<FriendshipStatus>("/friends/requests", {
+        username: profile.username,
+      });
+      applyFriendship(nextFriendship);
+    } catch (err: unknown) {
+      if (isUnauthorizedError(err)) {
+        clearAuthToken();
+        router.replace("/auth");
+        return;
+      }
+      setError(toMessage(err));
+    } finally {
+      setFriendActionBusy(false);
+    }
+  }
+
+  async function respondToFriendRequest(action: "accept" | "decline") {
+    if (!profile?.friendship.friendship_id) return;
+    setFriendActionBusy(true);
+    setError("");
+    try {
+      const nextFriendship = await apiPost<FriendshipStatus>(
+        `/friends/requests/${profile.friendship.friendship_id}/${action}`,
+        {},
+      );
+      applyFriendship(nextFriendship);
+    } catch (err: unknown) {
+      if (isUnauthorizedError(err)) {
+        clearAuthToken();
+        router.replace("/auth");
+        return;
+      }
+      setError(toMessage(err));
+    } finally {
+      setFriendActionBusy(false);
+    }
+  }
+
+  async function openThread() {
+    if (!profile || isOwnProfile || !profile.friendship.can_message) return;
     setOpeningThread(true);
     setError("");
     try {
@@ -118,10 +166,31 @@ export default function UserProfilePage() {
           <Link href="/community" className="ghost-link">
             Back to Community
           </Link>
-          {!isOwnProfile ? (
+          {!isOwnProfile && friendship?.status === "NONE" ? (
+            <button type="button" className="primary-btn" onClick={() => void sendFriendRequest()} disabled={friendActionBusy}>
+              {friendActionBusy ? "Sending..." : "Add Friend"}
+            </button>
+          ) : null}
+          {!isOwnProfile && friendship?.status === "PENDING_INCOMING" ? (
+            <>
+              <button type="button" className="primary-btn" onClick={() => void respondToFriendRequest("accept")} disabled={friendActionBusy}>
+                {friendActionBusy ? "Saving..." : "Accept Request"}
+              </button>
+              <button type="button" className="ghost-link" onClick={() => void respondToFriendRequest("decline")} disabled={friendActionBusy}>
+                Decline
+              </button>
+            </>
+          ) : null}
+          {!isOwnProfile && friendship?.can_message ? (
             <button type="button" className="primary-btn" onClick={() => void openThread()} disabled={openingThread}>
               {openingThread ? "Opening..." : "Message User"}
             </button>
+          ) : null}
+          {!isOwnProfile && friendship?.status === "PENDING_OUTGOING" ? (
+            <span className="chip muted-chip">Friend Request Sent</span>
+          ) : null}
+          {!isOwnProfile && friendship?.status === "FRIENDS" ? (
+            <span className="chip">Friends</span>
           ) : null}
           <button type="button" onClick={() => void loadProfile()} disabled={loading}>
             Refresh
@@ -151,8 +220,12 @@ export default function UserProfilePage() {
               <strong>{formatCurrency(profile.equity)}</strong>
             </article>
             <article className="kpi-card">
-              <span>Positions</span>
-              <strong>{formatNumber(holdingsCount)}</strong>
+              <span>Return</span>
+              <strong className={profile.return_pct >= 0 ? "up" : "down"}>{formatNumber(profile.return_pct, 2)}%</strong>
+            </article>
+            <article className="kpi-card">
+              <span>Leaderboard</span>
+              <strong>{profile.leaderboard_rank ? `#${formatNumber(profile.leaderboard_rank, 0)}` : "--"}</strong>
             </article>
           </section>
 

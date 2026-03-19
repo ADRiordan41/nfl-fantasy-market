@@ -40,13 +40,16 @@ from .models import (
     ContentReport,
     DirectMessage,
     DirectThread,
+    Friendship,
     FeedbackMessage,
     ForumComment,
     ForumPost,
     ForumPostView,
     Holding,
+    Notification,
     PasswordResetToken,
     Player,
+    PlayerWatchlist,
     PlayerGamePoint,
     PricePoint,
     SeasonClose,
@@ -108,8 +111,13 @@ from .schemas import (
     ForumPostCreateIn,
     ForumPostDetailOut,
     ForumPostSummaryOut,
+    LeaderboardEntryOut,
+    LeaderboardOut,
     AuthLoginIn,
     AuthLogoutOut,
+    NotificationListOut,
+    NotificationOut,
+    NotificationReadIn,
     AuthPasswordUpdateIn,
     AuthPasswordUpdateOut,
     AuthPasswordResetConfirmIn,
@@ -123,6 +131,11 @@ from .schemas import (
     DirectThreadCreateIn,
     DirectThreadDetailOut,
     DirectThreadSummaryOut,
+    FriendsDashboardOut,
+    FriendRequestOut,
+    FriendSummaryOut,
+    FriendshipRequestCreateIn,
+    FriendshipStatusOut,
     LiveGameOut,
     LiveGamePlayerOut,
     LiveGamesOut,
@@ -150,6 +163,7 @@ from .schemas import (
     UserProfileOut,
     UserProfileUpdateIn,
     UserOut,
+    WatchlistPlayerOut,
 )
 from .seed import init_db, seed
 from .settlement import run_season_closeout
@@ -2509,8 +2523,86 @@ def normalize_optional_profile_field(value: str | None) -> str | None:
     return normalized or None
 
 
-def user_profile_to_out(user: User, snapshot: AccountRiskSnapshot) -> UserProfileOut:
+FRIENDSHIP_STATUS_SELF = "SELF"
+FRIENDSHIP_STATUS_NONE = "NONE"
+FRIENDSHIP_STATUS_PENDING_INCOMING = "PENDING_INCOMING"
+FRIENDSHIP_STATUS_PENDING_OUTGOING = "PENDING_OUTGOING"
+FRIENDSHIP_STATUS_FRIENDS = "FRIENDS"
+FRIENDSHIP_STATUS_DECLINED = "DECLINED"
+FRIENDSHIP_ROW_PENDING = "PENDING"
+FRIENDSHIP_ROW_ACCEPTED = "ACCEPTED"
+FRIENDSHIP_ROW_DECLINED = "DECLINED"
+NOTIFICATION_TYPE_FRIEND_REQUEST = "FRIEND_REQUEST"
+NOTIFICATION_TYPE_FRIEND_ACCEPTED = "FRIEND_ACCEPTED"
+NOTIFICATION_TYPE_DIRECT_MESSAGE = "DIRECT_MESSAGE"
+NOTIFICATION_TYPE_FORUM_REPLY = "FORUM_REPLY"
+
+
+def friendship_pair(user_a_id: int, user_b_id: int) -> tuple[int, int]:
+    return (user_a_id, user_b_id) if user_a_id < user_b_id else (user_b_id, user_a_id)
+
+
+def get_friendship_between_users(db: Session, user_a_id: int, user_b_id: int) -> Friendship | None:
+    if int(user_a_id) == int(user_b_id):
+        return None
+    user_low_id, user_high_id = friendship_pair(int(user_a_id), int(user_b_id))
+    return db.execute(
+        select(Friendship).where(
+            Friendship.user_low_id == user_low_id,
+            Friendship.user_high_id == user_high_id,
+        )
+    ).scalar_one_or_none()
+
+
+def friendship_status_for_users(db: Session, user_a_id: int, user_b_id: int) -> FriendshipStatusOut:
+    if int(user_a_id) == int(user_b_id):
+        return FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False)
+
+    friendship = get_friendship_between_users(db, int(user_a_id), int(user_b_id))
+    if friendship is None:
+        return FriendshipStatusOut(status=FRIENDSHIP_STATUS_NONE, can_message=False)
+
+    if str(friendship.status) == FRIENDSHIP_ROW_ACCEPTED:
+        return FriendshipStatusOut(
+            friendship_id=int(friendship.id),
+            status=FRIENDSHIP_STATUS_FRIENDS,
+            can_message=True,
+        )
+
+    if str(friendship.status) == FRIENDSHIP_ROW_PENDING:
+        requested_by_user_id = int(friendship.requested_by_user_id)
+        return FriendshipStatusOut(
+            friendship_id=int(friendship.id),
+            status=FRIENDSHIP_STATUS_PENDING_OUTGOING
+            if requested_by_user_id == int(user_a_id)
+            else FRIENDSHIP_STATUS_PENDING_INCOMING,
+            can_message=False,
+        )
+
+    return FriendshipStatusOut(
+        friendship_id=int(friendship.id),
+        status=FRIENDSHIP_STATUS_DECLINED,
+        can_message=False,
+    )
+
+
+def require_friendship_between_users(db: Session, user_a_id: int, user_b_id: int) -> Friendship:
+    friendship = get_friendship_between_users(db, int(user_a_id), int(user_b_id))
+    if friendship is None or str(friendship.status) != FRIENDSHIP_ROW_ACCEPTED:
+        raise HTTPException(403, "Only friends can direct message each other.")
+    return friendship
+
+
+def user_profile_to_out(
+    user: User,
+    snapshot: AccountRiskSnapshot,
+    *,
+    friendship: FriendshipStatusOut | None = None,
+    leaderboard_rank: int | None = None,
+) -> UserProfileOut:
     holdings = sorted(snapshot.positions, key=lambda position: abs(position.market_value), reverse=True)
+    baseline_cash = float(REGISTER_STARTING_CASH)
+    equity = float(snapshot.equity)
     return UserProfileOut(
         id=int(user.id),
         username=str(user.username),
@@ -2518,7 +2610,9 @@ def user_profile_to_out(user: User, snapshot: AccountRiskSnapshot) -> UserProfil
         bio=normalize_optional_profile_field(user.bio),
         cash_balance=float(snapshot.cash_balance),
         holdings_value=float(snapshot.net_exposure),
-        equity=float(snapshot.equity),
+        equity=equity,
+        return_pct=((equity - baseline_cash) / baseline_cash) * 100 if baseline_cash > 0 else 0,
+        leaderboard_rank=leaderboard_rank,
         holdings=[
             UserProfileHoldingOut(
                 player_id=int(position.player.id),
@@ -2532,6 +2626,197 @@ def user_profile_to_out(user: User, snapshot: AccountRiskSnapshot) -> UserProfil
             )
             for position in holdings
         ],
+        friendship=friendship or FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False),
+    )
+
+
+def filtered_snapshot_for_sport(snapshot: AccountRiskSnapshot, sport: str) -> AccountRiskSnapshot:
+    sport_code = normalize_sport_code(sport)
+    positions = [position for position in snapshot.positions if str(position.player.sport).upper() == sport_code]
+    net_exposure = sum((position.market_value for position in positions), Decimal("0"))
+    gross_exposure = sum((abs(position.market_value) for position in positions), Decimal("0"))
+    equity = snapshot.cash_balance + net_exposure
+    return AccountRiskSnapshot(
+        cash_balance=snapshot.cash_balance,
+        equity=equity,
+        net_exposure=net_exposure,
+        gross_exposure=gross_exposure,
+        margin_used=Decimal("0"),
+        available_buying_power=max(Decimal("0"), snapshot.cash_balance),
+        margin_call=False,
+        positions=positions,
+    )
+
+
+def get_friend_user_ids(db: Session, current_user_id: int) -> set[int]:
+    rows = db.execute(
+        select(Friendship).where(
+            Friendship.status == FRIENDSHIP_ROW_ACCEPTED,
+            or_(
+                Friendship.user_low_id == int(current_user_id),
+                Friendship.user_high_id == int(current_user_id),
+            ),
+        )
+    ).scalars().all()
+    friend_ids: set[int] = set()
+    for row in rows:
+        if int(row.user_low_id) == int(current_user_id):
+            friend_ids.add(int(row.user_high_id))
+        else:
+            friend_ids.add(int(row.user_low_id))
+    return friend_ids
+
+
+def build_leaderboard_entries(
+    db: Session,
+    *,
+    current_user_id: int,
+    scope: str,
+    sport: str,
+    limit: int,
+) -> list[LeaderboardEntryOut]:
+    all_users = db.execute(select(User).order_by(User.username.asc())).scalars().all()
+    accepted_friend_ids = get_friend_user_ids(db, current_user_id)
+    visible_user_ids = {int(current_user_id)}
+    if scope == "friends":
+        visible_user_ids.update(accepted_friend_ids)
+
+    rows: list[LeaderboardEntryOut] = []
+    for user in all_users:
+        user_id = int(user.id)
+        if scope == "friends" and user_id not in visible_user_ids:
+            continue
+        snapshot = build_account_risk_snapshot(db=db, user=user, for_update=False)
+        filtered_snapshot = snapshot if sport == "ALL" else filtered_snapshot_for_sport(snapshot, sport)
+        equity = float(filtered_snapshot.equity)
+        cash_balance = float(filtered_snapshot.cash_balance)
+        holdings_value = float(filtered_snapshot.net_exposure)
+        baseline_cash = float(REGISTER_STARTING_CASH)
+        return_pct = ((equity - baseline_cash) / baseline_cash) * 100 if baseline_cash > 0 else 0
+        rows.append(
+            LeaderboardEntryOut(
+                user_id=user_id,
+                username=str(user.username),
+                profile_image_url=normalize_optional_profile_field(user.profile_image_url),
+                equity=equity,
+                cash_balance=cash_balance,
+                holdings_value=holdings_value,
+                return_pct=return_pct,
+                rank=0,
+                is_current_user=user_id == int(current_user_id),
+                is_friend=user_id in accepted_friend_ids,
+            )
+        )
+
+    sorted_rows = sorted(
+        rows,
+        key=lambda row: (row.equity, row.return_pct, row.holdings_value, row.username.lower()),
+        reverse=True,
+    )
+    for index, row in enumerate(sorted_rows, start=1):
+        row.rank = index
+    return sorted_rows[:limit]
+
+
+def leaderboard_rank_for_user(db: Session, *, user_id: int) -> int | None:
+    rows = build_leaderboard_entries(
+        db,
+        current_user_id=int(user_id),
+        scope="global",
+        sport="ALL",
+        limit=10_000,
+    )
+    for row in rows:
+        if int(row.user_id) == int(user_id):
+            return int(row.rank)
+    return None
+
+
+def notification_href(notification_type: str, *, actor_username: str | None, entity_id: int | None) -> str | None:
+    if notification_type == NOTIFICATION_TYPE_DIRECT_MESSAGE and entity_id is not None:
+        return f"/inbox?thread={int(entity_id)}"
+    if notification_type == NOTIFICATION_TYPE_FORUM_REPLY and entity_id is not None:
+        return f"/community/{int(entity_id)}"
+    if notification_type in {NOTIFICATION_TYPE_FRIEND_REQUEST, NOTIFICATION_TYPE_FRIEND_ACCEPTED} and actor_username:
+        return f"/profile/{actor_username}"
+    return None
+
+
+def notification_to_out(
+    db: Session,
+    notification: Notification,
+    *,
+    actor: User | None = None,
+) -> NotificationOut:
+    resolved_actor = actor
+    if resolved_actor is None and notification.actor_user_id is not None:
+        resolved_actor = db.get(User, int(notification.actor_user_id))
+    actor_username = str(resolved_actor.username) if resolved_actor else None
+    return NotificationOut(
+        id=int(notification.id),
+        type=str(notification.type),
+        message=str(notification.message),
+        actor_username=actor_username,
+        actor_profile_image_url=normalize_optional_profile_field(resolved_actor.profile_image_url) if resolved_actor else None,
+        entity_type=normalize_optional_profile_field(notification.entity_type),
+        entity_id=int(notification.entity_id) if notification.entity_id is not None else None,
+        href=notification_href(
+            str(notification.type),
+            actor_username=actor_username,
+            entity_id=int(notification.entity_id) if notification.entity_id is not None else None,
+        ),
+        read_at=notification.read_at,
+        created_at=notification.created_at,
+    )
+
+
+def create_notification(
+    db: Session,
+    *,
+    user_id: int,
+    notification_type: str,
+    message: str,
+    actor_user_id: int | None = None,
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+) -> Notification:
+    notification = Notification(
+        user_id=int(user_id),
+        type=str(notification_type),
+        actor_user_id=int(actor_user_id) if actor_user_id is not None else None,
+        entity_type=normalize_optional_profile_field(entity_type),
+        entity_id=int(entity_id) if entity_id is not None else None,
+        message=str(message).strip(),
+    )
+    db.add(notification)
+    return notification
+
+
+def watchlist_player_to_out(
+    player: Player,
+    *,
+    added_at: datetime,
+    stats_snapshot: dict[int, PlayerStatsSnapshot],
+) -> WatchlistPlayerOut:
+    fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+    player_out = player_to_out(
+        player=player,
+        fundamental_price=fundamental,
+        points_to_date=points_to_date,
+        latest_week=latest_week,
+        shares_held=Decimal("0"),
+        shares_short=Decimal("0"),
+    )
+    return WatchlistPlayerOut(
+        player_id=int(player.id),
+        sport=str(player.sport),
+        name=str(player.name),
+        team=str(player.team),
+        position=str(player.position),
+        spot_price=float(player_out.spot_price),
+        base_price=float(player.base_price),
+        live=player_out.live,
+        added_at=added_at,
     )
 
 
@@ -2682,6 +2967,85 @@ def build_direct_thread_summaries(
             )
         )
     return summaries
+
+
+def build_friends_dashboard(db: Session, *, current_user_id: int) -> FriendsDashboardOut:
+    friendship_rows = db.execute(
+        select(Friendship).where(
+            or_(
+                Friendship.user_low_id == int(current_user_id),
+                Friendship.user_high_id == int(current_user_id),
+            )
+        )
+    ).scalars().all()
+
+    related_user_ids: set[int] = set()
+    for friendship in friendship_rows:
+        counterpart_id = (
+            int(friendship.user_high_id)
+            if int(friendship.user_low_id) == int(current_user_id)
+            else int(friendship.user_low_id)
+        )
+        related_user_ids.add(counterpart_id)
+
+    users_by_id: dict[int, User] = {}
+    if related_user_ids:
+        users = db.execute(select(User).where(User.id.in_(related_user_ids))).scalars().all()
+        users_by_id = {int(user.id): user for user in users}
+
+    friends: list[FriendSummaryOut] = []
+    incoming_requests: list[FriendRequestOut] = []
+    outgoing_requests: list[FriendRequestOut] = []
+
+    for friendship in friendship_rows:
+        counterpart_id = (
+            int(friendship.user_high_id)
+            if int(friendship.user_low_id) == int(current_user_id)
+            else int(friendship.user_low_id)
+        )
+        counterpart = users_by_id.get(counterpart_id)
+        if counterpart is None:
+            continue
+
+        if str(friendship.status) == FRIENDSHIP_ROW_ACCEPTED:
+            friends.append(
+                FriendSummaryOut(
+                    friendship_id=int(friendship.id),
+                    user_id=counterpart_id,
+                    username=str(counterpart.username),
+                    profile_image_url=normalize_optional_profile_field(counterpart.profile_image_url),
+                    since=friendship.responded_at or friendship.updated_at or friendship.created_at,
+                )
+            )
+            continue
+
+        if str(friendship.status) != FRIENDSHIP_ROW_PENDING:
+            continue
+
+        request = FriendRequestOut(
+            friendship_id=int(friendship.id),
+            user_id=counterpart_id,
+            username=str(counterpart.username),
+            profile_image_url=normalize_optional_profile_field(counterpart.profile_image_url),
+            requested_at=friendship.created_at,
+            requested_by_user_id=int(friendship.requested_by_user_id),
+            direction="outgoing"
+            if int(friendship.requested_by_user_id) == int(current_user_id)
+            else "incoming",
+        )
+        if request.direction == "incoming":
+            incoming_requests.append(request)
+        else:
+            outgoing_requests.append(request)
+
+    friends.sort(key=lambda row: row.username.lower())
+    incoming_requests.sort(key=lambda row: row.requested_at, reverse=True)
+    outgoing_requests.sort(key=lambda row: row.requested_at, reverse=True)
+    return FriendsDashboardOut(
+        friends=friends,
+        incoming_requests=incoming_requests,
+        outgoing_requests=outgoing_requests,
+    )
 
 
 def forum_comment_to_out(comment: ForumComment, author_username: str) -> ForumCommentOut:
@@ -3265,7 +3629,12 @@ def users_me_profile(
         user=user,
         for_update=False,
     )
-    return user_profile_to_out(user=user, snapshot=snapshot)
+    return user_profile_to_out(
+        user=user,
+        snapshot=snapshot,
+        friendship=FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False),
+        leaderboard_rank=leaderboard_rank_for_user(db, user_id=int(user.id)),
+    )
 
 
 @app.patch("/users/me/profile", response_model=UserProfileOut)
@@ -3288,7 +3657,12 @@ def users_me_profile_update(
         user=user,
         for_update=False,
     )
-    out = user_profile_to_out(user=user, snapshot=snapshot)
+    out = user_profile_to_out(
+        user=user,
+        snapshot=snapshot,
+        friendship=FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False),
+        leaderboard_rank=leaderboard_rank_for_user(db, user_id=int(user.id)),
+    )
     db.commit()
     return out
 
@@ -3296,7 +3670,7 @@ def users_me_profile_update(
 @app.get("/users/{username}/profile", response_model=UserProfileOut)
 def users_profile_by_username(
     username: str,
-    _auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
     normalized_username = normalize_username(username)
@@ -3310,7 +3684,185 @@ def users_profile_by_username(
         user=user,
         for_update=False,
     )
-    return user_profile_to_out(user=user, snapshot=snapshot)
+    friendship = friendship_status_for_users(db, int(auth.user.id), int(user.id))
+    return user_profile_to_out(
+        user=user,
+        snapshot=snapshot,
+        friendship=friendship,
+        leaderboard_rank=leaderboard_rank_for_user(db, user_id=int(user.id)),
+    )
+
+
+@app.get("/friends", response_model=FriendsDashboardOut)
+def friends_dashboard(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    return build_friends_dashboard(db, current_user_id=int(auth.user.id))
+
+
+@app.post("/friends/requests", response_model=FriendshipStatusOut)
+def friends_request_create(
+    payload: FriendshipRequestCreateIn,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    requester = get_user_by_id_or_raise(db=db, user_id=auth.user.id, for_update=False)
+    target = get_user_by_username_or_raise(
+        db=db,
+        username=normalize_username(payload.username),
+        for_update=True,
+    )
+    if int(requester.id) == int(target.id):
+        raise HTTPException(400, "You cannot send yourself a friend request.")
+
+    user_low_id, user_high_id = friendship_pair(int(requester.id), int(target.id))
+    friendship = db.execute(
+        select(Friendship)
+        .where(
+            Friendship.user_low_id == user_low_id,
+            Friendship.user_high_id == user_high_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+
+    now = datetime.utcnow()
+    if friendship is None:
+        friendship = Friendship(
+            user_low_id=user_low_id,
+            user_high_id=user_high_id,
+            requested_by_user_id=int(requester.id),
+            status=FRIENDSHIP_ROW_PENDING,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(friendship)
+        create_notification(
+            db,
+            user_id=int(target.id),
+            notification_type=NOTIFICATION_TYPE_FRIEND_REQUEST,
+            actor_user_id=int(requester.id),
+            entity_type="USER",
+            entity_id=int(requester.id),
+            message=f"{requester.username} sent you a friend request.",
+        )
+        db.commit()
+        db.refresh(friendship)
+        return friendship_status_for_users(db, int(requester.id), int(target.id))
+
+    status_value = str(friendship.status)
+    if status_value == FRIENDSHIP_ROW_ACCEPTED:
+        raise HTTPException(409, "You are already friends with this user.")
+    if status_value == FRIENDSHIP_ROW_PENDING and int(friendship.requested_by_user_id) == int(requester.id):
+        raise HTTPException(409, "A friend request is already pending.")
+    if status_value == FRIENDSHIP_ROW_PENDING and int(friendship.requested_by_user_id) == int(target.id):
+        friendship.status = FRIENDSHIP_ROW_ACCEPTED
+        friendship.responded_at = now
+        friendship.updated_at = now
+        create_notification(
+            db,
+            user_id=int(target.id),
+            notification_type=NOTIFICATION_TYPE_FRIEND_ACCEPTED,
+            actor_user_id=int(requester.id),
+            entity_type="USER",
+            entity_id=int(requester.id),
+            message=f"{requester.username} accepted your friend request.",
+        )
+        db.commit()
+        return friendship_status_for_users(db, int(requester.id), int(target.id))
+
+    friendship.requested_by_user_id = int(requester.id)
+    friendship.status = FRIENDSHIP_ROW_PENDING
+    friendship.responded_at = None
+    friendship.updated_at = now
+    create_notification(
+        db,
+        user_id=int(target.id),
+        notification_type=NOTIFICATION_TYPE_FRIEND_REQUEST,
+        actor_user_id=int(requester.id),
+        entity_type="USER",
+        entity_id=int(requester.id),
+        message=f"{requester.username} sent you a friend request.",
+    )
+    db.commit()
+    return friendship_status_for_users(db, int(requester.id), int(target.id))
+
+
+@app.post("/friends/requests/{friendship_id}/accept", response_model=FriendshipStatusOut)
+def friends_request_accept(
+    friendship_id: int,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    friendship = db.execute(
+        select(Friendship)
+        .where(Friendship.id == int(friendship_id))
+        .with_for_update()
+    ).scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(404, "Friend request not found.")
+    if str(friendship.status) != FRIENDSHIP_ROW_PENDING:
+        raise HTTPException(400, "This friend request is no longer pending.")
+
+    current_user_id = int(auth.user.id)
+    if current_user_id == int(friendship.requested_by_user_id):
+        raise HTTPException(403, "You cannot accept your own outgoing request.")
+    if current_user_id not in {int(friendship.user_low_id), int(friendship.user_high_id)}:
+        raise HTTPException(403, "Friend request access denied.")
+
+    friendship.status = FRIENDSHIP_ROW_ACCEPTED
+    friendship.responded_at = datetime.utcnow()
+    friendship.updated_at = friendship.responded_at
+    create_notification(
+        db,
+        user_id=int(friendship.requested_by_user_id),
+        notification_type=NOTIFICATION_TYPE_FRIEND_ACCEPTED,
+        actor_user_id=current_user_id,
+        entity_type="USER",
+        entity_id=current_user_id,
+        message=f"{auth.user.username} accepted your friend request.",
+    )
+    db.commit()
+    counterpart_id = (
+        int(friendship.user_high_id)
+        if int(friendship.user_low_id) == current_user_id
+        else int(friendship.user_low_id)
+    )
+    return friendship_status_for_users(db, current_user_id, counterpart_id)
+
+
+@app.post("/friends/requests/{friendship_id}/decline", response_model=FriendshipStatusOut)
+def friends_request_decline(
+    friendship_id: int,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    friendship = db.execute(
+        select(Friendship)
+        .where(Friendship.id == int(friendship_id))
+        .with_for_update()
+    ).scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(404, "Friend request not found.")
+    if str(friendship.status) != FRIENDSHIP_ROW_PENDING:
+        raise HTTPException(400, "This friend request is no longer pending.")
+
+    current_user_id = int(auth.user.id)
+    if current_user_id == int(friendship.requested_by_user_id):
+        raise HTTPException(403, "You cannot decline your own outgoing request.")
+    if current_user_id not in {int(friendship.user_low_id), int(friendship.user_high_id)}:
+        raise HTTPException(403, "Friend request access denied.")
+
+    friendship.status = FRIENDSHIP_ROW_DECLINED
+    friendship.responded_at = datetime.utcnow()
+    friendship.updated_at = friendship.responded_at
+    db.commit()
+    counterpart_id = (
+        int(friendship.user_high_id)
+        if int(friendship.user_low_id) == current_user_id
+        else int(friendship.user_low_id)
+    )
+    return friendship_status_for_users(db, current_user_id, counterpart_id)
 
 
 @app.get("/inbox/threads", response_model=list[DirectThreadSummaryOut])
@@ -3372,6 +3924,7 @@ def inbox_open_thread(
     if target_username == str(current_user.username).strip().lower():
         raise HTTPException(400, "You cannot start a direct thread with yourself.")
     target_user = get_user_by_username_or_raise(db, target_username, for_update=False)
+    require_friendship_between_users(db, int(current_user.id), int(target_user.id))
     user_one_id, user_two_id = direct_thread_pair(int(current_user.id), int(target_user.id))
 
     thread = db.execute(
@@ -3509,6 +4062,8 @@ def inbox_send_message(
         user_id=int(auth.user.id),
         for_update=True,
     )
+    counterpart_user_id = direct_thread_counterpart_user_id(thread, int(auth.user.id))
+    require_friendship_between_users(db, int(auth.user.id), counterpart_user_id)
     created_at = datetime.utcnow()
     message = DirectMessage(
         thread_id=int(thread.id),
@@ -3521,6 +4076,15 @@ def inbox_send_message(
     thread.updated_at = created_at
     mark_direct_thread_read(thread, int(auth.user.id), created_at)
     db.flush()
+    create_notification(
+        db,
+        user_id=counterpart_user_id,
+        notification_type=NOTIFICATION_TYPE_DIRECT_MESSAGE,
+        actor_user_id=int(auth.user.id),
+        entity_type="DIRECT_THREAD",
+        entity_id=int(thread.id),
+        message=f"New message from {auth.user.username}.",
+    )
     out = DirectMessageOut(
         id=int(message.id),
         thread_id=int(message.thread_id),
@@ -3613,6 +4177,178 @@ def global_search(
 
     scored_results.sort(key=lambda row: (row[0], row[1], row[2].label.lower()))
     return [row[2] for row in scored_results[:limit]]
+
+
+@app.get("/leaderboard", response_model=LeaderboardOut)
+def leaderboard(
+    scope: str = Query(default="global"),
+    sport: str = Query(default="ALL"),
+    limit: int = Query(default=100, ge=1, le=500),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    normalized_scope = (scope or "global").strip().lower()
+    if normalized_scope not in {"global", "friends"}:
+        raise HTTPException(400, "scope must be one of: global, friends")
+    normalized_sport = normalize_sport_code(sport) if sport and sport.strip().upper() != "ALL" else "ALL"
+    entries = build_leaderboard_entries(
+        db,
+        current_user_id=int(auth.user.id),
+        scope=normalized_scope,
+        sport=normalized_sport,
+        limit=limit,
+    )
+    return LeaderboardOut(
+        scope=normalized_scope,
+        sport=normalized_sport,
+        generated_at=datetime.utcnow(),
+        entries=entries,
+    )
+
+
+@app.get("/watchlist/players", response_model=list[WatchlistPlayerOut])
+def watchlist_players(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(PlayerWatchlist, Player)
+        .join(Player, PlayerWatchlist.player_id == Player.id)
+        .where(PlayerWatchlist.user_id == int(auth.user.id))
+        .order_by(PlayerWatchlist.created_at.desc(), PlayerWatchlist.id.desc())
+    ).all()
+    if not rows:
+        return []
+    stats_snapshot = get_stats_snapshot_by_player(db, [int(player.id) for _, player in rows])
+    return [
+        watchlist_player_to_out(
+            player=player,
+            added_at=watch.created_at,
+            stats_snapshot=stats_snapshot,
+        )
+        for watch, player in rows
+        if player_is_listed(player)
+    ]
+
+
+@app.post("/watchlist/players/{player_id}", response_model=list[WatchlistPlayerOut])
+def watchlist_add_player(
+    player_id: int,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    player = db.get(Player, int(player_id))
+    if not player or not player_is_listed(player):
+        raise HTTPException(404, "Player not found")
+    existing = db.execute(
+        select(PlayerWatchlist).where(
+            PlayerWatchlist.user_id == int(auth.user.id),
+            PlayerWatchlist.player_id == int(player_id),
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        db.add(
+            PlayerWatchlist(
+                user_id=int(auth.user.id),
+                player_id=int(player_id),
+            )
+        )
+        db.commit()
+    return watchlist_players(auth=auth, db=db)
+
+
+@app.delete("/watchlist/players/{player_id}", response_model=list[WatchlistPlayerOut])
+def watchlist_remove_player(
+    player_id: int,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    existing = db.execute(
+        select(PlayerWatchlist).where(
+            PlayerWatchlist.user_id == int(auth.user.id),
+            PlayerWatchlist.player_id == int(player_id),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        db.delete(existing)
+        db.commit()
+    return watchlist_players(auth=auth, db=db)
+
+
+@app.get("/notifications", response_model=NotificationListOut)
+def notifications_list(
+    limit: int = Query(default=50, ge=1, le=200),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(Notification)
+        .where(Notification.user_id == int(auth.user.id))
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+        .limit(limit)
+    ).scalars().all()
+    unread_count = int(
+        db.execute(
+            select(func.count(Notification.id)).where(
+                Notification.user_id == int(auth.user.id),
+                Notification.read_at.is_(None),
+            )
+        ).scalar_one()
+        or 0
+    )
+    actor_ids = sorted({int(row.actor_user_id) for row in rows if row.actor_user_id is not None})
+    actors = {
+        int(user.id): user
+        for user in db.execute(select(User).where(User.id.in_(actor_ids))).scalars().all()
+    } if actor_ids else {}
+    return NotificationListOut(
+        unread_count=unread_count,
+        items=[
+            notification_to_out(db, row, actor=actors.get(int(row.actor_user_id)) if row.actor_user_id is not None else None)
+            for row in rows
+        ],
+    )
+
+
+@app.post("/notifications/read", response_model=NotificationListOut)
+def notifications_mark_read(
+    payload: NotificationReadIn,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    notification_ids = sorted({int(notification_id) for notification_id in payload.ids if int(notification_id) > 0})
+    if notification_ids:
+        rows = db.execute(
+            select(Notification).where(
+                Notification.user_id == int(auth.user.id),
+                Notification.id.in_(notification_ids),
+            )
+        ).scalars().all()
+        timestamp = datetime.utcnow()
+        for row in rows:
+            if row.read_at is None:
+                row.read_at = timestamp
+        db.commit()
+    return notifications_list(limit=50, auth=auth, db=db)
+
+
+@app.post("/notifications/read-all", response_model=NotificationListOut)
+def notifications_mark_all_read(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(Notification).where(
+            Notification.user_id == int(auth.user.id),
+            Notification.read_at.is_(None),
+        )
+    ).scalars().all()
+    if rows:
+        timestamp = datetime.utcnow()
+        for row in rows:
+            row.read_at = timestamp
+        db.commit()
+    return notifications_list(limit=50, auth=auth, db=db)
 
 
 @app.get("/trading/status", response_model=TradingStatusOut)
@@ -4450,6 +5186,16 @@ def forum_create_comment(
     )
     post.updated_at = datetime.utcnow()
     db.add(comment)
+    if int(post.user_id) != int(auth.user.id):
+        create_notification(
+            db,
+            user_id=int(post.user_id),
+            notification_type=NOTIFICATION_TYPE_FORUM_REPLY,
+            actor_user_id=int(auth.user.id),
+            entity_type="FORUM_POST",
+            entity_id=int(post.id),
+            message=f"{auth.user.username} replied to your post.",
+        )
     db.commit()
     db.refresh(comment)
 

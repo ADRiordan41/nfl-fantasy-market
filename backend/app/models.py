@@ -100,6 +100,58 @@ class DirectMessage(Base):
     sender: Mapped["User"] = relationship(back_populates="sent_direct_messages")
 
 
+class Friendship(Base):
+    __tablename__ = "friendships"
+    __table_args__ = (
+        UniqueConstraint("user_low_id", "user_high_id", name="uq_friendship_pair"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_low_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_high_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING", index=True)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        index=True,
+    )
+
+
+class PlayerWatchlist(Base):
+    __tablename__ = "player_watchlists"
+    __table_args__ = (
+        UniqueConstraint("user_id", "player_id", name="uq_player_watchlist_user_player"),
+        Index("ix_player_watchlists_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_user_read_created", "user_id", "read_at", "created_at"),
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    type: Mapped[str] = mapped_column(String(32), index=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    entity_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    message: Mapped[str] = mapped_column(String(280))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 

@@ -203,6 +203,56 @@ export type DirectThreadDetail = DirectThreadSummary & {
   messages: DirectMessage[];
 };
 
+export type FriendshipStatus = {
+  friendship_id: number | null;
+  status: string;
+  can_message: boolean;
+};
+
+export type FriendSummary = {
+  friendship_id: number;
+  user_id: number;
+  username: string;
+  profile_image_url: string | null;
+  since: string;
+};
+
+export type FriendRequest = {
+  friendship_id: number;
+  user_id: number;
+  username: string;
+  profile_image_url: string | null;
+  requested_at: string;
+  requested_by_user_id: number;
+  direction: string;
+};
+
+export type FriendsDashboard = {
+  friends: FriendSummary[];
+  incoming_requests: FriendRequest[];
+  outgoing_requests: FriendRequest[];
+};
+
+export type LeaderboardEntry = {
+  user_id: number;
+  username: string;
+  profile_image_url: string | null;
+  equity: number;
+  cash_balance: number;
+  holdings_value: number;
+  return_pct: number;
+  rank: number;
+  is_current_user: boolean;
+  is_friend: boolean;
+};
+
+export type LeaderboardResponse = {
+  scope: string;
+  sport: string;
+  generated_at: string;
+  entries: LeaderboardEntry[];
+};
+
 export type UserProfileHolding = {
   player_id: number;
   player_name: string;
@@ -222,7 +272,10 @@ export type UserProfile = {
   cash_balance: number;
   holdings_value: number;
   equity: number;
+  return_pct: number;
+  leaderboard_rank: number | null;
   holdings: UserProfileHolding[];
+  friendship: FriendshipStatus;
 };
 
 export type SearchResult = {
@@ -320,6 +373,36 @@ export type TradingHaltState = {
 export type TradingStatus = {
   global_halt: TradingHaltState;
   sport_halts: TradingHaltState[];
+};
+
+export type WatchlistPlayer = {
+  player_id: number;
+  sport: string;
+  name: string;
+  team: string;
+  position: string;
+  spot_price: number;
+  base_price: number;
+  live: PlayerLive | null;
+  added_at: string;
+};
+
+export type AppNotification = {
+  id: number;
+  type: string;
+  message: string;
+  actor_username: string | null;
+  actor_profile_image_url: string | null;
+  entity_type: string | null;
+  entity_id: number | null;
+  href: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type NotificationList = {
+  unread_count: number;
+  items: AppNotification[];
 };
 
 export type FeedbackMessage = {

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
-import type { Player, PlayerGamePoint, Portfolio, PricePoint, Quote } from "@/lib/types";
+import type { Player, PlayerGamePoint, Portfolio, PricePoint, Quote, WatchlistPlayer } from "@/lib/types";
 
 type TradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
 const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
@@ -302,6 +302,8 @@ export default function PlayerPage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [busyPreview, setBusyPreview] = useState(false);
   const [busyPlace, setBusyPlace] = useState(false);
+  const [watchlist, setWatchlist] = useState<WatchlistPlayer[]>([]);
+  const [watchBusy, setWatchBusy] = useState(false);
   const [error, setError] = useState("");
 
   const handleRequestError = useCallback(
@@ -318,16 +320,18 @@ export default function PlayerPage() {
   const load = useCallback(async () => {
     if (!validId) return;
     try {
-      const [playerData, historyData, gameHistoryData, portfolioData] = await Promise.all([
+      const [playerData, historyData, gameHistoryData, portfolioData, watchlistData] = await Promise.all([
         apiGet<Player>(`/players/${playerId}`),
         apiGet<PricePoint[]>(`/players/${playerId}/history?limit=1500`),
         apiGet<PlayerGamePoint[]>(`/players/${playerId}/game-history?limit=500`),
         apiGet<Portfolio>("/portfolio"),
+        apiGet<WatchlistPlayer[]>("/watchlist/players"),
       ]);
       setPlayer(playerData);
       setHistory(historyData);
       setGameHistory(gameHistoryData);
       setPortfolio(portfolioData);
+      setWatchlist(watchlistData);
       setError("");
     } catch (err: unknown) {
       handleRequestError(err);
@@ -344,6 +348,7 @@ export default function PlayerPage() {
   const positionValue = owned * Number(player?.spot_price ?? 0);
   const premiumPct = player?.base_price ? ((player.spot_price - player.base_price) / player.base_price) * 100 : 0;
   const live = player?.live;
+  const isWatching = watchlist.some((entry) => entry.player_id === playerId);
   const maxOpenSharesAtSpot = MAX_POSITION_NOTIONAL_PER_PLAYER / Math.max(0.0001, Number(player?.spot_price ?? 0));
   const buyRemaining = owned < 0 ? 0 : Math.max(0, Math.floor(maxOpenSharesAtSpot - Math.max(0, owned)));
   const shortRemaining =
@@ -440,6 +445,22 @@ export default function PlayerPage() {
     }
   }
 
+  async function toggleWatch() {
+    if (!validId) return;
+    setWatchBusy(true);
+    setError("");
+    try {
+      const nextWatchlist = isWatching
+        ? await apiDelete<WatchlistPlayer[]>(`/watchlist/players/${playerId}`)
+        : await apiPost<WatchlistPlayer[]>(`/watchlist/players/${playerId}`, {});
+      setWatchlist(nextWatchlist);
+    } catch (err: unknown) {
+      handleRequestError(err);
+    } finally {
+      setWatchBusy(false);
+    }
+  }
+
   if (!validId) {
     return (
       <main className="page-shell">
@@ -464,6 +485,9 @@ export default function PlayerPage() {
         </div>
         <div className="hero-actions">
           <button onClick={load}>Refresh</button>
+          <button type="button" className="ghost-link" onClick={() => void toggleWatch()} disabled={watchBusy}>
+            {watchBusy ? "Saving..." : isWatching ? "Watching" : "Watch"}
+          </button>
           <Link href="/portfolio" className="ghost-link">
             Portfolio
           </Link>

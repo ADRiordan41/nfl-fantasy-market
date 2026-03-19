@@ -17,7 +17,7 @@ import { apiGet, apiPost, clearAuthToken, getAuthToken, isUnauthorizedError } fr
 import { formatCurrency, formatSignedPercent } from "@/lib/format";
 import { getToastEventName, type ToastEventDetail } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
-import type { MarketMover, MarketMovers, Player, SearchResult, UserAccount } from "@/lib/types";
+import type { MarketMover, MarketMovers, NotificationList, Player, SearchResult, UserAccount } from "@/lib/types";
 
 type NavItem = {
   href: string;
@@ -195,8 +195,10 @@ function HomeIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 const NAV_ITEMS = [
+  { href: "/leaderboard", label: "Leaderboard", Icon: LeaderboardIcon },
   { href: "/portfolio", label: "Portfolio", Icon: PortfolioIcon },
   { href: "/market", label: "Market", Icon: MarketIcon },
+  { href: "/watchlist", label: "Watchlist", Icon: WatchlistIcon },
   { href: "/community", label: "Community", Icon: CommunityIcon },
   { href: "/inbox", label: "Inbox", Icon: InboxIcon },
   { href: "/live", label: "Live", Icon: LiveIcon },
@@ -273,6 +275,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [feedbackError, setFeedbackError] = useState("");
   const [feedbackSuccess, setFeedbackSuccess] = useState("");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const pushToast = useCallback((detail: ToastEventDetail) => {
     const message = (detail.message || "").trim();
@@ -425,6 +428,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useAdaptivePolling(loadMovers, { activeMs: 60_000, hiddenMs: 240_000 });
 
+  const loadNotifications = useCallback(async () => {
+    if (pathname === "/auth" || !getAuthToken()) {
+      setUnreadNotifications(0);
+      return;
+    }
+    try {
+      const response = await apiGet<NotificationList>("/notifications?limit=20");
+      setUnreadNotifications(response.unread_count);
+    } catch {
+      setUnreadNotifications(0);
+    }
+  }, [pathname]);
+
+  useAdaptivePolling(loadNotifications, { activeMs: 45_000, hiddenMs: 180_000 });
+
   useEffect(() => {
     const eventName = getToastEventName();
     function onToast(event: Event) {
@@ -450,6 +468,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     } finally {
       clearAuthToken();
       setCurrentUser(null);
+      setUnreadNotifications(0);
       setBusy(false);
       pushToast({ message: "Signed out.", tone: "info" });
       router.replace("/auth");
@@ -640,6 +659,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="header-actions">
+          {showNav && currentUser && (
+            <Link href="/notifications" className="header-icon-link" aria-label="Notifications">
+              <BellIcon className="header-icon" />
+              {unreadNotifications > 0 && (
+                <span className="header-badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>
+              )}
+            </Link>
+          )}
+
           <div className="auth-panel">
             {checkingSession ? (
               <span className="auth-muted">Checking session...</span>
@@ -842,5 +870,57 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
     </div>
+  );
+}
+
+function LeaderboardIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M12 4 14.5 9h5l-4 3.1 1.6 5-5.1-3.3L6.9 17l1.6-5L4.5 9h5Z" />
+    </svg>
+  );
+}
+
+function WatchlistIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M6 4.5h12A1.5 1.5 0 0 1 19.5 6v13l-7.5-4-7.5 4V6A1.5 1.5 0 0 1 6 4.5Z" />
+    </svg>
+  );
+}
+
+function BellIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M6.5 16.5h11l-1.2-1.6V10a4.3 4.3 0 1 0-8.6 0v4.9Z" />
+      <path d="M10 18.5a2.2 2.2 0 0 0 4 0" />
+    </svg>
   );
 }

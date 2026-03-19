@@ -367,6 +367,60 @@ class DirectThreadDetailOut(DirectThreadSummaryOut):
     messages: list[DirectMessageOut]
 
 
+class FriendshipRequestCreateIn(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+
+
+class FriendshipStatusOut(BaseModel):
+    friendship_id: int | None = None
+    status: str
+    can_message: bool = False
+
+
+class FriendSummaryOut(BaseModel):
+    friendship_id: int
+    user_id: int
+    username: str
+    profile_image_url: str | None = None
+    since: datetime
+
+
+class FriendRequestOut(BaseModel):
+    friendship_id: int
+    user_id: int
+    username: str
+    profile_image_url: str | None = None
+    requested_at: datetime
+    requested_by_user_id: int
+    direction: str
+
+
+class FriendsDashboardOut(BaseModel):
+    friends: list[FriendSummaryOut]
+    incoming_requests: list[FriendRequestOut]
+    outgoing_requests: list[FriendRequestOut]
+
+
+class LeaderboardEntryOut(BaseModel):
+    user_id: int
+    username: str
+    profile_image_url: str | None = None
+    equity: float
+    cash_balance: float
+    holdings_value: float
+    return_pct: float
+    rank: int
+    is_current_user: bool = False
+    is_friend: bool = False
+
+
+class LeaderboardOut(BaseModel):
+    scope: str
+    sport: str
+    generated_at: datetime
+    entries: list[LeaderboardEntryOut]
+
+
 class UserProfileHoldingOut(BaseModel):
     player_id: int
     player_name: str
@@ -386,7 +440,10 @@ class UserProfileOut(BaseModel):
     cash_balance: float
     holdings_value: float
     equity: float
+    return_pct: float = 0
+    leaderboard_rank: int | None = None
     holdings: list[UserProfileHoldingOut]
+    friendship: FriendshipStatusOut = Field(default_factory=lambda: FriendshipStatusOut(status="SELF", can_message=False))
 
 
 class UserProfileUpdateIn(BaseModel):
@@ -399,6 +456,40 @@ class SearchResultOut(BaseModel):
     label: str
     subtitle: str | None = None
     href: str
+
+
+class WatchlistPlayerOut(BaseModel):
+    player_id: int
+    sport: str
+    name: str
+    team: str
+    position: str
+    spot_price: float
+    base_price: float
+    live: PlayerLiveOut | None = None
+    added_at: datetime
+
+
+class NotificationOut(BaseModel):
+    id: int
+    type: str
+    message: str
+    actor_username: str | None = None
+    actor_profile_image_url: str | None = None
+    entity_type: str | None = None
+    entity_id: int | None = None
+    href: str | None = None
+    read_at: datetime | None = None
+    created_at: datetime
+
+
+class NotificationListOut(BaseModel):
+    unread_count: int
+    items: list[NotificationOut]
+
+
+class NotificationReadIn(BaseModel):
+    ids: list[int] = Field(default_factory=list, max_length=200)
 
 
 class PlayerLiveOut(BaseModel):
