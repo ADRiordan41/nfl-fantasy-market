@@ -162,36 +162,62 @@ export default function HomePage() {
           ) : marketLeaders.length === 0 ? (
             <p className="subtle">No listed players yet. IPO controls are managed in Admin.</p>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Player</th>
-                    <th>Sport</th>
-                    <th>Current Price</th>
-                    <th>Move vs Purchase Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {marketLeaders.map((player) => {
-                    const changePct = getSignedPercent(player.base_price, player.spot_price);
-                    return (
-                      <tr key={player.id}>
-                        <td>
+            <>
+              <div className="table-wrap home-market-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Player</th>
+                      <th>Sport</th>
+                      <th>Current Price</th>
+                      <th>Move vs Purchase Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marketLeaders.map((player) => {
+                      const changePct = getSignedPercent(player.base_price, player.spot_price);
+                      return (
+                        <tr key={player.id}>
+                          <td>
+                            <Link href={`/player/${player.id}`} className="community-user-link">
+                              {player.name}
+                            </Link>
+                            <div className="subtle">{player.team} {player.position}</div>
+                          </td>
+                          <td>{player.sport}</td>
+                          <td>{formatCurrency(player.spot_price)}</td>
+                          <td className={changePct >= 0 ? "up" : "down"}>{formatSignedPercent(changePct)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="home-market-mobile-list">
+                {marketLeaders.map((player) => {
+                  const changePct = getSignedPercent(player.base_price, player.spot_price);
+                  return (
+                    <article className="home-market-mobile-card" key={player.id}>
+                      <div className="home-market-mobile-top">
+                        <div className="home-market-mobile-player">
                           <Link href={`/player/${player.id}`} className="community-user-link">
                             {player.name}
                           </Link>
-                          <div className="subtle">{player.team} {player.position}</div>
-                        </td>
-                        <td>{player.sport}</td>
-                        <td>{formatCurrency(player.spot_price)}</td>
-                        <td className={changePct >= 0 ? "up" : "down"}>{formatSignedPercent(changePct)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <p className="subtle">
+                            {player.team} {player.position} | {player.sport}
+                          </p>
+                        </div>
+                        <strong>{formatCurrency(player.spot_price)}</strong>
+                      </div>
+                      <div className="home-market-mobile-bottom">
+                        <span className="subtle">Move vs purchase price</span>
+                        <span className={changePct >= 0 ? "up" : "down"}>{formatSignedPercent(changePct)}</span>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </>
           )}
         </article>
 
