@@ -740,7 +740,7 @@ textarea[aria-invalid="true"] {
 }
 
 .mobile-nav {
-  --dock-size: clamp(38px, 10.5vw, 52px);
+  --dock-size: clamp(44px, 12vw, 58px);
   position: fixed;
   left: 50%;
   bottom: 14px;
@@ -755,7 +755,7 @@ textarea[aria-invalid="true"] {
   display: grid;
   grid-template-columns: repeat(var(--mobile-dock-columns, 7), var(--dock-size));
   gap: 6px;
-  padding: 6px;
+  padding: 8px;
   z-index: 30;
 }
 
@@ -850,8 +850,8 @@ textarea[aria-invalid="true"] {
 }
 
 .nav-icon {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.9;
@@ -3967,14 +3967,14 @@ td {
   }
 
   .mobile-nav {
-    --dock-size: clamp(40px, 12vw, 54px);
-    gap: 7px;
-    padding: 7px;
-    border-radius: 18px;
+    --dock-size: clamp(46px, 14vw, 62px);
+    gap: 9px;
+    padding: 9px;
+    border-radius: 22px;
   }
 
   .mobile-link {
-    border-radius: 14px;
+    border-radius: 18px;
   }
 
   .community-post-preview,
