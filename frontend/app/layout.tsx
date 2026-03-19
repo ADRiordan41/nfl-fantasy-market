@@ -12,7 +12,6 @@ const aleo = Aleo({
 export const metadata: Metadata = {
   title: "MatchupMarket",
   description: "Trade and track fantasy player shares with live quote previews.",
-  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
