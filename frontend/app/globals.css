@@ -740,7 +740,7 @@ textarea[aria-invalid="true"] {
 }
 
 .mobile-nav {
-  --dock-size: clamp(30px, 9vw, 44px);
+  --dock-size: clamp(38px, 10.5vw, 52px);
   position: fixed;
   left: 50%;
   bottom: 14px;
@@ -850,8 +850,8 @@ textarea[aria-invalid="true"] {
 }
 
 .nav-icon {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.9;
@@ -3964,6 +3964,17 @@ td {
   .market-mobile-sheet {
     padding: 16px;
     border-radius: 22px;
+  }
+
+  .mobile-nav {
+    --dock-size: clamp(40px, 12vw, 54px);
+    gap: 7px;
+    padding: 7px;
+    border-radius: 18px;
+  }
+
+  .mobile-link {
+    border-radius: 14px;
   }
 
   .community-post-preview,
