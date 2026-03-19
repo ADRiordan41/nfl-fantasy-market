@@ -206,6 +206,13 @@ const NAV_ITEMS = [
   { href: "/admin/stats", label: "Admin", Icon: AdminIcon, requiresAdmin: true },
 ] satisfies NavItem[];
 
+const MOBILE_HOME_MENU_HREFS = new Set([
+  "/leaderboard",
+  "/watchlist",
+  "/inbox",
+  "/settings",
+]);
+
 const FOOTER_LINKS = [
   { href: "/support", label: "Support" },
   { href: "/terms", label: "Terms" },
@@ -534,7 +541,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }),
     [currentUser?.is_admin],
   );
-  const mobileDockColumns = useMemo(() => 1 + visibleNavItems.length, [visibleNavItems.length]);
+  const mobileDockItems = useMemo(
+    () => visibleNavItems.filter((item) => !MOBILE_HOME_MENU_HREFS.has(item.href)),
+    [visibleNavItems],
+  );
+  const mobileHomeMenuItems = useMemo(
+    () => visibleNavItems.filter((item) => MOBILE_HOME_MENU_HREFS.has(item.href)),
+    [visibleNavItems],
+  );
+  const mobileDockColumns = useMemo(() => 1 + mobileDockItems.length, [mobileDockItems.length]);
   const mobileDockStyle = useMemo(
     () => ({ "--mobile-dock-columns": mobileDockColumns } as CSSProperties),
     [mobileDockColumns],
@@ -771,6 +786,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <Link href="/" className="mobile-home-action" role="menuitem" onClick={() => setMobileHomeMenuOpen(false)}>
                   Home
                 </Link>
+                {mobileHomeMenuItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="mobile-home-action"
+                    role="menuitem"
+                    onClick={() => setMobileHomeMenuOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
                 {checkingSession ? (
                   <span className="mobile-home-action muted" role="status" aria-live="polite">
                     Checking...
@@ -796,7 +822,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
-          {visibleNavItems.map((item) => (
+          {mobileDockItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
