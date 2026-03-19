@@ -37,6 +37,30 @@ npm run dev
 
 Frontend: `http://localhost:3000` (or `3001` if `3000` is busy)
 
+## Mobile App Starter
+There is now an Expo-based mobile starter app in [mobile/package.json](/workspace/mobile/package.json).
+
+What is included:
+- shared domain types in [shared/types.ts](/workspace/shared/types.ts)
+- shared formatting helpers in [shared/format.ts](/workspace/shared/format.ts)
+- secure token storage for mobile auth
+- starter tab screens for `Home`, `Market`, `Portfolio`, `Community`, and `Live`
+- scaffolded secondary screens for `Player`, `Profile`, `Leaderboard`, `Watchlist`, `Notifications`, `Inbox`, and `Settings`
+
+To run it locally:
+
+```bash
+cd mobile
+npm install
+npm run start
+```
+
+Recommended environment variable:
+
+```bash
+EXPO_PUBLIC_API_BASE_URL=https://matchupmarket.onrender.com
+```
+
 ## Scaling Knobs
 For moderate traffic, the backend now supports basic runtime tuning through env vars:
 - `REDIS_URL`: optional shared Redis for rate limiting and hot-endpoint caching

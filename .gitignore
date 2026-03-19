@@ -18,6 +18,11 @@ frontend/.next-runtime/
 frontend/.next-dev-*/
 frontend/.next-e2e/
 frontend/.next-playwright/
+mobile/node_modules/
+mobile/.expo/
+mobile/.expo-shared/
+mobile/dist/
+mobile/web-build/
 
 # Local design/layout scratch files
 frontend/*-layout-preview.png
