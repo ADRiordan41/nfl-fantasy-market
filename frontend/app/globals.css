@@ -2790,6 +2790,164 @@ button.segment.danger-segment.danger-active {
   max-width: 100%;
 }
 
+.market-mobile-list {
+  display: none;
+  gap: 14px;
+}
+
+.market-mobile-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(168, 191, 221, 0.46);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(244, 250, 255, 0.96) 100%);
+  box-shadow: 0 16px 32px rgba(15, 35, 65, 0.08);
+}
+
+.market-mobile-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.market-mobile-meta {
+  margin: 4px 0 0;
+}
+
+.market-mobile-price-block {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.market-mobile-price-block strong {
+  font-size: 18px;
+  color: #14385d;
+}
+
+.market-mobile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.market-mobile-stat {
+  display: grid;
+  gap: 4px;
+  padding: 10px 11px;
+  border-radius: 16px;
+  background: rgba(238, 246, 255, 0.84);
+}
+
+.market-mobile-stat span {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.market-mobile-stat strong {
+  font-size: 13px;
+  color: #15385d;
+}
+
+.market-mobile-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.market-mobile-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 20px 12px calc(92px + env(safe-area-inset-bottom, 0px));
+  background: rgba(10, 24, 44, 0.44);
+  backdrop-filter: blur(6px);
+}
+
+.market-mobile-sheet {
+  width: min(100%, 540px);
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(246, 251, 255, 0.99) 100%);
+  box-shadow: 0 24px 48px rgba(8, 21, 39, 0.24);
+}
+
+.market-mobile-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.market-mobile-sheet-head h3 {
+  margin: 0;
+}
+
+.market-mobile-segments {
+  width: 100%;
+}
+
+.market-mobile-sheet-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.market-mobile-sheet-metrics span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(232, 242, 255, 0.92);
+  color: #264b71;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.market-mobile-qty-input {
+  width: 100%;
+  max-width: none;
+  height: 46px;
+  text-align: center;
+  font-size: 17px;
+  border-radius: 14px;
+}
+
+.market-mobile-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-mobile-quick-actions .market-quick-buy-btn,
+.market-mobile-quick-actions .market-quick-short-btn {
+  min-height: 36px;
+  height: 36px;
+}
+
+.market-mobile-quote-card {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(236, 245, 255, 0.85);
+}
+
+.market-mobile-sheet-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
 .market-table {
   width: max-content;
   min-width: 860px;
@@ -3495,6 +3653,14 @@ td {
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
   }
+
+  .market-mobile-list {
+    display: grid;
+  }
+
+  .desktop-market-table {
+    display: none;
+  }
 }
 
 @media (min-width: 960px) {
@@ -3719,6 +3885,39 @@ td {
   .subtle {
     font-size: 13px;
     line-height: 1.42;
+  }
+
+  .market-mobile-card {
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .market-mobile-card-top {
+    gap: 10px;
+  }
+
+  .market-mobile-price-block strong {
+    font-size: 16px;
+  }
+
+  .market-mobile-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .market-mobile-actions,
+  .market-mobile-sheet-actions,
+  .market-mobile-quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .market-mobile-sheet-backdrop {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .market-mobile-sheet {
+    padding: 16px;
+    border-radius: 22px;
   }
 
   .community-post-preview,

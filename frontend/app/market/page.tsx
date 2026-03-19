@@ -10,7 +10,7 @@ import MarketTableRow, {
 } from "@/components/market-table-row";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
@@ -55,6 +55,15 @@ const MARKET_VIRTUALIZATION_THRESHOLD = 60;
 const MARKET_VIRTUALIZATION_OVERSCAN = 8;
 const MARKET_TABLE_COLUMN_COUNT = 12;
 
+type MobileTradeState = {
+  row: MarketTableRowModel;
+  side: MarketTradeSide;
+  qty: string;
+  quote: Quote | null;
+  previewing: boolean;
+  placing: boolean;
+};
+
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -93,6 +102,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+function parseWholeShares(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return parsed > 0 ? parsed : null;
+}
+
+function isCostSide(side: MarketTradeSide): boolean {
+  return side === "BUY" || side === "SHORT";
+}
+
 export default function MarketPage() {
   const router = useRouter();
   const marketShellRef = useRef<HTMLElement | null>(null);
@@ -123,6 +143,7 @@ export default function MarketPage() {
     bottomSpacer: 0,
   });
   const [error, setError] = useState("");
+  const [mobileTrade, setMobileTrade] = useState<MobileTradeState | null>(null);
 
   const handleRequestError = useCallback(
     (err: unknown) => {
@@ -551,6 +572,61 @@ export default function MarketPage() {
   const visibleStart = virtualizationEnabled ? virtualWindow.start : 0;
   const renderedRows = virtualizationEnabled ? visibleRows.slice(virtualWindow.start, virtualWindow.end) : visibleRows;
 
+  function openMobileTrade(row: MarketTableRowModel) {
+    setMobileTrade({
+      row,
+      side: row.sharesHeld > 0 ? "SELL" : "BUY",
+      qty: "",
+      quote: null,
+      previewing: false,
+      placing: false,
+    });
+  }
+
+  function closeMobileTrade() {
+    setMobileTrade(null);
+  }
+
+  function updateMobileTrade(patch: Partial<MobileTradeState>) {
+    setMobileTrade((current) => (current ? { ...current, ...patch } : current));
+  }
+
+  async function previewMobileTrade() {
+    if (!mobileTrade || activeSportTradingHalted) return;
+    const shares = parseWholeShares(mobileTrade.qty);
+    if (!shares) {
+      setError("Enter whole shares (1 or more) before previewing.");
+      return;
+    }
+    updateMobileTrade({ previewing: true });
+    setError("");
+    try {
+      const nextQuote = await requestQuote(mobileTrade.row.player.id, mobileTrade.side, shares);
+      updateMobileTrade({ quote: nextQuote });
+    } catch {
+      // Parent handlers already surface the error.
+    } finally {
+      updateMobileTrade({ previewing: false });
+    }
+  }
+
+  async function executeMobileTrade() {
+    if (!mobileTrade || !mobileTrade.quote || activeSportTradingHalted) {
+      setError("Preview a quote first.");
+      return;
+    }
+    updateMobileTrade({ placing: true });
+    setError("");
+    try {
+      await executeTrade(mobileTrade.row.player.id, mobileTrade.side, mobileTrade.quote.shares);
+      closeMobileTrade();
+    } catch {
+      // Parent handlers already surface the error.
+    } finally {
+      updateMobileTrade({ placing: false });
+    }
+  }
+
   return (
     <main ref={marketShellRef} className="page-shell market-page-shell">
       <section className="hero-panel">
@@ -631,93 +707,257 @@ export default function MarketPage() {
           actionLabel="Open Community"
         />
       ) : (
-        <section ref={marketTablePanelRef} className="table-panel market-table-panel">
-          <div className="table-wrap">
-            <table className="market-table">
-              <colgroup>
-                <col className="market-col-player" />
-                <col className="market-col-price" />
-                <col className="market-col-price-side" />
-                <col className="market-col-price-side" />
-                <col className="market-col-change" />
-                <col className="market-col-change-24h" />
-                <col className="market-col-shares-held" />
-                <col className="market-col-shares-short" />
-                <col className="market-col-quick" />
-                <col className="market-col-action" />
-                <col className="market-col-qty" />
-                <col className="market-col-quote" />
-              </colgroup>
-              <thead>
-                <tr className="market-header-group-row">
-                  <th rowSpan={2} className="market-sticky-player-cell market-header-corner">
-                    {renderSortButton("name", "Player")}
-                  </th>
-                  <th colSpan={3} className="market-header-group">
-                    Pricing
-                  </th>
-                  <th colSpan={2} className="market-header-group">
-                    Performance
-                  </th>
-                  <th colSpan={2} className="market-header-group">
-                    Positioning
-                  </th>
-                  <th rowSpan={2} className="market-header-group market-header-single">
-                    Quick Actions
-                  </th>
-                  <th rowSpan={2} className="market-header-group market-header-single">
-                    Action
-                  </th>
-                  <th rowSpan={2} className="market-header-group market-header-single">
-                    Qty
-                  </th>
-                  <th rowSpan={2} className="market-header-group market-header-single">
-                    Quote
-                  </th>
-                </tr>
-                <tr className="market-header-detail-row">
-                  <th>{renderSortButton("spot_price", "Price")}</th>
-                  <th className="market-price-header market-bid-header">Bid</th>
-                  <th className="market-price-header market-ask-header">Ask</th>
-                  <th>{renderSortButton("change_pct", "Total Gain")}</th>
-                  <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
-                  <th>Shares Held</th>
-                  <th>Shares Short</th>
-                </tr>
-              </thead>
-              <tbody>
-                {virtualizationEnabled && virtualWindow.topSpacer > 0 && (
-                  <tr className="market-spacer-row" aria-hidden="true">
-                    <td colSpan={MARKET_TABLE_COLUMN_COUNT} style={{ height: `${virtualWindow.topSpacer}px` }} />
+        <>
+          <section className="market-mobile-list">
+            {visibleRows.map((row) => (
+              <article key={row.player.id} className="market-mobile-card">
+                <div className="market-mobile-card-top">
+                  <div>
+                    <div className="market-player-cell">
+                      <span className="card-title">{row.player.name}</span>
+                      {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
+                    </div>
+                    <p className="subtle market-mobile-meta">
+                      {row.player.team} {row.player.position} | Held {formatNumber(Math.round(row.sharesHeld))} | Short {formatNumber(Math.round(row.sharesShort))}
+                    </p>
+                  </div>
+                  <div className="market-mobile-price-block">
+                    <span className="subtle">Current Price</span>
+                    <strong>{formatCurrency(row.player.spot_price)}</strong>
+                  </div>
+                </div>
+                <div className="market-mobile-stats">
+                  <div className="market-mobile-stat">
+                    <span>Total</span>
+                    <strong className={row.totalChangePct >= 0 ? "up" : "down"}>{formatSignedPercent(row.totalChangePct)}</strong>
+                  </div>
+                  <div className="market-mobile-stat">
+                    <span>24h</span>
+                    <strong className={row.change24hPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change24hPct)}</strong>
+                  </div>
+                  <div className="market-mobile-stat">
+                    <span>Bid / Ask</span>
+                    <strong>{formatCurrency(row.player.bid_price)} / {formatCurrency(row.player.ask_price)}</strong>
+                  </div>
+                </div>
+                <div className="market-mobile-actions">
+                  <button type="button" className="primary-btn" onClick={() => openMobileTrade(row)}>
+                    Trade
+                  </button>
+                  <button
+                    type="button"
+                    className="chip market-mini-btn"
+                    onClick={() => router.push(`/player/${row.player.id}`)}
+                  >
+                    View
+                  </button>
+                </div>
+              </article>
+            ))}
+          </section>
+
+          <section ref={marketTablePanelRef} className="table-panel market-table-panel desktop-market-table">
+            <div className="table-wrap">
+              <table className="market-table">
+                <colgroup>
+                  <col className="market-col-player" />
+                  <col className="market-col-price" />
+                  <col className="market-col-price-side" />
+                  <col className="market-col-price-side" />
+                  <col className="market-col-change" />
+                  <col className="market-col-change-24h" />
+                  <col className="market-col-shares-held" />
+                  <col className="market-col-shares-short" />
+                  <col className="market-col-quick" />
+                  <col className="market-col-action" />
+                  <col className="market-col-qty" />
+                  <col className="market-col-quote" />
+                </colgroup>
+                <thead>
+                  <tr className="market-header-group-row">
+                    <th rowSpan={2} className="market-sticky-player-cell market-header-corner">
+                      {renderSortButton("name", "Player")}
+                    </th>
+                    <th colSpan={3} className="market-header-group">
+                      Pricing
+                    </th>
+                    <th colSpan={2} className="market-header-group">
+                      Performance
+                    </th>
+                    <th colSpan={2} className="market-header-group">
+                      Positioning
+                    </th>
+                    <th rowSpan={2} className="market-header-group market-header-single">
+                      Quick Actions
+                    </th>
+                    <th rowSpan={2} className="market-header-group market-header-single">
+                      Action
+                    </th>
+                    <th rowSpan={2} className="market-header-group market-header-single">
+                      Qty
+                    </th>
+                    <th rowSpan={2} className="market-header-group market-header-single">
+                      Quote
+                    </th>
                   </tr>
-                )}
-                {renderedRows.map((row, index) => (
-                  <MarketTableRow
-                    key={row.player.id}
-                    row={row}
-                    isTradingHalted={activeSportTradingHalted}
-                    priceFlash={priceFlashById[row.player.id]}
-                    measureRow={index === 0}
-                    onMeasureRow={handleMeasureRow}
-                    onSetError={setError}
-                    onPreviewQuote={requestQuote}
-                    onExecuteTrade={executeTrade}
-                  />
-                ))}
-                {virtualizationEnabled && virtualWindow.bottomSpacer > 0 && (
-                  <tr className="market-spacer-row" aria-hidden="true">
-                    <td colSpan={MARKET_TABLE_COLUMN_COUNT} style={{ height: `${virtualWindow.bottomSpacer}px` }} />
+                  <tr className="market-header-detail-row">
+                    <th>{renderSortButton("spot_price", "Price")}</th>
+                    <th className="market-price-header market-bid-header">Bid</th>
+                    <th className="market-price-header market-ask-header">Ask</th>
+                    <th>{renderSortButton("change_pct", "Total Gain")}</th>
+                    <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
+                    <th>Shares Held</th>
+                    <th>Shares Short</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {virtualizationEnabled && (
-            <p className="subtle market-table-status">
-              Showing rows {visibleStart + 1}-{visibleStart + renderedRows.length} of {visibleRows.length}
-            </p>
-          )}
-        </section>
+                </thead>
+                <tbody>
+                  {virtualizationEnabled && virtualWindow.topSpacer > 0 && (
+                    <tr className="market-spacer-row" aria-hidden="true">
+                      <td colSpan={MARKET_TABLE_COLUMN_COUNT} style={{ height: `${virtualWindow.topSpacer}px` }} />
+                    </tr>
+                  )}
+                  {renderedRows.map((row, index) => (
+                    <MarketTableRow
+                      key={row.player.id}
+                      row={row}
+                      isTradingHalted={activeSportTradingHalted}
+                      priceFlash={priceFlashById[row.player.id]}
+                      measureRow={index === 0}
+                      onMeasureRow={handleMeasureRow}
+                      onSetError={setError}
+                      onPreviewQuote={requestQuote}
+                      onExecuteTrade={executeTrade}
+                    />
+                  ))}
+                  {virtualizationEnabled && virtualWindow.bottomSpacer > 0 && (
+                    <tr className="market-spacer-row" aria-hidden="true">
+                      <td colSpan={MARKET_TABLE_COLUMN_COUNT} style={{ height: `${virtualWindow.bottomSpacer}px` }} />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {virtualizationEnabled && (
+              <p className="subtle market-table-status">
+                Showing rows {visibleStart + 1}-{visibleStart + renderedRows.length} of {visibleRows.length}
+              </p>
+            )}
+          </section>
+        </>
+      )}
+
+      {mobileTrade && (
+        <div className="market-mobile-sheet-backdrop" role="presentation" onClick={closeMobileTrade}>
+          <section
+            className="market-mobile-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Trade ${mobileTrade.row.player.name}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="market-mobile-sheet-head">
+              <div>
+                <p className="eyebrow">Trade</p>
+                <h3>{mobileTrade.row.player.name}</h3>
+                <p className="subtle">
+                  {mobileTrade.row.player.team} {mobileTrade.row.player.position} | Price {formatCurrency(mobileTrade.row.player.spot_price)}
+                </p>
+              </div>
+              <button type="button" onClick={closeMobileTrade}>
+                Close
+              </button>
+            </div>
+
+            <div className="segment-row segment-4 market-mobile-segments">
+              {(["BUY", "SELL", "SHORT", "COVER"] as const).map((side) => (
+                <button
+                  key={side}
+                  type="button"
+                  className={
+                    mobileTrade.side === side
+                      ? side === "SELL" || side === "SHORT"
+                        ? "segment active danger-segment danger-active"
+                        : "segment active"
+                      : side === "SELL" || side === "SHORT"
+                        ? "segment danger-segment"
+                        : "segment"
+                  }
+                  onClick={() => updateMobileTrade({ side, quote: null })}
+                >
+                  {side}
+                </button>
+              ))}
+            </div>
+
+            <div className="market-mobile-sheet-metrics">
+              <span>Held {formatNumber(Math.round(mobileTrade.row.sharesHeld))}</span>
+              <span>Short {formatNumber(Math.round(mobileTrade.row.sharesShort))}</span>
+              <span>Buy Max {formatNumber(mobileTrade.row.buyRemaining)}</span>
+              <span>Short Max {formatNumber(mobileTrade.row.shortRemaining)}</span>
+            </div>
+
+            <label className="field-label" htmlFor="market-mobile-qty">
+              Quantity
+            </label>
+            <input
+              id="market-mobile-qty"
+              className="market-mobile-qty-input"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              value={mobileTrade.qty}
+              onChange={(event) => updateMobileTrade({ qty: event.target.value.replace(/\D/g, "").slice(0, 4), quote: null })}
+              placeholder="0"
+              disabled={activeSportTradingHalted}
+            />
+
+            <div className="market-mobile-quick-actions">
+              <button
+                type="button"
+                className="chip market-mini-btn market-quick-buy-btn"
+                onClick={() => updateMobileTrade({ side: "BUY", qty: String(mobileTrade.row.buyRemaining), quote: null })}
+                disabled={mobileTrade.row.buyRemaining <= 0}
+              >
+                Buy Max
+              </button>
+              <button
+                type="button"
+                className="chip market-mini-btn market-quick-short-btn"
+                onClick={() => updateMobileTrade({ side: "SHORT", qty: String(mobileTrade.row.shortRemaining), quote: null })}
+                disabled={mobileTrade.row.shortRemaining <= 0}
+              >
+                Short Max
+              </button>
+            </div>
+
+            <div className="market-mobile-quote-card">
+              {mobileTrade.quote ? (
+                <>
+                  <p className="market-quote-main">
+                    {isCostSide(mobileTrade.side) ? "Estimated Cost" : "Estimated Net"}: {formatCurrency(mobileTrade.quote.total)}
+                  </p>
+                  <p className="market-quote-sub">Avg {formatCurrency(mobileTrade.quote.average_price, 3)}</p>
+                </>
+              ) : (
+                <p className="subtle">Preview to see cost, proceeds, and average execution price.</p>
+              )}
+            </div>
+
+            <div className="market-mobile-sheet-actions">
+              <button type="button" onClick={() => void previewMobileTrade()} disabled={activeSportTradingHalted || mobileTrade.previewing}>
+                {mobileTrade.previewing ? "Quoting..." : "Preview"}
+              </button>
+              <button
+                type="button"
+                className={mobileTrade.side === "SELL" || mobileTrade.side === "SHORT" ? "primary-btn short-btn" : "primary-btn"}
+                onClick={() => void executeMobileTrade()}
+                disabled={activeSportTradingHalted || !mobileTrade.quote || mobileTrade.placing}
+              >
+                {mobileTrade.placing ? "Placing..." : `Place ${mobileTrade.side}`}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </main>
   );
