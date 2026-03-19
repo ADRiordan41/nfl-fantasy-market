@@ -56,6 +56,7 @@ test.describe("Desktop baselines", () => {
 
     await page.goto("/portfolio");
     await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: "Recent Trades" })).toBeVisible();
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("portfolio-desktop.png", { fullPage: true });
@@ -126,6 +127,7 @@ test.describe("Mobile baselines", () => {
 
     await page.goto("/portfolio");
     await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: "Recent Trades" })).toBeVisible();
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("portfolio-mobile.png", { fullPage: true });
