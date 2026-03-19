@@ -3669,7 +3669,23 @@ td {
   .community-hero-controls {
     width: 100%;
     justify-content: flex-start;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+
+  .community-create-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 16px;
+  }
+
+  .community-sort-panel {
+    flex: 0 0 auto;
+  }
+
+  .community-sort-toggle {
+    width: auto;
+    grid-template-columns: repeat(2, minmax(64px, 1fr));
   }
 }
 
