@@ -711,8 +711,8 @@ export default function MarketPage() {
           <section className="market-mobile-list">
             {visibleRows.map((row) => (
               <article key={row.player.id} className="market-mobile-card">
-                <div className="market-mobile-card-top">
-                  <div>
+                <div className="holding-head market-mobile-card-head">
+                  <div className="market-mobile-title-block">
                     <div className="market-player-cell">
                       <span className="card-title">{row.player.name}</span>
                       {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
@@ -721,23 +721,26 @@ export default function MarketPage() {
                       {row.player.team} {row.player.position} | Held {formatNumber(Math.round(row.sharesHeld))} | Short {formatNumber(Math.round(row.sharesShort))}
                     </p>
                   </div>
-                  <div className="market-mobile-price-block">
-                    <span className="subtle">Current Price</span>
-                    <strong>{formatCurrency(row.player.spot_price)}</strong>
-                  </div>
+                  <strong className="market-mobile-price">{formatCurrency(row.player.spot_price)}</strong>
                 </div>
-                <div className="market-mobile-stats">
-                  <div className="market-mobile-stat">
-                    <span>Total</span>
-                    <strong className={row.totalChangePct >= 0 ? "up" : "down"}>{formatSignedPercent(row.totalChangePct)}</strong>
+                <div className="market-mobile-metrics-row">
+                  <div className="holding-metrics market-mobile-holding-metrics">
+                    <span>
+                      Total{" "}
+                      <strong className={row.totalChangePct >= 0 ? "up" : "down"}>{formatSignedPercent(row.totalChangePct)}</strong>
+                    </span>
+                    <span>
+                      24H{" "}
+                      <strong className={row.change24hPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change24hPct)}</strong>
+                    </span>
                   </div>
-                  <div className="market-mobile-stat">
-                    <span>24h</span>
-                    <strong className={row.change24hPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change24hPct)}</strong>
-                  </div>
-                  <div className="market-mobile-stat">
-                    <span>Bid / Ask</span>
-                    <strong>{formatCurrency(row.player.bid_price)} / {formatCurrency(row.player.ask_price)}</strong>
+                  <div className="holding-metrics market-mobile-holding-metrics market-mobile-bid-ask">
+                    <span>
+                      Bid <strong>{formatCurrency(row.player.bid_price)}</strong>
+                    </span>
+                    <span>
+                      Ask <strong>{formatCurrency(row.player.ask_price)}</strong>
+                    </span>
                   </div>
                 </div>
                 <div className="market-mobile-actions">

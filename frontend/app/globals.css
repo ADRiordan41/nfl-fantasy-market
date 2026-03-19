@@ -2838,72 +2838,71 @@ button.segment.danger-segment.danger-active {
 
 .market-mobile-list {
   display: none;
-  gap: 14px;
+  gap: 12px;
 }
 
 .market-mobile-card {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   border: 1px solid rgba(168, 191, 221, 0.46);
-  border-radius: 22px;
+  border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(244, 250, 255, 0.96) 100%);
   box-shadow: 0 16px 32px rgba(15, 35, 65, 0.08);
 }
 
-.market-mobile-card-top {
-  display: flex;
+.market-mobile-card-head {
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
 }
 
 .market-mobile-meta {
-  margin: 4px 0 0;
+  margin: 3px 0 0;
 }
 
-.market-mobile-price-block {
-  display: grid;
-  gap: 2px;
-  text-align: right;
+.market-mobile-title-block {
+  min-width: 0;
+}
+
+.market-mobile-price {
   flex: 0 0 auto;
-}
-
-.market-mobile-price-block strong {
+  margin: 0;
+  text-align: right;
   font-size: 18px;
   color: #14385d;
 }
 
-.market-mobile-stats {
+.market-mobile-metrics-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
-.market-mobile-stat {
-  display: grid;
-  gap: 4px;
-  padding: 10px 11px;
-  border-radius: 16px;
+.market-mobile-holding-metrics {
+  margin-top: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
   background: rgba(238, 246, 255, 0.84);
+  align-items: center;
 }
 
-.market-mobile-stat span {
-  font-size: 11px;
+.market-mobile-holding-metrics span {
+  min-width: 0;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
 }
 
-.market-mobile-stat strong {
+.market-mobile-holding-metrics strong {
   font-size: 13px;
+  color: #15385d;
+}
+
+.market-mobile-bid-ask strong {
   color: #15385d;
 }
 
 .market-mobile-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
 }
 
 .market-mobile-sheet-backdrop {
@@ -3938,16 +3937,16 @@ td {
     border-radius: 20px;
   }
 
-  .market-mobile-card-top {
+  .market-mobile-card-head {
     gap: 10px;
   }
 
-  .market-mobile-price-block strong {
+  .market-mobile-price {
     font-size: 16px;
   }
 
-  .market-mobile-stats {
-    grid-template-columns: 1fr;
+  .market-mobile-metrics-row {
+    gap: 6px;
   }
 
   .market-mobile-actions,
