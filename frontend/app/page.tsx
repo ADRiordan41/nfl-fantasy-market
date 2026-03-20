@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, getAuthToken } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
-import type { ForumPostSummary, Player } from "@/lib/types";
+import type { ForumPostSummary, LeaderboardResponse, Player } from "@/lib/types";
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -30,6 +30,7 @@ function getSignedPercent(base: number, spot: number): number {
 export default function HomePage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [posts, setPosts] = useState<ForumPostSummary[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [communityLocked, setCommunityLocked] = useState(false);
   const [error, setError] = useState("");
@@ -41,7 +42,7 @@ export default function HomePage() {
     setError("");
     try {
       let locked = false;
-      const [nextPlayers, nextPosts] = await Promise.all([
+      const [nextPlayers, nextPosts, nextLeaderboard] = await Promise.all([
         apiGet<Player[]>("/players"),
         apiGet<ForumPostSummary[]>("/forum/posts?limit=4").catch((err: unknown) => {
           const message = toMessage(err);
@@ -51,9 +52,11 @@ export default function HomePage() {
           }
           throw err;
         }),
+        apiGet<LeaderboardResponse>("/leaderboard?scope=global&sport=ALL&limit=5").catch(() => null),
       ]);
       setPlayers(nextPlayers);
       setPosts(nextPosts);
+      setLeaderboard(nextLeaderboard);
       setCommunityLocked(locked);
     } catch (err: unknown) {
       setError(toMessage(err));
@@ -218,6 +221,37 @@ export default function HomePage() {
                 })}
               </div>
             </>
+          )}
+        </article>
+
+        <article className="table-panel">
+          <div className="home-snapshot-head">
+            <h3>Leaderboard</h3>
+            <Link href={isLoggedIn ? "/portfolio" : "/auth"} className="ghost-link">
+              {isLoggedIn ? "Open Portfolio" : "Sign In"}
+            </Link>
+          </div>
+          {loading ? (
+            <p className="subtle">Loading leaderboard...</p>
+          ) : !leaderboard || leaderboard.entries.length === 0 ? (
+            <p className="subtle">No ranked users yet. Once trading activity builds, standings will appear here.</p>
+          ) : (
+            <div className="home-post-list">
+              {leaderboard.entries.map((entry) => (
+                <article className="community-post-card" key={entry.user_id}>
+                  <div className="home-snapshot-head">
+                    <Link href={`/profile/${entry.username}`} className="community-post-title">
+                      #{formatNumber(entry.rank, 0)} {entry.username}
+                    </Link>
+                    <span className={entry.return_pct >= 0 ? "up" : "down"}>{formatSignedPercent(entry.return_pct)}</span>
+                  </div>
+                  <p className="community-meta">
+                    Equity {formatCurrency(entry.equity)} | Cash {formatCurrency(entry.cash_balance)} | Holdings{" "}
+                    {formatCurrency(entry.holdings_value)}
+                  </p>
+                </article>
+              ))}
+            </div>
           )}
         </article>
 

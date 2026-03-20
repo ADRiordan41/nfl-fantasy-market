@@ -47,7 +47,7 @@ export default function SettingsScreen() {
         {user ? (
           <Pressable onPress={() => router.push(`/profile/${user.username}`)} style={styles.linkRow}>
             <Text style={styles.linkLabel}>Open profile</Text>
-            <Text style={styles.linkArrow}>›</Text>
+            <Text style={styles.linkArrow}>{">"}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -79,21 +79,13 @@ export default function SettingsScreen() {
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Go to</Text>
-        <Pressable onPress={() => router.push("/leaderboard")} style={styles.linkRow}>
-          <Text style={styles.linkLabel}>Leaderboard</Text>
-          <Text style={styles.linkArrow}>›</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push("/watchlist")} style={styles.linkRow}>
-          <Text style={styles.linkLabel}>Watchlist</Text>
-          <Text style={styles.linkArrow}>›</Text>
-        </Pressable>
         <Pressable onPress={() => router.push("/notifications")} style={styles.linkRow}>
           <Text style={styles.linkLabel}>Notifications</Text>
-          <Text style={styles.linkArrow}>›</Text>
+          <Text style={styles.linkArrow}>{">"}</Text>
         </Pressable>
         <Pressable onPress={() => router.push("/inbox")} style={styles.linkRow}>
           <Text style={styles.linkLabel}>Inbox</Text>
-          <Text style={styles.linkArrow}>›</Text>
+          <Text style={styles.linkArrow}>{">"}</Text>
         </Pressable>
       </View>
 

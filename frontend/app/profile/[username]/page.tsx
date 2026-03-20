@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import type { DirectThreadSummary, FriendshipStatus, UserAccount, UserProfile } from "@/lib/types";
+import type { DirectThreadSummary, FriendshipStatus, UserAccount, UserProfile, WatchlistPlayer } from "@/lib/types";
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -23,6 +23,7 @@ export default function UserProfilePage() {
   const username = (params?.username || "").trim().toLowerCase();
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [watchlist, setWatchlist] = useState<WatchlistPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [openingThread, setOpeningThread] = useState(false);
   const [friendActionBusy, setFriendActionBusy] = useState(false);
@@ -32,12 +33,14 @@ export default function UserProfilePage() {
     if (!username) return;
     setLoading(true);
     try {
-      const [me, nextProfile] = await Promise.all([
+      const [me, nextProfile, nextWatchlist] = await Promise.all([
         apiGet<UserAccount>("/auth/me"),
         apiGet<UserProfile>(`/users/${encodeURIComponent(username)}/profile`),
+        apiGet<WatchlistPlayer[]>("/watchlist/players").catch(() => []),
       ]);
       setCurrentUser(me);
       setProfile(nextProfile);
+      setWatchlist(nextWatchlist);
       setError("");
     } catch (err: unknown) {
       if (isUnauthorizedError(err)) {
@@ -268,6 +271,48 @@ export default function UserProfilePage() {
               </div>
             )}
           </section>
+
+          {isOwnProfile ? (
+            <section className="table-panel">
+              <h3>Watchlist</h3>
+              {watchlist.length === 0 ? (
+                <p className="subtle">Use the Watch button on any player page to add names here.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Player</th>
+                        <th>Sport</th>
+                        <th>Team</th>
+                        <th>Pos</th>
+                        <th>Current Price</th>
+                        <th>Status</th>
+                        <th>Added</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {watchlist.map((player) => (
+                        <tr key={player.player_id}>
+                          <td>
+                            <Link href={`/player/${player.player_id}`} className="card-title">
+                              {player.name}
+                            </Link>
+                          </td>
+                          <td>{player.sport}</td>
+                          <td>{player.team}</td>
+                          <td>{player.position}</td>
+                          <td>{formatCurrency(player.spot_price)}</td>
+                          <td>{player.live?.live_now ? "Live now" : "Watching"}</td>
+                          <td>{new Date(player.added_at).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ) : null}
         </>
       )}
     </main>

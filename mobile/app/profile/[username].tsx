@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
+import type { Player } from "@shared/types";
 import { formatCurrency, formatSignedPercent } from "@shared/format";
+import { PlayerCard } from "@/components/cards/PlayerCard";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Screen } from "@/components/ui/Screen";
@@ -35,6 +37,15 @@ type ProfileResponse = {
   }[];
 };
 
+type WatchlistEntry = {
+  player_id: number;
+  name: string;
+  team: string;
+  position: string;
+  sport: string;
+  spot_price: number;
+};
+
 export default function ProfileScreen() {
   const params = useLocalSearchParams<{ username: string }>();
   const username = params.username;
@@ -48,9 +59,31 @@ export default function ProfileScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   const { data, refetch, isRefetching } = useQuery({
-    queryKey: ["profile-mobile", username],
+    queryKey: ["profile-mobile", username, isOwnProfile],
     enabled: Boolean(username),
     queryFn: () => apiGet<ProfileResponse>(isOwnProfile ? "/users/me/profile" : `/users/${username}/profile`),
+  });
+
+  const { data: watchlist } = useQuery({
+    queryKey: ["watchlist-mobile", username],
+    enabled: isOwnProfile,
+    queryFn: async () => {
+      const response = await apiGet<WatchlistEntry[]>("/watchlist/players");
+      return response.map(
+        (player): Player => ({
+          id: player.player_id,
+          name: player.name,
+          team: player.team,
+          position: player.position,
+          sport: player.sport,
+          price: player.spot_price,
+          bid: player.spot_price,
+          ask: player.spot_price,
+          spread: 0,
+          changePct: 0,
+        })
+      );
+    },
   });
 
   useEffect(() => {
@@ -108,11 +141,7 @@ export default function ProfileScreen() {
                   value={imageDraft}
                 />
                 <View style={styles.actionRow}>
-                  <Button
-                    disabled={isSaving}
-                    label={isSaving ? "Saving..." : "Save profile"}
-                    onPress={() => void saveProfile()}
-                  />
+                  <Button disabled={isSaving} label={isSaving ? "Saving..." : "Save profile"} onPress={() => void saveProfile()} />
                   <Button label="Cancel" onPress={() => setIsEditing(false)} tone="secondary" />
                 </View>
               </>
@@ -168,6 +197,19 @@ export default function ProfileScreen() {
               <Text style={styles.subtle}>No holdings visible yet.</Text>
             )}
           </View>
+
+          {isOwnProfile ? (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Watchlist</Text>
+              {watchlist?.length ? (
+                watchlist.map((player) => (
+                  <PlayerCard key={player.id} onPress={() => router.push(`/player/${player.id}`)} player={player} />
+                ))
+              ) : (
+                <Text style={styles.subtle}>Tap Watch on a player to build your list here.</Text>
+              )}
+            </View>
+          ) : null}
         </>
       ) : (
         <EmptyState title="Profile unavailable" body="We couldn't load this user profile." />

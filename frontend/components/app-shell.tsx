@@ -195,10 +195,8 @@ function HomeIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 const NAV_ITEMS = [
-  { href: "/leaderboard", label: "Leaderboard", Icon: LeaderboardIcon },
   { href: "/portfolio", label: "Portfolio", Icon: PortfolioIcon },
   { href: "/market", label: "Market", Icon: MarketIcon },
-  { href: "/watchlist", label: "Watchlist", Icon: WatchlistIcon },
   { href: "/community", label: "Community", Icon: CommunityIcon },
   { href: "/inbox", label: "Inbox", Icon: InboxIcon },
   { href: "/live", label: "Live", Icon: LiveIcon },
@@ -207,8 +205,6 @@ const NAV_ITEMS = [
 ] satisfies NavItem[];
 
 const MOBILE_HOME_MENU_HREFS = new Set([
-  "/leaderboard",
-  "/watchlist",
   "/inbox",
   "/settings",
   "/admin/stats",
@@ -897,40 +893,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
     </div>
-  );
-}
-
-function LeaderboardIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="M12 4 14.5 9h5l-4 3.1 1.6 5-5.1-3.3L6.9 17l1.6-5L4.5 9h5Z" />
-    </svg>
-  );
-}
-
-function WatchlistIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="M6 4.5h12A1.5 1.5 0 0 1 19.5 6v13l-7.5-4-7.5 4V6A1.5 1.5 0 0 1 6 4.5Z" />
-    </svg>
   );
 }
 
