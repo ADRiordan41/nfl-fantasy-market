@@ -218,6 +218,8 @@ const FOOTER_LINKS = [
   { href: "/community-guidelines", label: "Community Guidelines" },
 ] as const;
 
+const USER_CACHE_STORAGE_KEY = "fsm_cached_user";
+
 const DEV_TICKER_PREVIEW_ROWS: MarketMover[] = [
   { player_id: 900001, sport: "NFL", name: "Jalen Hurts", team: "PHI", position: "QB", spot_price: 42.18, reference_price: 38.95, change: 3.23, change_percent: 8.29, current_at: "2026-01-01T00:00:00Z", reference_at: "2025-12-31T00:00:00Z" },
   { player_id: 900002, sport: "NFL", name: "Christian McCaffrey", team: "SF", position: "RB", spot_price: 39.44, reference_price: 41.2, change: -1.76, change_percent: -4.27, current_at: "2026-01-01T00:00:00Z", reference_at: "2025-12-31T00:00:00Z" },
@@ -238,6 +240,27 @@ function isActive(pathname: string, href: string): boolean {
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function readCachedUser(): UserAccount | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.sessionStorage.getItem(USER_CACHE_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as UserAccount;
+  } catch {
+    window.sessionStorage.removeItem(USER_CACHE_STORAGE_KEY);
+    return null;
+  }
+}
+
+function cacheUser(user: UserAccount | null): void {
+  if (typeof window === "undefined") return;
+  if (!user) {
+    window.sessionStorage.removeItem(USER_CACHE_STORAGE_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(USER_CACHE_STORAGE_KEY, JSON.stringify(user));
 }
 
 function formatTickerGeneratedAt(value: string | null | undefined): string {
@@ -263,9 +286,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileHomeMenuRef = useRef<HTMLDivElement | null>(null);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => readCachedUser());
   const [busy, setBusy] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [checkingSession, setCheckingSession] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return Boolean(getAuthToken());
+  });
   const [authError, setAuthError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -296,6 +322,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const loadCurrentUser = useCallback(async () => {
     const token = getAuthToken();
     if (!token) {
+      cacheUser(null);
       setCurrentUser(null);
       setCheckingSession(false);
       return;
@@ -304,11 +331,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setCheckingSession(true);
     try {
       const me = await apiGet<UserAccount>("/auth/me");
+      cacheUser(me);
       setCurrentUser(me);
       setAuthError("");
     } catch (err: unknown) {
       if (isUnauthorizedError(err)) {
         clearAuthToken();
+        cacheUser(null);
         setCurrentUser(null);
         if (typeof window !== "undefined" && window.location.pathname !== "/auth") {
           router.replace("/auth");
@@ -359,6 +388,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         if (isUnauthorizedError(err)) {
           clearAuthToken();
+          cacheUser(null);
           setCurrentUser(null);
           router.replace("/auth");
           return;
@@ -473,6 +503,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }
     } finally {
       clearAuthToken();
+      cacheUser(null);
       setCurrentUser(null);
       setUnreadNotifications(0);
       setBusy(false);
@@ -521,6 +552,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (isUnauthorizedError(err)) {
         setFeedbackOpen(false);
         clearAuthToken();
+        cacheUser(null);
         setCurrentUser(null);
         router.replace("/auth");
         return;

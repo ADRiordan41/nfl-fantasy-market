@@ -590,6 +590,7 @@ textarea[aria-invalid="true"] {
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
+  min-width: 96px;
 }
 
 .auth-row {
@@ -598,6 +599,7 @@ textarea[aria-invalid="true"] {
   align-items: center;
   flex-wrap: nowrap;
   justify-content: flex-end;
+  min-width: 96px;
 }
 
 .auth-muted {
@@ -621,6 +623,8 @@ textarea[aria-invalid="true"] {
   background: rgba(255, 255, 255, 0.84);
   border-color: rgba(188, 211, 226, 0.9);
   font-size: 13px;
+  min-width: 96px;
+  justify-content: center;
 }
 
 .auth-btn:hover {
@@ -636,6 +640,9 @@ textarea[aria-invalid="true"] {
   border-color: rgba(188, 211, 226, 0.9);
   background: rgba(255, 255, 255, 0.84);
   font-size: 13px;
+  min-width: 96px;
+  justify-content: center;
+  text-align: center;
 }
 
 .auth-error {
