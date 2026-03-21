@@ -72,17 +72,6 @@ export default function HomePage() {
     setAuthResolved(true);
   }, []);
 
-  const sportsCount = useMemo(
-    () => new Set(players.map((player) => player.sport)).size,
-    [players],
-  );
-
-  const averageSpot = useMemo(() => {
-    if (!players.length) return 0;
-    const total = players.reduce((sum, player) => sum + Number(player.spot_price || 0), 0);
-    return total / players.length;
-  }, [players]);
-
   const marketLeaders = useMemo(
     () => [...players].sort((a, b) => b.spot_price - a.spot_price).slice(0, 6),
     [players],
@@ -114,25 +103,6 @@ export default function HomePage() {
       </section>
 
       {error && <p className="error-box">{error}</p>}
-
-      <section className="metrics-grid">
-        <article className="kpi-card">
-          <span>Players Listed</span>
-          <strong>{formatNumber(players.length)}</strong>
-        </article>
-        <article className="kpi-card">
-          <span>Sports Live</span>
-          <strong>{formatNumber(sportsCount)}</strong>
-        </article>
-        <article className="kpi-card">
-          <span>Average Current Price</span>
-          <strong>{formatCurrency(averageSpot)}</strong>
-        </article>
-        <article className="kpi-card">
-          <span>Community Activity</span>
-          <strong>{communityLocked ? "Sign in" : `${formatNumber(posts.length)} posts`}</strong>
-        </article>
-      </section>
 
       <section className="table-panel home-explainer">
         <h3>How MatchupMarket Works</h3>
