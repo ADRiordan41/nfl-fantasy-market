@@ -12,6 +12,14 @@ const aleo = Aleo({
 export const metadata: Metadata = {
   title: "MatchupMarket",
   description: "Trade and track fantasy player shares with live quote previews.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico?v=current-logo", sizes: "any" },
+      { url: "/icon.svg?v=current-logo", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.ico?v=current-logo",
+    apple: "/icon.svg?v=current-logo",
+  },
 };
 
 export default function RootLayout({
