@@ -6584,6 +6584,9 @@ def admin_site_reset(
         season_resets_cleared=result.season_resets_cleared,
         archived_weekly_stats_cleared=result.archived_weekly_stats_cleared,
         archived_holdings_cleared=result.archived_holdings_cleared,
+        forum_posts_cleared=result.forum_posts_cleared,
+        forum_comments_cleared=result.forum_comments_cleared,
+        forum_post_views_cleared=result.forum_post_views_cleared,
         hidden_sports=result.hidden_sports,
         starting_cash=result.starting_cash,
         message=(

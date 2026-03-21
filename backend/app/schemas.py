@@ -735,6 +735,9 @@ class AdminSiteResetOut(BaseModel):
     season_resets_cleared: int
     archived_weekly_stats_cleared: int
     archived_holdings_cleared: int
+    forum_posts_cleared: int
+    forum_comments_cleared: int
+    forum_post_views_cleared: int
     hidden_sports: list[str]
     starting_cash: float
     message: str

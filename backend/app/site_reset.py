@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from .models import (
     ArchivedHolding,
     ArchivedWeeklyStat,
+    ForumComment,
+    ForumPost,
+    ForumPostView,
     Holding,
     Player,
     PlayerGamePoint,
@@ -36,6 +39,9 @@ class SiteResetResult:
     season_resets_cleared: int
     archived_weekly_stats_cleared: int
     archived_holdings_cleared: int
+    forum_posts_cleared: int
+    forum_comments_cleared: int
+    forum_post_views_cleared: int
     hidden_sports: list[str]
     starting_cash: float
 
@@ -68,6 +74,9 @@ def execute_site_reset(
     season_reset_rows = db.execute(select(SeasonReset)).scalars().all()
     archived_weekly_stat_rows = db.execute(select(ArchivedWeeklyStat)).scalars().all()
     archived_holding_rows = db.execute(select(ArchivedHolding)).scalars().all()
+    forum_post_rows = db.execute(select(ForumPost)).scalars().all()
+    forum_comment_rows = db.execute(select(ForumComment)).scalars().all()
+    forum_post_view_rows = db.execute(select(ForumPostView)).scalars().all()
 
     db.execute(delete(Holding))
     db.execute(delete(Transaction))
@@ -79,6 +88,9 @@ def execute_site_reset(
     db.execute(delete(SeasonReset))
     db.execute(delete(ArchivedWeeklyStat))
     db.execute(delete(ArchivedHolding))
+    db.execute(delete(ForumPostView))
+    db.execute(delete(ForumComment))
+    db.execute(delete(ForumPost))
 
     players_reset = 0
     for player in players:
@@ -118,6 +130,9 @@ def execute_site_reset(
         season_resets_cleared=len(season_reset_rows),
         archived_weekly_stats_cleared=len(archived_weekly_stat_rows),
         archived_holdings_cleared=len(archived_holding_rows),
+        forum_posts_cleared=len(forum_post_rows),
+        forum_comments_cleared=len(forum_comment_rows),
+        forum_post_views_cleared=len(forum_post_view_rows),
         hidden_sports=sorted(normalized_hide_sports),
         starting_cash=float(starting_cash),
     )
