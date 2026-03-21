@@ -310,14 +310,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (isUnauthorizedError(err)) {
         clearAuthToken();
         setCurrentUser(null);
-        if (pathname !== "/auth") router.replace("/auth");
+        if (typeof window !== "undefined" && window.location.pathname !== "/auth") {
+          router.replace("/auth");
+        }
         return;
       }
       setAuthError(toMessage(err));
     } finally {
       setCheckingSession(false);
     }
-  }, [pathname, router]);
+  }, [router]);
 
   useEffect(() => {
     void loadCurrentUser();
@@ -676,13 +678,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           )}
 
           <div className="auth-panel">
-            {checkingSession ? null : currentUser ? (
+            {currentUser ? (
               <div className="auth-row">
                 <button type="button" className="auth-btn" onClick={() => void logout()} disabled={busy}>
                   Log out
                 </button>
               </div>
-            ) : (
+            ) : checkingSession ? null : (
               <Link href="/auth" className="ghost-link auth-link">
                 Sign In
               </Link>
@@ -786,11 +788,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     {item.label}
                   </Link>
                 ))}
-                {checkingSession ? (
-                  <span className="mobile-home-action muted" role="status" aria-live="polite">
-                    Checking...
-                  </span>
-                ) : currentUser ? (
+                {currentUser ? (
                   <button
                     type="button"
                     className="mobile-home-action"
@@ -803,7 +801,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   >
                     {busy ? "Signing out..." : "Sign out"}
                   </button>
-                ) : (
+                ) : checkingSession ? null : (
                   <Link href="/auth" className="mobile-home-action" role="menuitem" onClick={() => setMobileHomeMenuOpen(false)}>
                     Sign in
                   </Link>
