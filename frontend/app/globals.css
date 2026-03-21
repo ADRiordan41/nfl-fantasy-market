@@ -1387,6 +1387,11 @@ h1 {
   font-size: 1.2rem;
 }
 
+.portfolio-kpi-grid .kpi-card span,
+.portfolio-kpi-grid .kpi-card strong {
+  white-space: nowrap;
+}
+
 .up {
   color: var(--up);
 }
@@ -4093,6 +4098,25 @@ td {
 
   .kpi-card strong {
     font-size: 1.1rem;
+  }
+
+  .portfolio-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portfolio-kpi-grid .kpi-card {
+    padding: 10px;
+  }
+
+  .portfolio-kpi-grid .kpi-card span {
+    margin-bottom: 5px;
+    font-size: 10.5px;
+    letter-spacing: -0.01em;
+  }
+
+  .portfolio-kpi-grid .kpi-card strong {
+    font-size: clamp(0.88rem, 3.7vw, 1rem);
+    letter-spacing: -0.02em;
   }
 
   .home-snapshot-head {

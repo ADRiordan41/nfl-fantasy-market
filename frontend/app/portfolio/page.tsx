@@ -476,7 +476,7 @@ export default function PortfolioPage() {
         </section>
       ) : (
         <>
-          <section className="metrics-grid">
+          <section className="metrics-grid portfolio-kpi-grid">
             <article className="kpi-card">
               <span>Cash</span>
               <strong>{formatCurrency(cash)}</strong>
