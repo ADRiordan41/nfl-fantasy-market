@@ -582,11 +582,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [movers]);
   const tickerLoopEntries = tickerEntries.length > 0 ? [...tickerEntries, ...tickerEntries] : [];
   const currentYear = new Date().getFullYear();
-  const sessionStatusLabel = checkingSession
-    ? "Checking session"
-    : currentUser
-      ? `Signed in as @${currentUser.username}${currentUser.is_admin ? " (Admin)" : ""}`
-      : "Browsing as guest";
   const tickerStatusLabel = formatTickerGeneratedAt(movers?.generated_at);
 
   return (
@@ -681,9 +676,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           )}
 
           <div className="auth-panel">
-            {checkingSession ? (
-              <span className="auth-muted">Checking session...</span>
-            ) : currentUser ? (
+            {checkingSession ? null : currentUser ? (
               <div className="auth-row">
                 <button type="button" className="auth-btn" onClick={() => void logout()} disabled={busy}>
                   Log out
@@ -741,7 +734,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {showNav && (
         <div className="app-status-strip" role="status" aria-live="polite">
-          <span className={`status-pill ${currentUser ? "ok" : "neutral"}`}>{sessionStatusLabel}</span>
           <span className="status-pill neutral">{tickerStatusLabel}</span>
         </div>
       )}
