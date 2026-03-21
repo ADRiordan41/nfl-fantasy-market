@@ -8,6 +8,11 @@ test.describe("Desktop baselines", () => {
 
     await page.goto("/");
     await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: "Market Snapshot" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Community Snapshot" })).toBeVisible();
+    await expect(page.getByText("Loading market snapshot...")).toHaveCount(0);
+    await expect(page.getByText("Loading forum snapshot...")).toHaveCount(0);
+    await expect(page.getByText("Loading leaderboard...")).toHaveCount(0);
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("home-desktop.png", { fullPage: true });
