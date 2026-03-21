@@ -197,7 +197,7 @@ function HomeIcon(props: SVGProps<SVGSVGElement>) {
 const NAV_ITEMS = [
   { href: "/portfolio", label: "Portfolio", Icon: PortfolioIcon },
   { href: "/market", label: "Market", Icon: MarketIcon },
-  { href: "/community", label: "Community", Icon: CommunityIcon },
+  { href: "/community", label: "Forum", Icon: CommunityIcon },
   { href: "/inbox", label: "Inbox", Icon: InboxIcon },
   { href: "/live", label: "Live", Icon: LiveIcon },
   { href: "/settings", label: "Settings", Icon: SettingsIcon },
