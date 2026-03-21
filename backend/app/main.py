@@ -72,6 +72,7 @@ from .pricing import (
     spot_price,
     spread_percentage,
 )
+from .site_reset import execute_site_reset
 from .schemas import (
     AdminActivityAuditOut,
     AdminBotPersonaOut,
@@ -90,6 +91,8 @@ from .schemas import (
     AdminIpoLaunchIn,
     AdminIpoPlayerOut,
     AdminIpoPlayersOut,
+    AdminSiteResetIn,
+    AdminSiteResetOut,
     AdminStatsClearSportIn,
     AdminStatsClearSportOut,
     AdminIpoSportOut,
@@ -6541,6 +6544,52 @@ def admin_clear_sport_stats(
         stats_deleted=deleted_stats,
         price_points_created=len(player_ids),
         message=f"Cleared imported {sport_code} stats and reset live snapshots.",
+    )
+
+
+@app.post("/admin/site/reset", response_model=AdminSiteResetOut)
+def admin_site_reset(
+    payload: AdminSiteResetIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    hide_sports = {
+        normalize_sport_code(value)
+        for value in payload.hide_sports
+        if str(value).strip()
+    }
+    player_ids = {int(player_id) for player_id in db.execute(select(Player.id)).scalars().all()}
+    sports = {str(sport) for sport in db.execute(select(Player.sport)).scalars().all()}
+    result = execute_site_reset(
+        db,
+        starting_cash=Decimal(str(payload.starting_cash)),
+        hide_sports=hide_sports,
+    )
+    invalidate_market_read_cache(
+        player_ids=player_ids,
+        sports=sports,
+        include_sports_catalog=True,
+    )
+    hidden_sports_label = ", ".join(result.hidden_sports)
+    return AdminSiteResetOut(
+        users_reset=result.users_reset,
+        players_reset=result.players_reset,
+        holdings_cleared=result.holdings_cleared,
+        transactions_cleared=result.transactions_cleared,
+        weekly_stats_cleared=result.weekly_stats_cleared,
+        price_points_cleared=result.price_points_cleared,
+        player_game_points_cleared=result.player_game_points_cleared,
+        settled_weeks_cleared=result.settled_weeks_cleared,
+        season_closes_cleared=result.season_closes_cleared,
+        season_resets_cleared=result.season_resets_cleared,
+        archived_weekly_stats_cleared=result.archived_weekly_stats_cleared,
+        archived_holdings_cleared=result.archived_holdings_cleared,
+        hidden_sports=result.hidden_sports,
+        starting_cash=result.starting_cash,
+        message=(
+            f"Site reset complete. Reset {result.users_reset} users to ${result.starting_cash:,.2f}"
+            + (f" and hid IPO for {hidden_sports_label}." if hidden_sports_label else ".")
+        ),
     )
 
 

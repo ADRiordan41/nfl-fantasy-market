@@ -16,23 +16,11 @@ def bootstrap_import_path() -> None:
 
 bootstrap_import_path()
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from backend.app.db import SessionLocal
-from backend.app.models import (
-    ArchivedHolding,
-    ArchivedWeeklyStat,
-    Holding,
-    Player,
-    PlayerGamePoint,
-    PricePoint,
-    SeasonClose,
-    SeasonReset,
-    SettledWeek,
-    Transaction,
-    User,
-    WeeklyStat,
-)
+from backend.app.models import User
+from backend.app.site_reset import execute_site_reset
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,24 +68,9 @@ def main() -> int:
         else:
             target_users = users
 
-        counts = {
-            "holdings": db.execute(select(Holding)).scalars().all(),
-            "transactions": db.execute(select(Transaction)).scalars().all(),
-            "weekly_stats": db.execute(select(WeeklyStat)).scalars().all(),
-            "price_points": db.execute(select(PricePoint)).scalars().all(),
-            "player_game_points": db.execute(select(PlayerGamePoint)).scalars().all(),
-            "settled_weeks": db.execute(select(SettledWeek)).scalars().all(),
-            "season_closes": db.execute(select(SeasonClose)).scalars().all(),
-            "season_resets": db.execute(select(SeasonReset)).scalars().all(),
-            "archived_weekly_stats": db.execute(select(ArchivedWeeklyStat)).scalars().all(),
-            "archived_holdings": db.execute(select(ArchivedHolding)).scalars().all(),
-        }
-        players = db.execute(select(Player)).scalars().all()
-
         print("Reset summary:")
-        for label, rows in counts.items():
-            print(f"  {label}: {len(rows)}")
-        print(f"  players_to_reseed_market_state: {len(players)}")
+        print(f"  users_to_reset: {len(target_users)}")
+        print(f"  starting_cash: {args.starting_cash}")
         if hide_sports:
             print(f"  sports_to_hide: {', '.join(sorted(hide_sports))}")
         for user in target_users:
@@ -109,38 +82,15 @@ def main() -> int:
             print("Dry run complete. No changes committed.")
             return 0
 
-        db.execute(delete(Holding))
-        db.execute(delete(Transaction))
-        db.execute(delete(WeeklyStat))
-        db.execute(delete(PricePoint))
-        db.execute(delete(PlayerGamePoint))
-        db.execute(delete(SettledWeek))
-        db.execute(delete(SeasonClose))
-        db.execute(delete(SeasonReset))
-        db.execute(delete(ArchivedWeeklyStat))
-        db.execute(delete(ArchivedHolding))
-
-        for player in players:
-            player.total_shares = 0.0
-            player.market_bias = 0.0
-            player.market_bias_updated_at = None
-            if str(player.sport).upper() in hide_sports:
-                player.ipo_open = False
-                player.ipo_season = None
-                player.ipo_opened_at = None
-            player.live_now = False
-            player.live_week = None
-            player.live_game_id = None
-            player.live_game_label = None
-            player.live_game_status = None
-            player.live_game_stat_line = None
-            player.live_game_fantasy_points = 0.0
-            player.live_updated_at = None
-
-        for user in target_users:
-            user.cash_balance = float(args.starting_cash)
-
-        db.commit()
+        result = execute_site_reset(
+            db,
+            starting_cash=args.starting_cash,
+            hide_sports=hide_sports,
+            usernames={args.username} if args.username else None,
+        )
+        print(f"  holdings_cleared: {result.holdings_cleared}")
+        print(f"  transactions_cleared: {result.transactions_cleared}")
+        print(f"  players_reset: {result.players_reset}")
         print("Reset complete.")
         return 0
     finally:

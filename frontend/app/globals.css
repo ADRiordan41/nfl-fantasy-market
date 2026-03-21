@@ -966,6 +966,13 @@ textarea[aria-invalid="true"] {
   flex-wrap: wrap;
 }
 
+.admin-input-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .admin-ipo-grid {
   margin-top: 10px;
   display: grid;

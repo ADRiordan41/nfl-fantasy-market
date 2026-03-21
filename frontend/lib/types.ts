@@ -325,6 +325,24 @@ export type AdminStatsClearSportResult = {
   message: string;
 };
 
+export type AdminSiteResetResult = {
+  users_reset: number;
+  players_reset: number;
+  holdings_cleared: number;
+  transactions_cleared: number;
+  weekly_stats_cleared: number;
+  price_points_cleared: number;
+  player_game_points_cleared: number;
+  settled_weeks_cleared: number;
+  season_closes_cleared: number;
+  season_resets_cleared: number;
+  archived_weekly_stats_cleared: number;
+  archived_holdings_cleared: number;
+  hidden_sports: string[];
+  starting_cash: number;
+  message: string;
+};
+
 export type AdminIpoSport = {
   sport: string;
   total_players: number;

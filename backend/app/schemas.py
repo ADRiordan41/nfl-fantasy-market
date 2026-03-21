@@ -717,6 +717,29 @@ class AdminStatsClearSportOut(BaseModel):
     message: str
 
 
+class AdminSiteResetIn(BaseModel):
+    starting_cash: float = Field(default=100000.0, ge=0)
+    hide_sports: list[str] = Field(default_factory=list, max_length=16)
+
+
+class AdminSiteResetOut(BaseModel):
+    users_reset: int
+    players_reset: int
+    holdings_cleared: int
+    transactions_cleared: int
+    weekly_stats_cleared: int
+    price_points_cleared: int
+    player_game_points_cleared: int
+    settled_weeks_cleared: int
+    season_closes_cleared: int
+    season_resets_cleared: int
+    archived_weekly_stats_cleared: int
+    archived_holdings_cleared: int
+    hidden_sports: list[str]
+    starting_cash: float
+    message: str
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int

@@ -15,6 +15,7 @@ import type {
   AdminModerationReport,
   AdminIpoPlayers,
   AdminIpoSport,
+  AdminSiteResetResult,
   AdminStatsClearSportResult,
   AdminStatsPreview,
   AdminStatsPublishResult,
@@ -78,6 +79,11 @@ export default function AdminStatsPage() {
   const [botRunMinDelayMs, setBotRunMinDelayMs] = useState("800");
   const [botRunMaxDelayMs, setBotRunMaxDelayMs] = useState("2400");
   const [botRunStartupStaggerMs, setBotRunStartupStaggerMs] = useState("250");
+  const [resetStartingCash, setResetStartingCash] = useState("100000.00");
+  const [resetHideSports, setResetHideSports] = useState("MLB");
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [busySiteReset, setBusySiteReset] = useState(false);
+  const [siteResetResult, setSiteResetResult] = useState<AdminSiteResetResult | null>(null);
 
   const [error, setError] = useState("");
 
@@ -412,6 +418,46 @@ export default function AdminStatsPage() {
       handleApiError(err);
     } finally {
       setBusyIpoAction("");
+    }
+  }
+
+  async function runSiteReset() {
+    if (resetConfirmation.trim() !== "RESET SITE") {
+      setError('Type "RESET SITE" to confirm.');
+      notifyError('Type "RESET SITE" to confirm.');
+      return;
+    }
+    const startingCash = Number.parseFloat(resetStartingCash.trim());
+    if (!Number.isFinite(startingCash) || startingCash < 0) {
+      setError("Starting cash must be a valid non-negative number.");
+      notifyError("Invalid starting cash.");
+      return;
+    }
+
+    const hideSports = resetHideSports
+      .split(",")
+      .map((value) => value.trim().toUpperCase())
+      .filter(Boolean);
+
+    setBusySiteReset(true);
+    setError("");
+    try {
+      const result = await apiPost<AdminSiteResetResult>("/admin/site/reset", {
+        starting_cash: startingCash,
+        hide_sports: hideSports,
+      });
+      setSiteResetResult(result);
+      setResetConfirmation("");
+      notifySuccess(result.message);
+      await Promise.all([
+        loadIpoSports(),
+        reviewSport ? loadIpoReview(reviewSport) : Promise.resolve(),
+        loadActivity(),
+      ]);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusySiteReset(false);
     }
   }
 
@@ -1503,6 +1549,90 @@ export default function AdminStatsPage() {
             </div>
           </>
         )}
+      </section>
+
+      <section className="table-panel">
+        <h3>Site Reset</h3>
+        <p className="subtle">
+          Clears all positions, transactions, pricing/stat history, resets all users to starting cash, and optionally
+          hides IPO by sport. This is destructive and intended for pricing/payout tuning resets.
+        </p>
+        <div className="admin-input-grid">
+          <div>
+            <label className="field-label" htmlFor="site-reset-cash">
+              Starting Cash
+            </label>
+            <input
+              id="site-reset-cash"
+              inputMode="decimal"
+              value={resetStartingCash}
+              onChange={(event) => setResetStartingCash(event.target.value)}
+              placeholder="100000.00"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="site-reset-hide-sports">
+              Hide IPO Sports
+            </label>
+            <input
+              id="site-reset-hide-sports"
+              value={resetHideSports}
+              onChange={(event) => setResetHideSports(event.target.value)}
+              placeholder="MLB"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="site-reset-confirmation">
+              Type RESET SITE to confirm
+            </label>
+            <input
+              id="site-reset-confirmation"
+              value={resetConfirmation}
+              onChange={(event) => setResetConfirmation(event.target.value)}
+              placeholder="RESET SITE"
+            />
+          </div>
+        </div>
+
+        <div className="admin-actions">
+          <button
+            className="danger-btn"
+            onClick={() => void runSiteReset()}
+            disabled={busySiteReset}
+          >
+            {busySiteReset ? "Resetting..." : "Reset Site State"}
+          </button>
+        </div>
+
+        {siteResetResult ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Users Reset</th>
+                  <th>Players Reset</th>
+                  <th>Holdings</th>
+                  <th>Transactions</th>
+                  <th>Weekly Stats</th>
+                  <th>Price Points</th>
+                  <th>Hidden Sports</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{formatNumber(siteResetResult.users_reset)}</td>
+                  <td>{formatNumber(siteResetResult.players_reset)}</td>
+                  <td>{formatNumber(siteResetResult.holdings_cleared)}</td>
+                  <td>{formatNumber(siteResetResult.transactions_cleared)}</td>
+                  <td>{formatNumber(siteResetResult.weekly_stats_cleared)}</td>
+                  <td>{formatNumber(siteResetResult.price_points_cleared)}</td>
+                  <td>{siteResetResult.hidden_sports.join(", ") || "--"}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="subtle">{siteResetResult.message}</p>
+          </div>
+        ) : null}
       </section>
 
       <section className="admin-panel">
