@@ -466,7 +466,7 @@ class WatchlistPlayerOut(BaseModel):
     position: str
     spot_price: float
     base_price: float
-    live: PlayerLiveOut | None = None
+    live: "PlayerLiveOut | None" = None
     added_at: datetime
 
 
