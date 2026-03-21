@@ -60,6 +60,8 @@ export default function AdminStatsPage() {
   const [feedbackRows, setFeedbackRows] = useState<AdminFeedbackMessage[]>([]);
   const [feedbackStatusFilter, setFeedbackStatusFilter] = useState("ALL");
   const [busyFeedback, setBusyFeedback] = useState(false);
+  const [selectedFeedbackId, setSelectedFeedbackId] = useState<number | null>(null);
+  const [busyFeedbackAction, setBusyFeedbackAction] = useState("");
   const [moderationRows, setModerationRows] = useState<AdminModerationReport[]>([]);
   const [moderationStatusFilter, setModerationStatusFilter] = useState("OPEN");
   const [busyModeration, setBusyModeration] = useState(false);
@@ -183,6 +185,11 @@ export default function AdminStatsPage() {
     }
   }, [feedbackStatusFilter, handleApiError]);
 
+  const selectedFeedback = useMemo(
+    () => feedbackRows.find((row) => row.id === selectedFeedbackId) ?? feedbackRows[0] ?? null,
+    [feedbackRows, selectedFeedbackId],
+  );
+
   const loadModeration = useCallback(async () => {
     setBusyModeration(true);
     try {
@@ -250,6 +257,16 @@ export default function AdminStatsPage() {
   useEffect(() => {
     void loadFeedback();
   }, [loadFeedback]);
+
+  useEffect(() => {
+    if (!feedbackRows.length) {
+      setSelectedFeedbackId(null);
+      return;
+    }
+    if (selectedFeedbackId == null || !feedbackRows.some((row) => row.id === selectedFeedbackId)) {
+      setSelectedFeedbackId(feedbackRows[0].id);
+    }
+  }, [feedbackRows, selectedFeedbackId]);
 
   useEffect(() => {
     void loadModeration();
@@ -418,6 +435,23 @@ export default function AdminStatsPage() {
       handleApiError(err);
     } finally {
       setBusyIpoAction("");
+    }
+  }
+
+  async function updateFeedbackStatus(feedbackId: number, status: "NEW" | "ACK" | "DONE") {
+    setBusyFeedbackAction(`${feedbackId}:${status}`);
+    setError("");
+    try {
+      const updated = await apiPatch<AdminFeedbackMessage>(`/admin/feedback/${feedbackId}`, { status });
+      setFeedbackRows((previous) =>
+        previous.map((row) => (row.id === feedbackId ? updated : row)),
+      );
+      setSelectedFeedbackId(updated.id);
+      notifySuccess(`Feedback marked ${status}.`);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyFeedbackAction("");
     }
   }
 
@@ -1382,31 +1416,124 @@ export default function AdminStatsPage() {
         {!feedbackRows.length ? (
           <p className="subtle">No feedback messages for this filter.</p>
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>User</th>
-                  <th>Page</th>
-                  <th>Status</th>
-                  <th>Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {feedbackRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>{new Date(row.created_at).toLocaleString()}</td>
-                    <td>
-                      {row.username} (#{row.user_id})
-                    </td>
-                    <td>{row.page_path ?? "--"}</td>
-                    <td>{row.status}</td>
-                    <td>{row.message}</td>
+          <div className="admin-feedback-layout">
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>User</th>
+                    <th>Page</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                    <th>Open</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {feedbackRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      className={selectedFeedback?.id === row.id ? "admin-row-selected" : ""}
+                    >
+                      <td>{new Date(row.created_at).toLocaleString()}</td>
+                      <td>
+                        {row.username} (#{row.user_id})
+                      </td>
+                      <td>{row.page_path ?? "--"}</td>
+                      <td>
+                        <span
+                          className={
+                            row.status === "DONE"
+                              ? "admin-status ready"
+                              : row.status === "ACK"
+                                ? "admin-status skipped"
+                                : "admin-status error"
+                          }
+                        >
+                          {row.status}
+                        </span>
+                      </td>
+                      <td>{row.message.length > 90 ? `${row.message.slice(0, 90)}...` : row.message}</td>
+                      <td>
+                        <button type="button" onClick={() => setSelectedFeedbackId(row.id)}>
+                          Open
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedFeedback && (
+              <section className="admin-feedback-detail" aria-label="Feedback details">
+                <div className="admin-feedback-detail-head">
+                  <div>
+                    <h4>Message Detail</h4>
+                    <p className="subtle">
+                      {selectedFeedback.username} (#{selectedFeedback.user_id}) •{" "}
+                      {new Date(selectedFeedback.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <span
+                    className={
+                      selectedFeedback.status === "DONE"
+                        ? "admin-status ready"
+                        : selectedFeedback.status === "ACK"
+                          ? "admin-status skipped"
+                          : "admin-status error"
+                    }
+                  >
+                    {selectedFeedback.status}
+                  </span>
+                </div>
+
+                <div className="admin-feedback-meta">
+                  <div>
+                    <strong>User</strong>
+                    <a href={`/profile/${selectedFeedback.username}`}>{selectedFeedback.username}</a>
+                  </div>
+                  <div>
+                    <strong>Page</strong>
+                    {selectedFeedback.page_path ? (
+                      <a href={selectedFeedback.page_path}>{selectedFeedback.page_path}</a>
+                    ) : (
+                      <span>--</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="admin-feedback-message">
+                  <strong>Message</strong>
+                  <p>{selectedFeedback.message}</p>
+                </div>
+
+                <div className="admin-actions">
+                  <button
+                    type="button"
+                    onClick={() => void updateFeedbackStatus(selectedFeedback.id, "NEW")}
+                    disabled={busyFeedbackAction.length > 0 || selectedFeedback.status === "NEW"}
+                  >
+                    {busyFeedbackAction === `${selectedFeedback.id}:NEW` ? "Saving..." : "Mark New"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void updateFeedbackStatus(selectedFeedback.id, "ACK")}
+                    disabled={busyFeedbackAction.length > 0 || selectedFeedback.status === "ACK"}
+                  >
+                    {busyFeedbackAction === `${selectedFeedback.id}:ACK` ? "Saving..." : "Acknowledge"}
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => void updateFeedbackStatus(selectedFeedback.id, "DONE")}
+                    disabled={busyFeedbackAction.length > 0 || selectedFeedback.status === "DONE"}
+                  >
+                    {busyFeedbackAction === `${selectedFeedback.id}:DONE` ? "Saving..." : "Mark Done"}
+                  </button>
+                </div>
+              </section>
+            )}
           </div>
         )}
       </section>

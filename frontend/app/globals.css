@@ -1050,6 +1050,62 @@ textarea[aria-invalid="true"] {
   background: #fde9e6;
 }
 
+.admin-feedback-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-row-selected {
+  background: rgba(231, 243, 255, 0.7);
+}
+
+.admin-feedback-detail {
+  border: 1px solid rgba(177, 203, 233, 0.85);
+  border-radius: 16px;
+  background: rgba(248, 252, 255, 0.92);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.admin-feedback-detail h4 {
+  margin: 0;
+}
+
+.admin-feedback-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.admin-feedback-meta {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.admin-feedback-meta div,
+.admin-feedback-message {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-feedback-meta strong,
+.admin-feedback-message strong {
+  font-size: 12px;
+  color: #476887;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-feedback-message p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
 .auth-page {
   min-height: 70vh;
   place-items: center;
@@ -3927,6 +3983,11 @@ td {
 
   .mobile-holdings {
     display: none;
+  }
+
+  .admin-feedback-layout {
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
+    align-items: start;
   }
 }
 

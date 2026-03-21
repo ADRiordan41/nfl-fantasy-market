@@ -105,6 +105,7 @@ from .schemas import (
     AdminModerationUnhideIn,
     AdminModerationUnhideOut,
     AdminFeedbackOut,
+    AdminFeedbackUpdateIn,
     AdminSportTradingHaltUpdateIn,
     AdminTradingHaltUpdateIn,
     FeedbackCreateIn,
@@ -4472,6 +4473,38 @@ def admin_feedback_list(
         )
         for feedback, username in rows
     ]
+
+
+@app.patch("/admin/feedback/{feedback_id}", response_model=AdminFeedbackOut)
+def admin_feedback_update(
+    feedback_id: int,
+    payload: AdminFeedbackUpdateIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    normalized_status = payload.status.strip().upper()
+    if normalized_status not in {"NEW", "ACK", "DONE"}:
+        raise HTTPException(status_code=400, detail="Feedback status must be NEW, ACK, or DONE.")
+
+    row = db.get(FeedbackMessage, feedback_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Feedback message not found.")
+
+    row.status = normalized_status
+    db.flush()
+
+    username = db.execute(select(User.username).where(User.id == row.user_id)).scalar_one()
+    db.commit()
+    db.refresh(row)
+    return AdminFeedbackOut(
+        id=int(row.id),
+        user_id=int(row.user_id),
+        username=str(username),
+        page_path=normalize_optional_profile_field(row.page_path),
+        message=str(row.message),
+        status=str(row.status),
+        created_at=row.created_at,
+    )
 
 
 @app.get("/admin/bots/personas", response_model=list[AdminBotPersonaOut])

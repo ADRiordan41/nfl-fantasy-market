@@ -110,6 +110,10 @@ class AdminFeedbackOut(FeedbackOut):
     username: str
 
 
+class AdminFeedbackUpdateIn(BaseModel):
+    status: str = Field(min_length=3, max_length=16)
+
+
 class AdminBotPersonaOut(BaseModel):
     key: str
     label: str
