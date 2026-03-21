@@ -4107,19 +4107,20 @@ td {
 
   .portfolio-kpi-grid .kpi-card {
     padding: 8px 6px;
+    text-align: center;
   }
 
   .portfolio-kpi-grid .kpi-card span {
     margin-bottom: 4px;
     font-size: clamp(0.5rem, 2.2vw, 0.68rem);
     letter-spacing: -0.03em;
-    line-height: 1.05;
+    line-height: 1.1;
   }
 
   .portfolio-kpi-grid .kpi-card strong {
     font-size: clamp(0.64rem, 2.9vw, 0.88rem);
     letter-spacing: -0.05em;
-    line-height: 1.05;
+    line-height: 1.1;
   }
 
   .home-snapshot-head {
