@@ -58,11 +58,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Show what would be changed without committing.",
     )
+    parser.add_argument(
+        "--hide-sport",
+        action="append",
+        default=[],
+        help="Sport code to mark as not IPO'd after reset. Repeat for multiple sports.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    hide_sports = {value.strip().upper() for value in args.hide_sport if value.strip()}
     db = SessionLocal()
     try:
         users = db.execute(select(User)).scalars().all()
@@ -91,6 +98,8 @@ def main() -> int:
         for label, rows in counts.items():
             print(f"  {label}: {len(rows)}")
         print(f"  players_to_reseed_market_state: {len(players)}")
+        if hide_sports:
+            print(f"  sports_to_hide: {', '.join(sorted(hide_sports))}")
         for user in target_users:
             print(
                 f"  {user.username}_cash_balance: {Decimal(str(user.cash_balance))} -> {args.starting_cash}"
@@ -115,6 +124,10 @@ def main() -> int:
             player.total_shares = 0.0
             player.market_bias = 0.0
             player.market_bias_updated_at = None
+            if str(player.sport).upper() in hide_sports:
+                player.ipo_open = False
+                player.ipo_season = None
+                player.ipo_opened_at = None
             player.live_now = False
             player.live_week = None
             player.live_game_id = None
