@@ -659,9 +659,9 @@ def mark_to_market_value_for_position(
     spot_price: Decimal,
 ) -> Decimal:
     if shares > 0:
-        return shares * spot_price
+        return max(basis_amount, shares * spot_price)
     if shares < 0:
-        return (basis_amount * Decimal("2")) - (abs(shares) * spot_price)
+        return max(basis_amount, (basis_amount * Decimal("2")) - (abs(shares) * spot_price))
     return Decimal("0")
 
 
