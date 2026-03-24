@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .auth import hash_password
 from .db import Base, engine
-from .models import BotProfile, Holding, Player, Transaction, User
+from .models import BotProfile, Holding, Player, PricePoint, Transaction, User
 
 STAR_PLAYER_CATALOG: list[dict[str, object]] = [
     # Quarterbacks
@@ -156,6 +156,10 @@ OPEN_BASIS_TRANSACTION_TYPES = {
     "COVER",
     "LIQUIDATE_SELL",
     "LIQUIDATE_COVER",
+}
+TRADE_PRICE_POINT_SOURCE_BY_TX_TYPE = {
+    "BUY": "TRADE_BUY",
+    "SHORT": "TRADE_SHORT",
 }
 
 
@@ -716,7 +720,6 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
     holdings = db.execute(
         select(Holding).where(
             Holding.shares_owned != 0,
-            Holding.mark_basis_amount == 0,
         )
     ).scalars().all()
 
@@ -733,13 +736,45 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
         if not transactions:
             continue
 
+        price_points = db.execute(
+            select(PricePoint)
+            .where(
+                PricePoint.player_id == holding.player_id,
+                PricePoint.source.in_(tuple(TRADE_PRICE_POINT_SOURCE_BY_TX_TYPE.values())),
+            )
+            .order_by(PricePoint.created_at.asc(), PricePoint.id.asc())
+        ).scalars().all()
+        available_points: dict[str, list[PricePoint]] = {}
+        for point in price_points:
+            available_points.setdefault(str(point.source), []).append(point)
+
         running_shares = Decimal("0")
         running_mark_basis = Decimal("0")
         for transaction in transactions:
             shares = Decimal(str(transaction.shares))
             unit_price = max(Decimal("0"), Decimal(str(transaction.unit_price or 0)))
             tx_type = str(transaction.type)
-            entry_mark_notional = shares * unit_price
+            entry_mark_price = unit_price
+            point_source = TRADE_PRICE_POINT_SOURCE_BY_TX_TYPE.get(tx_type)
+            if point_source:
+                source_points = available_points.get(point_source, [])
+                best_index = -1
+                best_score: tuple[float, int, int] | None = None
+                for index, point in enumerate(source_points):
+                    time_gap = abs((point.created_at - transaction.created_at).total_seconds())
+                    score = (
+                        time_gap,
+                        0 if point.created_at >= transaction.created_at else 1,
+                        int(point.id),
+                    )
+                    if best_score is None or score < best_score:
+                        best_score = score
+                        best_index = index
+                if best_index >= 0 and best_score is not None and best_score[0] <= 300:
+                    matched_point = source_points.pop(best_index)
+                    entry_mark_price = max(Decimal("0"), Decimal(str(matched_point.spot_price or 0)))
+
+            entry_mark_notional = shares * entry_mark_price
 
             if tx_type == "BUY":
                 running_shares += shares
