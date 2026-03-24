@@ -2701,9 +2701,8 @@ def position_unrealized_pnl(position: PositionRisk) -> Decimal:
     if display_basis <= 0 or abs_shares <= 0:
         return Decimal("0")
     current_notional = abs_shares * position.spot_price
-    if position.shares > 0:
-        return current_notional - display_basis
-    return display_basis - current_notional
+    pnl = current_notional - display_basis if position.shares > 0 else display_basis - current_notional
+    return Decimal("0") if abs(pnl) < Decimal("0.005") else pnl
 
 
 def filtered_snapshot_for_sport(snapshot: AccountRiskSnapshot, sport: str) -> AccountRiskSnapshot:

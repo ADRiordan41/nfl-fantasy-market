@@ -202,7 +202,8 @@ export default function PortfolioPage() {
               ? absShares * (spot - averageEntryPrice)
               : absShares * (averageEntryPrice - spot)
             : 0;
-        const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
+        const normalizedPnl = Math.abs(pnl) < 0.005 ? 0 : pnl;
+        const pnlPct = basisNotional > 0 ? (normalizedPnl / basisNotional) * 100 : 0;
         return {
           id: player.id,
           name: player.name,
@@ -214,7 +215,7 @@ export default function PortfolioPage() {
           spot,
           basisNotional,
           marketValue,
-          pnl,
+          pnl: normalizedPnl,
           pnlPct,
           allocationPct: 0,
         };

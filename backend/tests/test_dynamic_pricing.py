@@ -13,6 +13,7 @@ try:
     from backend.app.main import (
         AuthContext,
         admin_stats_publish,
+        buy,
         get_pricing_context,
         get_stats_snapshot_by_player,
         portfolio,
@@ -26,6 +27,7 @@ except ModuleNotFoundError:
     from app.main import (
         AuthContext,
         admin_stats_publish,
+        buy,
         get_pricing_context,
         get_stats_snapshot_by_player,
         portfolio,
@@ -212,6 +214,67 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertGreater(favorable.equity, after_open.equity)
         self.assertLess(adverse_row.market_value, favorable_row.market_value)
         self.assertLess(adverse.equity, favorable.equity)
+
+    def test_second_buy_moves_first_long_holder_only_on_same_player(self) -> None:
+        first_user = self.make_user(username="usera", cash_balance=100000.0)
+        second_user = self.make_user(username="userb", cash_balance=100000.0)
+        pca = self.make_player(name="Pete Crow-Armstrong", team="CHC", sport="MLB", position="OF", base_price=160.0, k=0.0021)
+        skenes = self.make_player(name="Paul Skenes", team="PIT", sport="MLB", position="SP", base_price=185.0, k=0.0020)
+        ohtani = self.make_player(name="Shohei Ohtani", team="LAD", sport="MLB", position="DH", base_price=190.0, k=0.0021)
+
+        buy(
+            TradeIn(player_id=int(pca.id), shares=1),
+            self.auth_for(first_user),
+            self.db,
+        )
+        after_first_buy = portfolio(self.auth_for(first_user), self.db)
+        pca_row_after_first_buy = next(row for row in after_first_buy.holdings if row.player_id == int(pca.id))
+
+        self.assertAlmostEqual(
+            pca_row_after_first_buy.average_entry_price,
+            pca_row_after_first_buy.spot_price,
+            places=6,
+        )
+
+        buy(
+            TradeIn(player_id=int(skenes.id), shares=1),
+            self.auth_for(first_user),
+            self.db,
+        )
+        buy(
+            TradeIn(player_id=int(ohtani.id), shares=1),
+            self.auth_for(first_user),
+            self.db,
+        )
+        baseline_portfolio = portfolio(self.auth_for(first_user), self.db)
+        baseline_rows = {row.player_id: row for row in baseline_portfolio.holdings}
+
+        buy(
+            TradeIn(player_id=int(pca.id), shares=1),
+            self.auth_for(second_user),
+            self.db,
+        )
+        after_second_buy = portfolio(self.auth_for(first_user), self.db)
+        rows_after_second_buy = {row.player_id: row for row in after_second_buy.holdings}
+
+        self.assertGreater(
+            rows_after_second_buy[int(pca.id)].spot_price,
+            baseline_rows[int(pca.id)].spot_price,
+        )
+        self.assertGreater(
+            rows_after_second_buy[int(pca.id)].market_value,
+            baseline_rows[int(pca.id)].market_value,
+        )
+        self.assertAlmostEqual(
+            rows_after_second_buy[int(skenes.id)].spot_price,
+            baseline_rows[int(skenes.id)].spot_price,
+            places=6,
+        )
+        self.assertAlmostEqual(
+            rows_after_second_buy[int(ohtani.id)].spot_price,
+            baseline_rows[int(ohtani.id)].spot_price,
+            places=6,
+        )
 
     def test_admin_publish_accepts_multiple_games_same_week(self) -> None:
         admin = self.make_user()
