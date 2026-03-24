@@ -105,6 +105,7 @@ from .schemas import (
     AdminModerationUnhideIn,
     AdminModerationUnhideOut,
     AdminNormalizeHoldingsOut,
+    AdminUserEquityOut,
     AdminFeedbackOut,
     AdminFeedbackUpdateIn,
     AdminSportTradingHaltUpdateIn,
@@ -6783,6 +6784,37 @@ def admin_normalize_open_holdings_to_current_spot(
         users_affected=len(touched_users),
         holdings_updated=holdings_updated,
         message=f"Normalized {holdings_updated} open holding(s) across {len(touched_users)} user(s) to current spot.",
+    )
+
+
+@app.get("/admin/users/{username}/equity", response_model=AdminUserEquityOut)
+def admin_user_equity_snapshot(
+    username: str,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    normalized_username = normalize_username(username)
+    user = db.execute(
+        select(User).where(func.lower(User.username) == normalized_username)
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(404, "User not found")
+
+    snapshot = build_account_risk_snapshot(
+        db=db,
+        user=user,
+        for_update=False,
+    )
+    baseline_cash = float(REGISTER_STARTING_CASH)
+    equity = float(snapshot.equity)
+    return AdminUserEquityOut(
+        user_id=int(user.id),
+        username=str(user.username),
+        cash_balance=float(snapshot.cash_balance),
+        holdings_value=float(snapshot.net_exposure),
+        gross_exposure=float(snapshot.gross_exposure),
+        equity=equity,
+        return_pct=((equity - baseline_cash) / baseline_cash) * 100 if baseline_cash > 0 else 0,
     )
 
 

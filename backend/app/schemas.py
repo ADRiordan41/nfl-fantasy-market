@@ -759,6 +759,16 @@ class AdminNormalizeHoldingsOut(BaseModel):
     message: str
 
 
+class AdminUserEquityOut(BaseModel):
+    user_id: int
+    username: str
+    cash_balance: float
+    holdings_value: float
+    gross_exposure: float
+    equity: float
+    return_pct: float
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int

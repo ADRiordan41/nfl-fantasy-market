@@ -355,6 +355,16 @@ export type AdminNormalizeHoldingsResult = {
   message: string;
 };
 
+export type AdminUserEquity = {
+  user_id: number;
+  username: string;
+  cash_balance: number;
+  holdings_value: number;
+  gross_exposure: number;
+  equity: number;
+  return_pct: number;
+};
+
 export type AdminIpoSport = {
   sport: string;
   total_players: number;

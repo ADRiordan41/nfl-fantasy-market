@@ -10,6 +10,7 @@ import type {
   AdminBotPersona,
   AdminBotProfile,
   AdminNormalizeHoldingsResult,
+  AdminUserEquity,
   AdminBotSimulationStatus,
   AdminFeedbackMessage,
   AdminIpoActionResult,
@@ -90,6 +91,9 @@ export default function AdminStatsPage() {
   const [siteResetResult, setSiteResetResult] = useState<AdminSiteResetResult | null>(null);
   const [busyNormalizeHoldings, setBusyNormalizeHoldings] = useState(false);
   const [normalizeHoldingsResult, setNormalizeHoldingsResult] = useState<AdminNormalizeHoldingsResult | null>(null);
+  const [equityLookupUsername, setEquityLookupUsername] = useState("foreverhopeful");
+  const [busyEquityLookup, setBusyEquityLookup] = useState(false);
+  const [equityLookupResult, setEquityLookupResult] = useState<AdminUserEquity | null>(null);
 
   const [error, setError] = useState("");
 
@@ -510,6 +514,26 @@ export default function AdminStatsPage() {
       handleApiError(err);
     } finally {
       setBusyNormalizeHoldings(false);
+    }
+  }
+
+  async function lookupUserEquity() {
+    const trimmed = equityLookupUsername.trim();
+    if (!trimmed) {
+      setError("Enter a username to inspect.");
+      notifyError("Username required.");
+      return;
+    }
+    setBusyEquityLookup(true);
+    setError("");
+    try {
+      const result = await apiGet<AdminUserEquity>(`/admin/users/${encodeURIComponent(trimmed)}/equity`);
+      setEquityLookupResult(result);
+      notifySuccess(`Loaded equity snapshot for ${result.username}.`);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyEquityLookup(false);
     }
   }
 
@@ -1822,6 +1846,59 @@ export default function AdminStatsPage() {
               </tbody>
             </table>
             <p className="subtle">{normalizeHoldingsResult.message}</p>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="table-panel">
+        <h3>User Equity Inspector</h3>
+        <p className="subtle">
+          Look up the exact cash, holdings value, and equity driving a user&apos;s displayed return.
+        </p>
+        <div className="admin-input-grid">
+          <div>
+            <label className="field-label" htmlFor="equity-lookup-username">
+              Username
+            </label>
+            <input
+              id="equity-lookup-username"
+              value={equityLookupUsername}
+              onChange={(event) => setEquityLookupUsername(event.target.value)}
+              placeholder="foreverhopeful"
+            />
+          </div>
+        </div>
+        <div className="admin-actions">
+          <button onClick={() => void lookupUserEquity()} disabled={busyEquityLookup}>
+            {busyEquityLookup ? "Loading..." : "Inspect User Equity"}
+          </button>
+        </div>
+        {equityLookupResult ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Cash</th>
+                  <th>Holdings</th>
+                  <th>Gross Exposure</th>
+                  <th>Equity</th>
+                  <th>Return</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    {equityLookupResult.username} (#{formatNumber(equityLookupResult.user_id)})
+                  </td>
+                  <td>{formatCurrency(equityLookupResult.cash_balance)}</td>
+                  <td>{formatCurrency(equityLookupResult.holdings_value)}</td>
+                  <td>{formatCurrency(equityLookupResult.gross_exposure)}</td>
+                  <td>{formatCurrency(equityLookupResult.equity)}</td>
+                  <td>{formatSignedNumber(equityLookupResult.return_pct, 2)}%</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         ) : null}
       </section>
