@@ -239,7 +239,7 @@ def healthz():
 
 
 SYNTHETIC_PLAYER_NAME = re.compile(r"^[A-Z]{2,3} (QB|RB|WR|TE)\d$")
-VALID_USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+VALID_USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 VALID_SPORT_CODE = re.compile(r"^[A-Z0-9_-]{2,16}$")
 VALID_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 BOT_PERSONA_CATALOG = {
@@ -731,18 +731,22 @@ def readiness_check(db: Session = Depends(get_db)):
 
 
 def normalize_username(raw_username: str | None) -> str:
-    username = (raw_username or "").strip().lower()
+    username = (raw_username or "").strip()
     if not username:
         raise HTTPException(400, "username is required")
     if not VALID_USERNAME.match(username):
         raise HTTPException(
             status_code=400,
             detail=(
-                "Invalid username. Use lowercase letters, numbers, underscore, or hyphen "
+                "Invalid username. Use letters, numbers, underscore, or hyphen "
                 "(max 64 chars)."
             ),
         )
     return username
+
+
+def username_lookup_key(raw_username: str | None) -> str:
+    return normalize_username(raw_username).lower()
 
 
 def slugify_bot_name(raw_name: str | None) -> str:
@@ -792,10 +796,10 @@ def normalize_email(raw_email: str | None) -> str:
 
 
 def normalize_login_identifier(raw_identifier: str | None) -> str:
-    identifier = (raw_identifier or "").strip().lower()
+    identifier = (raw_identifier or "").strip()
     if not identifier:
         raise HTTPException(400, "username or email is required")
-    return normalize_email(identifier) if "@" in identifier else normalize_username(identifier)
+    return normalize_email(identifier) if "@" in identifier else username_lookup_key(identifier)
 
 
 def normalize_password_reset_token(raw_token: str | None) -> str:
@@ -1125,7 +1129,7 @@ def get_user_by_username_or_raise(
     username: str,
     for_update: bool = False,
 ) -> User:
-    stmt = select(User).where(User.username == username)
+    stmt = select(User).where(func.lower(User.username) == username_lookup_key(username))
     if for_update:
         stmt = stmt.with_for_update()
     user = db.execute(stmt).scalar_one_or_none()
@@ -3413,15 +3417,16 @@ def register(
         label="auth register",
     )
     username = normalize_username(payload.username)
+    username_key = username_lookup_key(username)
     email = normalize_email(payload.email)
     enforce_rate_limit(
-        key=f"auth:register:username:{username}",
+        key=f"auth:register:username:{username_key}",
         limit=RATE_LIMIT_AUTH_REGISTER,
         window_seconds=RATE_LIMIT_AUTH_REGISTER_WINDOW_SECONDS,
         label="auth register",
     )
     validate_registration_request(payload)
-    existing = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+    existing = db.execute(select(User).where(func.lower(User.username) == username_key)).scalar_one_or_none()
     existing_by_email = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if existing_by_email and existing and existing_by_email.id != existing.id:
         raise HTTPException(409, "That email is already in use.")
@@ -3430,7 +3435,7 @@ def register(
             raise HTTPException(409, "That email is already in use.")
         raise HTTPException(409, "That email is already reserved by another account.")
     if existing and existing.password_hash:
-        raise HTTPException(409, f"User '{username}' already exists.")
+        raise HTTPException(409, f"User '{existing.username}' already exists.")
     if existing and not existing.password_hash:
         if existing.email and str(existing.email).strip().lower() != email:
             raise HTTPException(409, "That username is already reserved with a different email.")
@@ -3477,7 +3482,7 @@ def login(
     if "@" in identifier:
         user = db.execute(select(User).where(User.email == identifier)).scalar_one_or_none()
     else:
-        user = db.execute(select(User).where(User.username == identifier)).scalar_one_or_none()
+        user = db.execute(select(User).where(func.lower(User.username) == identifier)).scalar_one_or_none()
     if user and not user.password_hash:
         raise auth_exception("Account has no password yet. Register once to set credentials.")
     if not user or not verify_password(payload.password, user.password_hash):

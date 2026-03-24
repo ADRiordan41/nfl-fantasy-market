@@ -133,7 +133,7 @@ function AuthPageContent() {
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const normalizedIdentifier = identifier.trim().toLowerCase();
+    const normalizedIdentifier = identifier.trim();
     if (!normalizedIdentifier) {
       setError(mode === "login" ? "Username or email is required." : "Username is required.");
       return;
@@ -333,7 +333,7 @@ function AuthPageContent() {
               id="auth-identifier"
               value={identifier}
               onChange={(event) => setIdentifier(event.target.value)}
-              placeholder={mode === "login" ? "username or email" : "lowercase username"}
+              placeholder={mode === "login" ? "username or email" : "choose a username"}
               autoComplete="username"
               autoFocus
               disabled={busy}
