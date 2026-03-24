@@ -761,38 +761,19 @@ export default function MarketPage() {
                   <col className="market-col-quote" />
                 </colgroup>
                 <thead>
-                  <tr className="market-header-group-row">
-                    <th rowSpan={2} className="market-sticky-player-cell market-header-corner">
+                  <tr className="market-header-detail-row">
+                    <th className="market-sticky-player-cell market-header-corner">
                       {renderSortButton("name", "Player")}
                     </th>
-                    <th colSpan={1} className="market-header-group">
-                      Pricing
-                    </th>
-                    <th colSpan={2} className="market-header-group">
-                      Performance
-                    </th>
-                    <th colSpan={2} className="market-header-group">
-                      Positioning
-                    </th>
-                    <th rowSpan={2} className="market-header-group market-header-single">
-                      Quick Actions
-                    </th>
-                    <th rowSpan={2} className="market-header-group market-header-single">
-                      Action
-                    </th>
-                    <th rowSpan={2} className="market-header-group market-header-single">
-                      Qty
-                    </th>
-                    <th rowSpan={2} className="market-header-group market-header-single">
-                      Quote
-                    </th>
-                  </tr>
-                  <tr className="market-header-detail-row">
                     <th>{renderSortButton("spot_price", "Price")}</th>
                     <th>{renderSortButton("change_pct", "Total Gain")}</th>
                     <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
                     <th>Shares Held</th>
                     <th>Shares Short</th>
+                    <th className="market-header-single">Quick Actions</th>
+                    <th className="market-header-single">Action</th>
+                    <th className="market-header-single">Qty</th>
+                    <th className="market-header-single">Quote</th>
                   </tr>
                 </thead>
                 <tbody>

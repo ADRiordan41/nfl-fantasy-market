@@ -3156,7 +3156,7 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-header-detail-row th {
-  top: 28px;
+  top: 0;
   z-index: 4;
   padding-top: 5px;
   padding-bottom: 5px;
