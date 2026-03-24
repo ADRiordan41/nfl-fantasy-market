@@ -568,11 +568,7 @@ def current_bid_ask_prices(
         fundamental_price=fundamental_price,
         market_bias=market_bias,
     )
-    spread_pct = pricing_spread_pct(player, fundamental_price=fundamental_price)
-    half_spread = spread_pct / Decimal("2")
-    bid = max(Decimal("0.000001"), mid * (Decimal("1") - half_spread))
-    ask = max(Decimal("0.000001"), mid * (Decimal("1") + half_spread))
-    return bid, ask
+    return mid, mid
 
 
 def current_cost_to_buy(
@@ -1783,7 +1779,6 @@ def player_to_out(
     shares_short: Decimal = Decimal("0"),
 ) -> PlayerOut:
     spot = current_spot_price(player, fundamental_price=fundamental_price)
-    bid_price, ask_price = current_bid_ask_prices(player, fundamental_price=fundamental_price)
     return PlayerOut(
         id=player.id,
         sport=str(player.sport),
@@ -1799,8 +1794,6 @@ def player_to_out(
         shares_held=float(shares_held),
         shares_short=float(shares_short),
         spot_price=float(spot),
-        bid_price=float(bid_price),
-        ask_price=float(ask_price),
         live=player_live_to_out(player),
     )
 

@@ -17,8 +17,6 @@ type MarketPlayer = {
   shares_held: number;
   shares_short: number;
   spot_price: number;
-  bid_price: number;
-  ask_price: number;
   live: null;
 };
 
@@ -72,8 +70,6 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
       shares_held: Math.max(initialSharesOwned, 0),
       shares_short: Math.max(-initialSharesOwned, 0),
       spot_price: spotPrice,
-      bid_price: spotPrice - 1.5,
-      ask_price: spotPrice + 1.5,
       live: null,
     },
   ];

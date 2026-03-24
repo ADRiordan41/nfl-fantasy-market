@@ -19,8 +19,6 @@ const PLAYERS = [
     shares_held: 184.0,
     shares_short: 39.0,
     spot_price: 318.4,
-    bid_price: 317.2,
-    ask_price: 319.5,
     live: null,
   },
   {
@@ -38,8 +36,6 @@ const PLAYERS = [
     shares_held: 121.0,
     shares_short: 28.0,
     spot_price: 287.9,
-    bid_price: 286.8,
-    ask_price: 289.1,
     live: null,
   },
   {
@@ -57,8 +53,6 @@ const PLAYERS = [
     shares_held: 92.0,
     shares_short: 110.0,
     spot_price: 258.4,
-    bid_price: 257.5,
-    ask_price: 259.4,
     live: null,
   },
   {
@@ -76,8 +70,6 @@ const PLAYERS = [
     shares_held: 54.0,
     shares_short: 12.0,
     spot_price: 328.9,
-    bid_price: 327.8,
-    ask_price: 330.2,
     live: null,
   },
 ];

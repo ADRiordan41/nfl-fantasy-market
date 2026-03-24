@@ -24,8 +24,6 @@ export type Player = {
   shares_held: number;
   shares_short: number;
   spot_price: number;
-  bid_price: number;
-  ask_price: number;
   live: PlayerLive | null;
 };
 

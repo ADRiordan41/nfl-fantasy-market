@@ -19,8 +19,6 @@ type MarketSortColumn = "name" | "team" | "position" | "spot_price" | "change_pc
 type SortDirection = "asc" | "desc";
 type PriceSnapshot = {
   spot: number;
-  bid: number;
-  ask: number;
 };
 type VirtualWindow = {
   start: number;
@@ -53,7 +51,7 @@ const MARKET_PRICE_FLASH_MS = 1100;
 const MARKET_FILTER_DEBOUNCE_MS = 180;
 const MARKET_VIRTUALIZATION_THRESHOLD = 60;
 const MARKET_VIRTUALIZATION_OVERSCAN = 8;
-const MARKET_TABLE_COLUMN_COUNT = 12;
+const MARKET_TABLE_COLUMN_COUNT = 10;
 
 type MobileTradeState = {
   row: MarketTableRowModel;
@@ -164,8 +162,6 @@ export default function MarketPage() {
     for (const player of playersData) {
       const snapshot: PriceSnapshot = {
         spot: player.spot_price,
-        bid: player.bid_price,
-        ask: player.ask_price,
       };
       nextSnapshot[player.id] = snapshot;
       const previousSnapshot = previous[player.id];
@@ -173,9 +169,7 @@ export default function MarketPage() {
 
       const rowFlash: MarketPriceFlashState = {};
       if (snapshot.spot !== previousSnapshot.spot) rowFlash.spot = snapshot.spot > previousSnapshot.spot ? "up" : "down";
-      if (snapshot.bid !== previousSnapshot.bid) rowFlash.bid = snapshot.bid > previousSnapshot.bid ? "up" : "down";
-      if (snapshot.ask !== previousSnapshot.ask) rowFlash.ask = snapshot.ask > previousSnapshot.ask ? "up" : "down";
-      if (rowFlash.spot || rowFlash.bid || rowFlash.ask) nextFlashes[player.id] = rowFlash;
+      if (rowFlash.spot) nextFlashes[player.id] = rowFlash;
     }
 
     previousPriceSnapshotRef.current = nextSnapshot;
@@ -185,7 +179,7 @@ export default function MarketPage() {
 
     for (const [playerId, flashState] of Object.entries(nextFlashes)) {
       const numericPlayerId = Number(playerId);
-      for (const field of ["spot", "bid", "ask"] as const) {
+      for (const field of ["spot"] as const) {
         if (!flashState[field]) continue;
         const timeoutKey = `${numericPlayerId}:${field}`;
         const existingTimeout = flashTimeoutsRef.current[timeoutKey];
@@ -196,7 +190,7 @@ export default function MarketPage() {
             if (!currentRow?.[field]) return current;
             const nextRow: MarketPriceFlashState = { ...currentRow };
             delete nextRow[field];
-            if (!nextRow.spot && !nextRow.bid && !nextRow.ask) {
+            if (!nextRow.spot) {
               const nextState = { ...current };
               delete nextState[numericPlayerId];
               return nextState;
@@ -734,14 +728,6 @@ export default function MarketPage() {
                       <strong className={row.change24hPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change24hPct)}</strong>
                     </span>
                   </div>
-                  <div className="holding-metrics market-mobile-holding-metrics market-mobile-bid-ask">
-                    <span>
-                      Bid <strong>{formatCurrency(row.player.bid_price)}</strong>
-                    </span>
-                    <span>
-                      Ask <strong>{formatCurrency(row.player.ask_price)}</strong>
-                    </span>
-                  </div>
                 </div>
                 <div className="market-mobile-actions">
                   <button type="button" className="primary-btn" onClick={() => openMobileTrade(row)}>
@@ -765,8 +751,6 @@ export default function MarketPage() {
                 <colgroup>
                   <col className="market-col-player" />
                   <col className="market-col-price" />
-                  <col className="market-col-price-side" />
-                  <col className="market-col-price-side" />
                   <col className="market-col-change" />
                   <col className="market-col-change-24h" />
                   <col className="market-col-shares-held" />
@@ -781,7 +765,7 @@ export default function MarketPage() {
                     <th rowSpan={2} className="market-sticky-player-cell market-header-corner">
                       {renderSortButton("name", "Player")}
                     </th>
-                    <th colSpan={3} className="market-header-group">
+                    <th colSpan={1} className="market-header-group">
                       Pricing
                     </th>
                     <th colSpan={2} className="market-header-group">
@@ -805,8 +789,6 @@ export default function MarketPage() {
                   </tr>
                   <tr className="market-header-detail-row">
                     <th>{renderSortButton("spot_price", "Price")}</th>
-                    <th className="market-price-header market-bid-header">Bid</th>
-                    <th className="market-price-header market-ask-header">Ask</th>
                     <th>{renderSortButton("change_pct", "Total Gain")}</th>
                     <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
                     <th>Shares Held</th>

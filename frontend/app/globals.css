@@ -2974,10 +2974,6 @@ button.segment.danger-segment.danger-active {
   color: #15385d;
 }
 
-.market-mobile-bid-ask strong {
-  color: #15385d;
-}
-
 .market-mobile-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3204,16 +3200,6 @@ button.segment.danger-segment.danger-active {
   color: #183a5e;
 }
 
-.market-bid-header {
-  background:
-    linear-gradient(180deg, rgba(236, 248, 241, 0.99) 0%, rgba(225, 241, 232, 0.97) 100%);
-}
-
-.market-ask-header {
-  background:
-    linear-gradient(180deg, rgba(255, 245, 236, 0.99) 0%, rgba(255, 236, 220, 0.97) 100%);
-}
-
 .market-table th {
   text-align: center;
 }
@@ -3423,16 +3409,6 @@ button.segment.danger-segment.danger-active {
 
 .market-mid-cell {
   background: rgba(240, 247, 255, 0.9);
-}
-
-.market-bid-cell {
-  background: rgba(236, 248, 241, 0.9);
-  color: #1d5b37;
-}
-
-.market-ask-cell {
-  background: rgba(255, 245, 236, 0.9);
-  color: #9b5311;
 }
 
 .market-cell-flash-up {

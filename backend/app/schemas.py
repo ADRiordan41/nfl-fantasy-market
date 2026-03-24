@@ -528,8 +528,6 @@ class PlayerOut(BaseModel):
     shares_held: float
     shares_short: float
     spot_price: float
-    bid_price: float
-    ask_price: float
     live: PlayerLiveOut | None = None
 
 

@@ -9,8 +9,6 @@ export type MarketTradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
 
 export type MarketPriceFlashState = {
   spot?: "up" | "down";
-  bid?: "up" | "down";
-  ask?: "up" | "down";
 };
 
 export type MarketTableRowModel = {
@@ -21,8 +19,6 @@ export type MarketTableRowModel = {
     position: string;
     sport: string;
     spot_price: number;
-    bid_price: number;
-    ask_price: number;
     live: {
       live_now: boolean;
     } | null;
@@ -177,12 +173,6 @@ function MarketTableRow({
       </td>
       <td className={`market-cell-numeric market-price-cell market-mid-cell${flashClass(priceFlash?.spot)}`}>
         {formatCurrency(row.player.spot_price)}
-      </td>
-      <td className={`market-cell-numeric market-price-cell market-bid-cell${flashClass(priceFlash?.bid)}`}>
-        {formatCurrency(row.player.bid_price)}
-      </td>
-      <td className={`market-cell-numeric market-price-cell market-ask-cell${flashClass(priceFlash?.ask)}`}>
-        {formatCurrency(row.player.ask_price)}
       </td>
       <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
         {formatSignedPercent(row.totalChangePct)}
