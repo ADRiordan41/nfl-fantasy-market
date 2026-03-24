@@ -639,12 +639,60 @@ def backfill_holding_basis_amounts(db: Session) -> None:
         holding.basis_amount = float(max(running_basis, Decimal("0")))
 
 
+def canonical_entry_price_by_transaction_id(
+    db: Session,
+    *,
+    player_id: int,
+    transactions: list[Transaction],
+) -> dict[int, Decimal]:
+    price_points = db.execute(
+        select(PricePoint)
+        .where(
+            PricePoint.player_id == player_id,
+            PricePoint.source.in_(tuple(TRADE_PRICE_POINT_SOURCE_BY_TX_TYPE.values())),
+        )
+        .order_by(PricePoint.created_at.asc(), PricePoint.id.asc())
+    ).scalars().all()
+
+    available_points: dict[str, list[PricePoint]] = {}
+    for point in price_points:
+        available_points.setdefault(str(point.source), []).append(point)
+
+    resolved: dict[int, Decimal] = {}
+    for transaction in transactions:
+        tx_id = int(transaction.id)
+        unit_price = max(Decimal("0"), Decimal(str(transaction.unit_price or 0)))
+        tx_type = str(transaction.type)
+        entry_price = unit_price
+        point_source = TRADE_PRICE_POINT_SOURCE_BY_TX_TYPE.get(tx_type)
+        if point_source:
+            source_points = available_points.get(point_source, [])
+            best_index = -1
+            best_score: tuple[int, float, int] | None = None
+            for index, point in enumerate(source_points):
+                is_before_tx = 0 if point.created_at >= transaction.created_at else 1
+                time_gap = abs((point.created_at - transaction.created_at).total_seconds())
+                score = (
+                    is_before_tx,
+                    time_gap,
+                    int(point.id),
+                )
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_index = index
+            if best_index >= 0:
+                matched_point = source_points.pop(best_index)
+                entry_price = max(Decimal("0"), Decimal(str(matched_point.spot_price or 0)))
+        resolved[tx_id] = entry_price
+
+    return resolved
+
+
 def backfill_holding_entry_basis_amounts(db: Session) -> None:
     tolerance = Decimal("0.000001")
     holdings = db.execute(
         select(Holding).where(
             Holding.shares_owned != 0,
-            Holding.entry_basis_amount == 0,
         )
     ).scalars().all()
 
@@ -661,11 +709,20 @@ def backfill_holding_entry_basis_amounts(db: Session) -> None:
         if not transactions:
             continue
 
+        canonical_prices = canonical_entry_price_by_transaction_id(
+            db,
+            player_id=int(holding.player_id),
+            transactions=transactions,
+        )
+
         running_shares = Decimal("0")
         running_entry_basis = Decimal("0")
         for transaction in transactions:
             shares = Decimal(str(transaction.shares))
-            unit_price = max(Decimal("0"), Decimal(str(transaction.unit_price or 0)))
+            unit_price = canonical_prices.get(
+                int(transaction.id),
+                max(Decimal("0"), Decimal(str(transaction.unit_price or 0))),
+            )
             tx_type = str(transaction.type)
             entry_notional = shares * unit_price
 
@@ -736,17 +793,11 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
         if not transactions:
             continue
 
-        price_points = db.execute(
-            select(PricePoint)
-            .where(
-                PricePoint.player_id == holding.player_id,
-                PricePoint.source.in_(tuple(TRADE_PRICE_POINT_SOURCE_BY_TX_TYPE.values())),
-            )
-            .order_by(PricePoint.created_at.asc(), PricePoint.id.asc())
-        ).scalars().all()
-        available_points: dict[str, list[PricePoint]] = {}
-        for point in price_points:
-            available_points.setdefault(str(point.source), []).append(point)
+        canonical_prices = canonical_entry_price_by_transaction_id(
+            db,
+            player_id=int(holding.player_id),
+            transactions=transactions,
+        )
 
         running_shares = Decimal("0")
         running_mark_basis = Decimal("0")
@@ -754,26 +805,7 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
             shares = Decimal(str(transaction.shares))
             unit_price = max(Decimal("0"), Decimal(str(transaction.unit_price or 0)))
             tx_type = str(transaction.type)
-            entry_mark_price = unit_price
-            point_source = TRADE_PRICE_POINT_SOURCE_BY_TX_TYPE.get(tx_type)
-            if point_source:
-                source_points = available_points.get(point_source, [])
-                best_index = -1
-                best_score: tuple[int, float, int] | None = None
-                for index, point in enumerate(source_points):
-                    is_before_tx = 0 if point.created_at >= transaction.created_at else 1
-                    time_gap = abs((point.created_at - transaction.created_at).total_seconds())
-                    score = (
-                        is_before_tx,
-                        time_gap,
-                        int(point.id),
-                    )
-                    if best_score is None or score < best_score:
-                        best_score = score
-                        best_index = index
-                if best_index >= 0:
-                    matched_point = source_points.pop(best_index)
-                    entry_mark_price = max(Decimal("0"), Decimal(str(matched_point.spot_price or 0)))
+            entry_mark_price = canonical_prices.get(int(transaction.id), unit_price)
 
             entry_mark_notional = shares * entry_mark_price
 
