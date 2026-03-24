@@ -652,6 +652,19 @@ def market_value_for_position(
     return Decimal("0")
 
 
+def mark_to_market_value_for_position(
+    *,
+    shares: Decimal,
+    basis_amount: Decimal,
+    spot_price: Decimal,
+) -> Decimal:
+    if shares > 0:
+        return shares * spot_price
+    if shares < 0:
+        return (basis_amount * Decimal("2")) - (abs(shares) * spot_price)
+    return Decimal("0")
+
+
 def basis_amount_closed_pro_rata(
     *,
     basis_amount: Decimal,
@@ -2117,12 +2130,10 @@ def build_account_risk_snapshot(
             fundamental_price=fundamental_price,
             market_bias=market_bias,
         )
-        market_value = market_value_for_position(
-            player=player,
-            fundamental_price=fundamental_price,
+        market_value = mark_to_market_value_for_position(
             shares=shares,
             basis_amount=basis_amount,
-            market_bias=market_bias,
+            spot_price=spot,
         )
         maintenance_margin_required = Decimal("0")
 
