@@ -4,7 +4,7 @@ from decimal import Decimal
 
 PRICE_IMPACT_MULTIPLIER = max(
     Decimal("0.000001"),
-    Decimal(os.environ.get("PRICE_IMPACT_MULTIPLIER", "0.2")),
+    Decimal(os.environ.get("PRICE_IMPACT_MULTIPLIER", "0.24")),
 )
 BASE_SPREAD_PCT = max(
     Decimal("0.0005"),
