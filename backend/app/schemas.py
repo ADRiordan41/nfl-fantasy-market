@@ -767,6 +767,9 @@ class AdminUserEquityOut(BaseModel):
     gross_exposure: float
     equity: float
     return_pct: float
+    cash_vs_starting_cash: float
+    unrealized_pnl: float
+    implied_realized_pnl: float
 
 
 class AdminIpoSportOut(BaseModel):

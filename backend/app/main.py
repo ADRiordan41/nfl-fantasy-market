@@ -6807,14 +6807,20 @@ def admin_user_equity_snapshot(
     )
     baseline_cash = float(REGISTER_STARTING_CASH)
     equity = float(snapshot.equity)
+    unrealized_pnl = float(sum((position_unrealized_pnl(position) for position in snapshot.positions), Decimal("0")))
+    cash_balance = float(snapshot.cash_balance)
+    cash_vs_starting_cash = cash_balance - baseline_cash
     return AdminUserEquityOut(
         user_id=int(user.id),
         username=str(user.username),
-        cash_balance=float(snapshot.cash_balance),
+        cash_balance=cash_balance,
         holdings_value=float(snapshot.net_exposure),
         gross_exposure=float(snapshot.gross_exposure),
         equity=equity,
         return_pct=((equity - baseline_cash) / baseline_cash) * 100 if baseline_cash > 0 else 0,
+        cash_vs_starting_cash=cash_vs_starting_cash,
+        unrealized_pnl=unrealized_pnl,
+        implied_realized_pnl=(equity - baseline_cash) - unrealized_pnl,
     )
 
 

@@ -1880,8 +1880,11 @@ export default function AdminStatsPage() {
                 <tr>
                   <th>User</th>
                   <th>Cash</th>
+                  <th>Cash vs 100k</th>
                   <th>Holdings</th>
                   <th>Gross Exposure</th>
+                  <th>Unrealized P/L</th>
+                  <th>Implied Realized P/L</th>
                   <th>Equity</th>
                   <th>Return</th>
                 </tr>
@@ -1892,8 +1895,11 @@ export default function AdminStatsPage() {
                     {equityLookupResult.username} (#{formatNumber(equityLookupResult.user_id)})
                   </td>
                   <td>{formatCurrency(equityLookupResult.cash_balance)}</td>
+                  <td>{formatSignedNumber(equityLookupResult.cash_vs_starting_cash, 2)}</td>
                   <td>{formatCurrency(equityLookupResult.holdings_value)}</td>
                   <td>{formatCurrency(equityLookupResult.gross_exposure)}</td>
+                  <td>{formatSignedNumber(equityLookupResult.unrealized_pnl, 2)}</td>
+                  <td>{formatSignedNumber(equityLookupResult.implied_realized_pnl, 2)}</td>
                   <td>{formatCurrency(equityLookupResult.equity)}</td>
                   <td>{formatSignedNumber(equityLookupResult.return_pct, 2)}%</td>
                 </tr>

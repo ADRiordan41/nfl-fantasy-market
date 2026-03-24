@@ -363,6 +363,9 @@ export type AdminUserEquity = {
   gross_exposure: number;
   equity: number;
   return_pct: number;
+  cash_vs_starting_cash: number;
+  unrealized_pnl: number;
+  implied_realized_pnl: number;
 };
 
 export type AdminIpoSport = {
