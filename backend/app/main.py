@@ -604,6 +604,16 @@ def current_proceeds_to_sell(
     )
 
 
+def trade_execution_notional_after_move(
+    *,
+    qty: Decimal,
+    spot_price_after: Decimal,
+) -> Decimal:
+    if qty <= 0:
+        return Decimal("0")
+    return qty * spot_price_after
+
+
 def short_position_close_value(
     *,
     player: Player,
@@ -5387,19 +5397,14 @@ def quote_buy(
         additional_shares=qty,
         spot_before=spot_before,
     )
-    raw_cost = current_cost_to_buy(
-        player,
-        fundamental_price=fundamental,
-        qty=qty,
-        market_bias=market_bias,
-    )
-    total_cost = raw_cost + calculate_open_position_fee(raw_cost)
     spot_after = current_spot_price(
         player,
         fundamental_price=fundamental,
         market_bias=market_bias + qty,
     )
-    average_price = (total_cost / qty) if qty > 0 else Decimal("0")
+    raw_cost = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
+    total_cost = raw_cost + calculate_open_position_fee(raw_cost)
+    average_price = (raw_cost / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
         player_id=player.id,
@@ -5455,17 +5460,12 @@ def quote_sell(
         fundamental_price=fundamental,
         market_bias=market_bias,
     )
-    proceeds = current_proceeds_to_sell(
-        player,
-        fundamental_price=fundamental,
-        qty=qty,
-        market_bias=market_bias,
-    )
     spot_after = current_spot_price(
         player,
         fundamental_price=fundamental,
         market_bias=market_bias - qty,
     )
+    proceeds = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     average_price = (proceeds / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
@@ -5527,19 +5527,14 @@ def quote_short(
         additional_shares=qty,
         spot_before=spot_before,
     )
-    raw_notional = current_proceeds_to_sell(
-        player,
-        fundamental_price=fundamental,
-        qty=qty,
-        market_bias=market_bias,
-    )
-    total_cost = raw_notional + calculate_open_position_fee(raw_notional)
     spot_after = current_spot_price(
         player,
         fundamental_price=fundamental,
         market_bias=market_bias - qty,
     )
-    average_price = (total_cost / qty) if qty > 0 else Decimal("0")
+    raw_notional = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
+    total_cost = raw_notional + calculate_open_position_fee(raw_notional)
+    average_price = (raw_notional / qty) if qty > 0 else Decimal("0")
 
     return QuoteOut(
         player_id=player.id,
@@ -5671,20 +5666,6 @@ def buy(
         spot_before=spot_before,
     )
 
-    raw_cost = current_cost_to_buy(
-        player,
-        fundamental_price=fundamental,
-        qty=qty,
-        market_bias=market_bias,
-    )
-    total_cost = raw_cost + calculate_open_position_fee(raw_cost)
-    cash = Decimal(str(user.cash_balance))
-
-    if total_cost > cash:
-        raise HTTPException(400, f"Insufficient cash. Need {float(total_cost):.2f}, have {float(cash):.2f}")
-
-    user.cash_balance = float(cash - total_cost)
-
     if not holding:
         holding = Holding(
             user_id=user.id,
@@ -5699,19 +5680,28 @@ def buy(
     previous_basis_amount = holding_basis_amount(holding)
     previous_entry_basis_amount = holding_entry_basis_amount(holding)
     previous_mark_basis_amount = holding_mark_basis_amount(holding)
-    holding.shares_owned = float(Decimal(str(holding.shares_owned)) + qty)
-    holding.basis_amount = float(previous_basis_amount + total_cost)
-    holding.entry_basis_amount = float(previous_entry_basis_amount + raw_cost)
-    player.total_shares = float(total_shares + qty)
-    next_market_bias = apply_market_bias_delta(player, delta=qty)
+    next_market_bias = market_bias + qty
     spot_after = current_spot_price(
         player,
         fundamental_price=fundamental,
         market_bias=next_market_bias,
     )
-    holding.mark_basis_amount = float(previous_mark_basis_amount + (qty * spot_after))
+    raw_cost = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
+    total_cost = raw_cost + calculate_open_position_fee(raw_cost)
+    cash = Decimal(str(user.cash_balance))
 
-    unit_estimate = (total_cost / qty) if qty > 0 else Decimal("0")
+    if total_cost > cash:
+        raise HTTPException(400, f"Insufficient cash. Need {float(total_cost):.2f}, have {float(cash):.2f}")
+
+    user.cash_balance = float(cash - total_cost)
+    holding.shares_owned = float(Decimal(str(holding.shares_owned)) + qty)
+    holding.basis_amount = float(previous_basis_amount + total_cost)
+    holding.entry_basis_amount = float(previous_entry_basis_amount + raw_cost)
+    player.total_shares = float(total_shares + qty)
+    holding.mark_basis_amount = float(previous_mark_basis_amount + raw_cost)
+    set_market_bias(player, bias=next_market_bias)
+
+    unit_estimate = (raw_cost / qty) if qty > 0 else Decimal("0")
     db.add(
         Transaction(
             user_id=user.id,
@@ -5838,7 +5828,7 @@ def sell(
         )
     )
     player.total_shares = float(total_shares - qty)
-    apply_market_bias_delta(player, delta=-qty)
+    set_market_bias(player, bias=market_bias - qty)
 
     unit_estimate = (proceeds / qty) if qty > 0 else Decimal("0")
     db.add(
@@ -5945,12 +5935,13 @@ def short(
         spot_before=spot_before,
     )
 
-    raw_notional = current_proceeds_to_sell(
+    next_market_bias = market_bias - qty
+    spot_after = current_spot_price(
         player,
         fundamental_price=fundamental,
-        qty=qty,
-        market_bias=market_bias,
+        market_bias=next_market_bias,
     )
+    raw_notional = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     total_cost = raw_notional + calculate_open_position_fee(raw_notional)
 
     cash = Decimal(str(user.cash_balance))
@@ -5965,15 +5956,10 @@ def short(
     holding.basis_amount = float(previous_basis_amount + raw_notional)
     holding.entry_basis_amount = float(previous_entry_basis_amount + raw_notional)
     player.total_shares = float(total_shares - qty)
-    next_market_bias = apply_market_bias_delta(player, delta=-qty)
-    spot_after = current_spot_price(
-        player,
-        fundamental_price=fundamental,
-        market_bias=next_market_bias,
-    )
-    holding.mark_basis_amount = float(previous_mark_basis_amount + (qty * spot_after))
+    holding.mark_basis_amount = float(previous_mark_basis_amount + raw_notional)
+    set_market_bias(player, bias=next_market_bias)
 
-    unit_estimate = (total_cost / qty) if qty > 0 else Decimal("0")
+    unit_estimate = (raw_notional / qty) if qty > 0 else Decimal("0")
     db.add(
         Transaction(
             user_id=user.id,
