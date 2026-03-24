@@ -382,6 +382,26 @@ export type AdminFlattenUserEquityResult = {
   message: string;
 };
 
+export type AdminDeleteUserResult = {
+  user_id: number;
+  username: string;
+  holdings_deleted: number;
+  transactions_deleted: number;
+  sessions_deleted: number;
+  threads_deleted: number;
+  messages_deleted: number;
+  friendships_deleted: number;
+  notifications_deleted: number;
+  watchlist_rows_deleted: number;
+  forum_posts_deleted: number;
+  forum_comments_deleted: number;
+  forum_post_views_deleted: number;
+  feedback_deleted: number;
+  reports_deleted: number;
+  moderation_rows_deleted: number;
+  message: string;
+};
+
 export type AdminIpoSport = {
   sport: string;
   total_players: number;

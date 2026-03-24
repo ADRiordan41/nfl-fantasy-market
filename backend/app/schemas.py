@@ -790,6 +790,26 @@ class AdminFlattenUserEquityOut(BaseModel):
     message: str
 
 
+class AdminDeleteUserOut(BaseModel):
+    user_id: int
+    username: str
+    holdings_deleted: int
+    transactions_deleted: int
+    sessions_deleted: int
+    threads_deleted: int
+    messages_deleted: int
+    friendships_deleted: int
+    notifications_deleted: int
+    watchlist_rows_deleted: int
+    forum_posts_deleted: int
+    forum_comments_deleted: int
+    forum_post_views_deleted: int
+    feedback_deleted: int
+    reports_deleted: int
+    moderation_rows_deleted: int
+    message: str
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int

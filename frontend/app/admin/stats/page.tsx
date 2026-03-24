@@ -2,13 +2,14 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPatch, apiPost, isUnauthorizedError } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedNumber } from "@/lib/format";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import type {
   AdminActivityAudit,
   AdminBotPersona,
   AdminBotProfile,
+  AdminDeleteUserResult,
   AdminFlattenUserEquityResult,
   AdminNormalizeHoldingsResult,
   AdminUserEquity,
@@ -97,6 +98,8 @@ export default function AdminStatsPage() {
   const [equityLookupResult, setEquityLookupResult] = useState<AdminUserEquity | null>(null);
   const [busyFlattenUserEquity, setBusyFlattenUserEquity] = useState(false);
   const [flattenUserEquityResult, setFlattenUserEquityResult] = useState<AdminFlattenUserEquityResult | null>(null);
+  const [busyDeleteUser, setBusyDeleteUser] = useState(false);
+  const [deleteUserResult, setDeleteUserResult] = useState<AdminDeleteUserResult | null>(null);
 
   const [error, setError] = useState("");
 
@@ -533,6 +536,7 @@ export default function AdminStatsPage() {
       const result = await apiGet<AdminUserEquity>(`/admin/users/${encodeURIComponent(trimmed)}/equity`);
       setEquityLookupResult(result);
       setFlattenUserEquityResult(null);
+      setDeleteUserResult(null);
       notifySuccess(`Loaded equity snapshot for ${result.username}.`);
     } catch (err: unknown) {
       handleApiError(err);
@@ -563,6 +567,33 @@ export default function AdminStatsPage() {
       handleApiError(err);
     } finally {
       setBusyFlattenUserEquity(false);
+    }
+  }
+
+  async function deleteUser() {
+    const trimmed = equityLookupUsername.trim();
+    if (!trimmed) {
+      setError("Enter a username to delete.");
+      notifyError("Username required.");
+      return;
+    }
+    if (
+      !window.confirm(`Delete user ${trimmed} and clear out their positions and related data? This cannot be undone.`)
+    ) {
+      return;
+    }
+    setBusyDeleteUser(true);
+    setError("");
+    try {
+      const result = await apiDelete<AdminDeleteUserResult>(`/admin/users/${encodeURIComponent(trimmed)}`);
+      setDeleteUserResult(result);
+      setEquityLookupResult(null);
+      setFlattenUserEquityResult(null);
+      notifySuccess(result.message);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyDeleteUser(false);
     }
   }
 
@@ -1897,18 +1928,25 @@ export default function AdminStatsPage() {
             />
           </div>
         </div>
-        <div className="admin-actions">
-          <button onClick={() => void lookupUserEquity()} disabled={busyEquityLookup}>
-            {busyEquityLookup ? "Loading..." : "Inspect User Equity"}
-          </button>
-          <button
+          <div className="admin-actions">
+            <button onClick={() => void lookupUserEquity()} disabled={busyEquityLookup}>
+              {busyEquityLookup ? "Loading..." : "Inspect User Equity"}
+            </button>
+            <button
             className="primary-btn"
             onClick={() => void flattenUserEquity()}
             disabled={busyFlattenUserEquity}
-          >
-            {busyFlattenUserEquity ? "Flattening..." : "Flatten User To $100k Equity"}
-          </button>
-        </div>
+            >
+              {busyFlattenUserEquity ? "Flattening..." : "Flatten User To $100k Equity"}
+            </button>
+            <button
+              className="danger-btn"
+              onClick={() => void deleteUser()}
+              disabled={busyDeleteUser}
+            >
+              {busyDeleteUser ? "Deleting..." : "Delete User And Clear Positions"}
+            </button>
+          </div>
         {equityLookupResult ? (
           <div className="table-wrap">
             <table>
@@ -1943,8 +1981,8 @@ export default function AdminStatsPage() {
             </table>
           </div>
         ) : null}
-        {flattenUserEquityResult ? (
-          <div className="table-wrap">
+          {flattenUserEquityResult ? (
+            <div className="table-wrap">
             <table>
               <thead>
                 <tr>
@@ -1971,10 +2009,47 @@ export default function AdminStatsPage() {
                 </tr>
               </tbody>
             </table>
-            <p className="subtle">{flattenUserEquityResult.message}</p>
-          </div>
-        ) : null}
-      </section>
+              <p className="subtle">{flattenUserEquityResult.message}</p>
+            </div>
+          ) : null}
+          {deleteUserResult ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Holdings</th>
+                    <th>Transactions</th>
+                    <th>Sessions</th>
+                    <th>Threads</th>
+                    <th>Messages</th>
+                    <th>Friendships</th>
+                    <th>Notifications</th>
+                    <th>Forum Posts</th>
+                    <th>Forum Comments</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      {deleteUserResult.username} (#{formatNumber(deleteUserResult.user_id)})
+                    </td>
+                    <td>{formatNumber(deleteUserResult.holdings_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.transactions_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.sessions_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.threads_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.messages_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.friendships_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.notifications_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.forum_posts_deleted)}</td>
+                    <td>{formatNumber(deleteUserResult.forum_comments_deleted)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="subtle">{deleteUserResult.message}</p>
+            </div>
+          ) : null}
+        </section>
 
       <section className="admin-panel">
         <label className="field-label" htmlFor="csv-text">

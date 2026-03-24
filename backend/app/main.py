@@ -18,7 +18,7 @@ from time import perf_counter
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import and_, delete, exists, func, or_, select
+from sqlalchemy import and_, delete, exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -108,6 +108,7 @@ from .schemas import (
     AdminUserEquityOut,
     AdminFeedbackOut,
     AdminFeedbackUpdateIn,
+    AdminDeleteUserOut,
     AdminFlattenUserEquityIn,
     AdminFlattenUserEquityOut,
     AdminSportTradingHaltUpdateIn,
@@ -6905,6 +6906,154 @@ def admin_flatten_user_equity(
             f"Flattened {user.username} to ${float(refreshed_equity):,.2f} total equity "
             f"by setting cash to ${float(refreshed_snapshot.cash_balance):,.2f}."
         ),
+    )
+
+
+@app.delete("/admin/users/{username}", response_model=AdminDeleteUserOut)
+def admin_delete_user(
+    username: str,
+    admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    normalized_username = normalize_username(username)
+    user = db.execute(
+        select(User).where(func.lower(User.username) == normalized_username)
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(404, "User not found")
+    if int(user.id) == int(admin.user.id):
+        raise HTTPException(400, "You cannot delete the currently signed-in admin user.")
+
+    user_id = int(user.id)
+    username_value = str(user.username)
+    post_ids = db.execute(
+        select(ForumPost.id).where(ForumPost.user_id == user_id)
+    ).scalars().all()
+    thread_ids = db.execute(
+        select(DirectThread.id).where(
+            or_(DirectThread.user_one_id == user_id, DirectThread.user_two_id == user_id)
+        )
+    ).scalars().all()
+
+    forum_post_views_deleted = 0
+    forum_comments_deleted = 0
+    messages_deleted = 0
+    reports_deleted = 0
+    moderation_rows_deleted = 0
+
+    if post_ids:
+        forum_post_views_deleted += db.execute(
+            delete(ForumPostView).where(ForumPostView.post_id.in_(post_ids))
+        ).rowcount or 0
+        forum_comments_deleted += db.execute(
+            delete(ForumComment).where(ForumComment.post_id.in_(post_ids))
+        ).rowcount or 0
+    if thread_ids:
+        messages_deleted += db.execute(
+            delete(DirectMessage).where(DirectMessage.thread_id.in_(thread_ids))
+        ).rowcount or 0
+
+    report_ids = db.execute(
+        select(ContentReport.id).where(ContentReport.reporter_user_id == user_id)
+    ).scalars().all()
+    if report_ids:
+        moderation_rows_deleted += db.execute(
+            delete(ContentModeration).where(ContentModeration.source_report_id.in_(report_ids))
+        ).rowcount or 0
+        reports_deleted += db.execute(
+            delete(ContentReport).where(ContentReport.id.in_(report_ids))
+        ).rowcount or 0
+
+    db.execute(
+        update(ContentReport)
+        .where(ContentReport.reviewed_by_user_id == user_id)
+        .values(reviewed_by_user_id=None)
+    )
+    db.execute(
+        update(TradingControl)
+        .where(TradingControl.updated_by_user_id == user_id)
+        .values(updated_by_user_id=None)
+    )
+
+    forum_post_views_deleted += db.execute(
+        delete(ForumPostView).where(ForumPostView.user_id == user_id)
+    ).rowcount or 0
+    forum_comments_deleted += db.execute(
+        delete(ForumComment).where(ForumComment.user_id == user_id)
+    ).rowcount or 0
+    forum_posts_deleted = db.execute(
+        delete(ForumPost).where(ForumPost.user_id == user_id)
+    ).rowcount or 0
+
+    messages_deleted += db.execute(
+        delete(DirectMessage).where(DirectMessage.sender_user_id == user_id)
+    ).rowcount or 0
+    threads_deleted = db.execute(
+        delete(DirectThread).where(
+            or_(DirectThread.user_one_id == user_id, DirectThread.user_two_id == user_id)
+        )
+    ).rowcount or 0
+
+    sessions_deleted = db.execute(
+        delete(UserSession).where(UserSession.user_id == user_id)
+    ).rowcount or 0
+    holdings_deleted = db.execute(
+        delete(Holding).where(Holding.user_id == user_id)
+    ).rowcount or 0
+    transactions_deleted = db.execute(
+        delete(Transaction).where(Transaction.user_id == user_id)
+    ).rowcount or 0
+    watchlist_rows_deleted = db.execute(
+        delete(PlayerWatchlist).where(PlayerWatchlist.user_id == user_id)
+    ).rowcount or 0
+    notifications_deleted = db.execute(
+        delete(Notification).where(
+            or_(Notification.user_id == user_id, Notification.actor_user_id == user_id)
+        )
+    ).rowcount or 0
+    db.execute(
+        delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id)
+    )
+    friendships_deleted = db.execute(
+        delete(Friendship).where(
+            or_(
+                Friendship.user_low_id == user_id,
+                Friendship.user_high_id == user_id,
+                Friendship.requested_by_user_id == user_id,
+            )
+        )
+    ).rowcount or 0
+    feedback_deleted = db.execute(
+        delete(FeedbackMessage).where(FeedbackMessage.user_id == user_id)
+    ).rowcount or 0
+    moderation_rows_deleted += db.execute(
+        delete(ContentModeration).where(ContentModeration.moderator_user_id == user_id)
+    ).rowcount or 0
+    db.execute(
+        delete(ArchivedHolding).where(ArchivedHolding.user_id == user_id)
+    )
+
+    db.delete(user)
+    db.commit()
+
+    return AdminDeleteUserOut(
+        user_id=user_id,
+        username=username_value,
+        holdings_deleted=holdings_deleted,
+        transactions_deleted=transactions_deleted,
+        sessions_deleted=sessions_deleted,
+        threads_deleted=threads_deleted,
+        messages_deleted=messages_deleted,
+        friendships_deleted=friendships_deleted,
+        notifications_deleted=notifications_deleted,
+        watchlist_rows_deleted=watchlist_rows_deleted,
+        forum_posts_deleted=forum_posts_deleted,
+        forum_comments_deleted=forum_comments_deleted,
+        forum_post_views_deleted=forum_post_views_deleted,
+        feedback_deleted=feedback_deleted,
+        reports_deleted=reports_deleted,
+        moderation_rows_deleted=moderation_rows_deleted,
+        message=f"Deleted user {username_value} and related account data.",
     )
 
 
