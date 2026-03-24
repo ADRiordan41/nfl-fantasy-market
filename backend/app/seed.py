@@ -759,18 +759,19 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
             if point_source:
                 source_points = available_points.get(point_source, [])
                 best_index = -1
-                best_score: tuple[float, int, int] | None = None
+                best_score: tuple[int, float, int] | None = None
                 for index, point in enumerate(source_points):
+                    is_before_tx = 0 if point.created_at >= transaction.created_at else 1
                     time_gap = abs((point.created_at - transaction.created_at).total_seconds())
                     score = (
+                        is_before_tx,
                         time_gap,
-                        0 if point.created_at >= transaction.created_at else 1,
                         int(point.id),
                     )
                     if best_score is None or score < best_score:
                         best_score = score
                         best_index = index
-                if best_index >= 0 and best_score is not None and best_score[0] <= 300:
+                if best_index >= 0:
                     matched_point = source_points.pop(best_index)
                     entry_mark_price = max(Decimal("0"), Decimal(str(matched_point.spot_price or 0)))
 
