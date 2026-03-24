@@ -580,6 +580,8 @@ class PortfolioHolding(BaseModel):
     basis_amount: float
     spot_price: float
     market_value: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
 
 class PortfolioOut(BaseModel):
     cash_balance: float

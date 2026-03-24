@@ -70,6 +70,8 @@ export type Portfolio = {
     basis_amount: number;
     spot_price: number;
     market_value: number;
+    unrealized_pnl: number;
+    unrealized_pnl_pct: number;
   }[];
 };
 

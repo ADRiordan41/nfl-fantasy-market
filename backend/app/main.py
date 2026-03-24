@@ -709,6 +709,22 @@ def reduce_basis_pro_rata(*, basis_amount: Decimal, shares_before: Decimal, shar
     return basis_amount - (basis_amount * abs_closed / abs_before)
 
 
+def remark_open_holding_to_current_spot(
+    *,
+    holding: Holding,
+    shares_owned: Decimal,
+    current_spot: Decimal,
+) -> None:
+    abs_shares = abs(shares_owned)
+    if abs_shares <= 0:
+        holding.entry_basis_amount = 0.0
+        holding.mark_basis_amount = 0.0
+        return
+    current_notional = abs_shares * current_spot
+    holding.entry_basis_amount = float(current_notional)
+    holding.mark_basis_amount = float(current_notional)
+
+
 @dataclass
 class AuthContext:
     user: User
@@ -5391,6 +5407,12 @@ def portfolio(
                 basis_amount=float(position_display_basis_amount(position)),
                 spot_price=float(position.spot_price),
                 market_value=float(position.market_value),
+                unrealized_pnl=float(position_unrealized_pnl(position)),
+                unrealized_pnl_pct=float(
+                    (position_unrealized_pnl(position) / position_display_basis_amount(position)) * Decimal("100")
+                    if position_display_basis_amount(position) > 0
+                    else Decimal("0")
+                ),
             )
             for position in sorted(snapshot.positions, key=lambda position: abs(position.market_value), reverse=True)
         ],
@@ -5741,7 +5763,6 @@ def buy(
         db.add(holding)
 
     previous_basis_amount = holding_basis_amount(holding)
-    previous_entry_basis_amount = holding_entry_basis_amount(holding)
     next_market_bias = market_bias + qty
     spot_after = canonical_executed_spot_price(
         player=player,
@@ -5759,10 +5780,16 @@ def buy(
     next_shares_owned = Decimal(str(holding.shares_owned)) + qty
     holding.shares_owned = float(next_shares_owned)
     holding.basis_amount = float(previous_basis_amount + total_cost)
-    holding.entry_basis_amount = float(abs(next_shares_owned) * spot_after)
     player.total_shares = float(total_shares + qty)
-    holding.mark_basis_amount = float(abs(next_shares_owned) * spot_after)
     set_market_bias(player, bias=next_market_bias)
+    remark_open_holding_to_current_spot(
+        holding=holding,
+        shares_owned=next_shares_owned,
+        current_spot=current_spot_price(
+            player,
+            fundamental_price=fundamental,
+        ),
+    )
 
     unit_estimate = spot_after
     db.add(
@@ -6014,14 +6041,19 @@ def short(
     user.cash_balance = float(cash - total_cost)
 
     previous_basis_amount = holding_basis_amount(holding)
-    previous_entry_basis_amount = holding_entry_basis_amount(holding)
     next_shares_owned = net_shares - qty
     holding.shares_owned = float(next_shares_owned)
     holding.basis_amount = float(previous_basis_amount + raw_notional)
-    holding.entry_basis_amount = float(abs(next_shares_owned) * spot_after)
     player.total_shares = float(total_shares - qty)
-    holding.mark_basis_amount = float(abs(next_shares_owned) * spot_after)
     set_market_bias(player, bias=next_market_bias)
+    remark_open_holding_to_current_spot(
+        holding=holding,
+        shares_owned=next_shares_owned,
+        current_spot=current_spot_price(
+            player,
+            fundamental_price=fundamental,
+        ),
+    )
 
     unit_estimate = spot_after
     db.add(

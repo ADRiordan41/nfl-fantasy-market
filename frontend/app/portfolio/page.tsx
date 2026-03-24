@@ -195,15 +195,9 @@ export default function PortfolioPage() {
               : Number.NaN;
         const spot = Number(holding.spot_price || player.spot_price);
         const marketValue = Number(holding.market_value);
-        const absShares = Math.abs(shares);
-        const pnl =
-          Number.isFinite(averageEntryPrice) && averageEntryPrice > 0 && absShares > 0
-            ? shares >= 0
-              ? absShares * (spot - averageEntryPrice)
-              : absShares * (averageEntryPrice - spot)
-            : 0;
+        const pnl = Number(holding.unrealized_pnl);
         const normalizedPnl = Math.abs(pnl) < 0.005 ? 0 : pnl;
-        const pnlPct = basisNotional > 0 ? (normalizedPnl / basisNotional) * 100 : 0;
+        const pnlPct = Number(holding.unrealized_pnl_pct);
         return {
           id: player.id,
           name: player.name,

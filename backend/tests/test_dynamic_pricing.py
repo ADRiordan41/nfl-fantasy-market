@@ -235,6 +235,7 @@ class DynamicPricingTests(unittest.TestCase):
             pca_row_after_first_buy.spot_price,
             places=6,
         )
+        self.assertAlmostEqual(pca_row_after_first_buy.unrealized_pnl, 0.0, places=6)
 
         buy(
             TradeIn(player_id=int(skenes.id), shares=1),
@@ -289,6 +290,7 @@ class DynamicPricingTests(unittest.TestCase):
         after_first_buy = portfolio(self.auth_for(first_user), self.db)
         row_after_first_buy = next(row for row in after_first_buy.holdings if row.player_id == int(player.id))
         self.assertAlmostEqual(row_after_first_buy.average_entry_price, row_after_first_buy.spot_price, places=6)
+        self.assertAlmostEqual(row_after_first_buy.unrealized_pnl, 0.0, places=6)
 
         buy(
             TradeIn(player_id=int(player.id), shares=1),
@@ -298,6 +300,7 @@ class DynamicPricingTests(unittest.TestCase):
         after_scale_in = portfolio(self.auth_for(first_user), self.db)
         row_after_scale_in = next(row for row in after_scale_in.holdings if row.player_id == int(player.id))
         self.assertAlmostEqual(row_after_scale_in.average_entry_price, row_after_scale_in.spot_price, places=6)
+        self.assertAlmostEqual(row_after_scale_in.unrealized_pnl, 0.0, places=6)
 
         buy(
             TradeIn(player_id=int(player.id), shares=1),
