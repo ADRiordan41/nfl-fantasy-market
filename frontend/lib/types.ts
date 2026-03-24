@@ -366,6 +366,12 @@ export type AdminUserEquity = {
   implied_realized_pnl: number;
 };
 
+export type AdminUserListItem = {
+  user_id: number;
+  username: string;
+  email: string | null;
+};
+
 export type AdminFlattenUserEquityResult = {
   user_id: number;
   username: string;

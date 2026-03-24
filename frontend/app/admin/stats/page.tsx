@@ -13,6 +13,7 @@ import type {
   AdminFlattenUserEquityResult,
   AdminNormalizeHoldingsResult,
   AdminUserEquity,
+  AdminUserListItem,
   AdminBotSimulationStatus,
   AdminFeedbackMessage,
   AdminIpoActionResult,
@@ -94,6 +95,9 @@ export default function AdminStatsPage() {
   const [busyNormalizeHoldings, setBusyNormalizeHoldings] = useState(false);
   const [normalizeHoldingsResult, setNormalizeHoldingsResult] = useState<AdminNormalizeHoldingsResult | null>(null);
   const [equityLookupUsername, setEquityLookupUsername] = useState("foreverhopeful");
+  const [adminUsers, setAdminUsers] = useState<AdminUserListItem[]>([]);
+  const [userPickerQuery, setUserPickerQuery] = useState("");
+  const [busyAdminUsers, setBusyAdminUsers] = useState(false);
   const [busyEquityLookup, setBusyEquityLookup] = useState(false);
   const [equityLookupResult, setEquityLookupResult] = useState<AdminUserEquity | null>(null);
   const [busyFlattenUserEquity, setBusyFlattenUserEquity] = useState(false);
@@ -183,6 +187,25 @@ export default function AdminStatsPage() {
     }
   }, [applyTradingStatus, handleApiError]);
 
+  const loadAdminUsers = useCallback(async () => {
+    setBusyAdminUsers(true);
+    try {
+      const trimmed = userPickerQuery.trim();
+      const path = trimmed
+        ? `/admin/users?q=${encodeURIComponent(trimmed)}&limit=250`
+        : "/admin/users?limit=250";
+      const rows = await apiGet<AdminUserListItem[]>(path);
+      setAdminUsers(rows);
+      if (rows.length && !rows.some((row) => row.username === equityLookupUsername)) {
+        setEquityLookupUsername(rows[0].username);
+      }
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyAdminUsers(false);
+    }
+  }, [equityLookupUsername, handleApiError, userPickerQuery]);
+
   const loadFeedback = useCallback(async () => {
     setBusyFeedback(true);
     try {
@@ -262,6 +285,10 @@ export default function AdminStatsPage() {
     void loadIpoSports();
     void loadTradingStatus();
   }, [loadIpoSports, loadTradingStatus]);
+
+  useEffect(() => {
+    void loadAdminUsers();
+  }, [loadAdminUsers]);
 
   useEffect(() => {
     if (!reviewSport) return;
@@ -1913,19 +1940,40 @@ export default function AdminStatsPage() {
       <section className="table-panel">
         <h3>User Equity Inspector</h3>
         <p className="subtle">
-          Look up the exact cash, holdings value, and equity driving a user&apos;s displayed return.
+          Select a user to inspect, flatten, or delete without typing usernames manually.
         </p>
         <div className="admin-input-grid">
           <div>
-            <label className="field-label" htmlFor="equity-lookup-username">
-              Username
+            <label className="field-label" htmlFor="user-picker-query">
+              Filter Users
             </label>
             <input
+              id="user-picker-query"
+              value={userPickerQuery}
+              onChange={(event) => setUserPickerQuery(event.target.value)}
+              placeholder="Search usernames"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="equity-lookup-username">
+              Selected User
+            </label>
+            <select
               id="equity-lookup-username"
               value={equityLookupUsername}
               onChange={(event) => setEquityLookupUsername(event.target.value)}
-              placeholder="foreverhopeful"
-            />
+              disabled={busyAdminUsers || !adminUsers.length}
+            >
+              {!adminUsers.length ? <option value="">No users found</option> : null}
+              {adminUsers.map((user) => (
+                <option key={user.user_id} value={user.username}>
+                  {user.username} (#{formatNumber(user.user_id)})
+                </option>
+              ))}
+            </select>
+            <p className="subtle">
+              {busyAdminUsers ? "Loading users..." : `${formatNumber(adminUsers.length)} user(s) loaded`}
+            </p>
           </div>
         </div>
           <div className="admin-actions">

@@ -770,6 +770,12 @@ class AdminUserEquityOut(BaseModel):
     implied_realized_pnl: float
 
 
+class AdminUserListItemOut(BaseModel):
+    user_id: int
+    username: str
+    email: str | None = None
+
+
 class AdminFlattenUserEquityIn(BaseModel):
     target_equity: float = Field(default=100000.0, ge=0)
 

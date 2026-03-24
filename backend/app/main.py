@@ -105,6 +105,7 @@ from .schemas import (
     AdminModerationUnhideIn,
     AdminModerationUnhideOut,
     AdminNormalizeHoldingsOut,
+    AdminUserListItemOut,
     AdminUserEquityOut,
     AdminFeedbackOut,
     AdminFeedbackUpdateIn,
@@ -6840,6 +6841,28 @@ def admin_user_equity_snapshot(
         unrealized_pnl=unrealized_pnl,
         implied_realized_pnl=(equity - baseline_cash) - unrealized_pnl,
     )
+
+
+@app.get("/admin/users", response_model=list[AdminUserListItemOut])
+def admin_list_users(
+    q: str | None = Query(default=None, min_length=0, max_length=64),
+    limit: int = Query(default=250, ge=1, le=1000),
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    stmt = select(User).order_by(func.lower(User.username).asc(), User.id.asc()).limit(limit)
+    normalized_query = normalize_username(q) if q and q.strip() else ""
+    if normalized_query:
+        stmt = stmt.where(func.lower(User.username).contains(normalized_query))
+    users = db.execute(stmt).scalars().all()
+    return [
+        AdminUserListItemOut(
+            user_id=int(user.id),
+            username=str(user.username),
+            email=str(user.email) if user.email else None,
+        )
+        for user in users
+    ]
 
 
 @app.post("/admin/users/{username}/flatten-equity", response_model=AdminFlattenUserEquityOut)
