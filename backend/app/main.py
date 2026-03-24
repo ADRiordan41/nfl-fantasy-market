@@ -518,18 +518,7 @@ def average_entry_price_for_position(*, basis_amount: Decimal, shares: Decimal) 
 
 def current_market_bias(player: Player, *, now: datetime | None = None) -> Decimal:
     raw_bias = Decimal(str(getattr(player, "market_bias", 0) or 0))
-    updated_at = getattr(player, "market_bias_updated_at", None)
-    if raw_bias == 0 or updated_at is None:
-        return raw_bias
-    as_of = now or datetime.utcnow()
-    elapsed_minutes = max(0.0, (as_of - updated_at).total_seconds() / 60.0)
-    if elapsed_minutes <= 0:
-        return raw_bias
-    decay_factor = Decimal(str(pow(0.5, elapsed_minutes / float(MARKET_REVERSION_HALF_LIFE_MINUTES))))
-    decayed_bias = raw_bias * decay_factor
-    if abs(decayed_bias) < Decimal("0.000001"):
-        return Decimal("0")
-    return decayed_bias
+    return Decimal("0") if abs(raw_bias) < Decimal("0.000001") else raw_bias
 
 
 def set_market_bias(player: Player, *, bias: Decimal, now: datetime | None = None) -> None:
