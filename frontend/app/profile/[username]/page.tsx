@@ -12,6 +12,7 @@ import {
   formatSignedPercent,
 } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
+import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { DirectThreadSummary, FriendshipStatus, UserAccount, UserProfile, WatchlistPlayer } from "@/lib/types";
 
 type HoldingRow = {
@@ -110,9 +111,9 @@ export default function UserProfilePage() {
   const [activeAccountMixSliceKey, setActiveAccountMixSliceKey] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async (options?: { silent?: boolean }) => {
     if (!username) return;
-    setLoading(true);
+    if (!options?.silent) setLoading(true);
     try {
       const [me, nextProfile, nextWatchlist] = await Promise.all([
         apiGet<UserAccount>("/auth/me"),
@@ -141,6 +142,11 @@ export default function UserProfilePage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadProfile]);
+
+  useAdaptivePolling(
+    () => loadProfile({ silent: true }),
+    { activeMs: 20_000, hiddenMs: 90_000, runImmediately: false },
+  );
 
   const friendship = profile?.friendship;
   const isOwnProfile = useMemo(() => {

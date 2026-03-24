@@ -8,6 +8,7 @@ import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
 import { notifySuccess } from "@/lib/toast";
+import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { AdminAuditTrade, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
 
 type PortfolioTradeSide = "SELL" | "COVER";
@@ -170,6 +171,11 @@ export default function PortfolioPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  useAdaptivePolling(
+    () => load({ silent: true }),
+    { activeMs: 20_000, hiddenMs: 90_000, runImmediately: false },
+  );
 
   const rows = useMemo<HoldingRow[]>(() => {
     if (!portfolio) return [];
