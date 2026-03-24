@@ -459,6 +459,8 @@ class PositionRisk:
     shares: Decimal
     average_entry_price: Decimal
     basis_amount: Decimal
+    entry_basis_amount: Decimal
+    mark_basis_amount: Decimal
     spot_price: Decimal
     market_value: Decimal
     maintenance_margin_required: Decimal
@@ -2131,7 +2133,7 @@ def build_account_risk_snapshot(
         entry_basis_amount = holding_entry_basis_amount(holding)
         mark_basis_amount = holding_mark_basis_amount(holding)
         average_entry_price = average_entry_price_for_position(
-            basis_amount=entry_basis_amount if entry_basis_amount > 0 else basis_amount,
+            basis_amount=mark_basis_amount if mark_basis_amount > 0 else (entry_basis_amount if entry_basis_amount > 0 else basis_amount),
             shares=shares,
         )
         market_bias = current_market_bias(player)
@@ -2156,6 +2158,8 @@ def build_account_risk_snapshot(
                 shares=shares,
                 average_entry_price=average_entry_price,
                 basis_amount=basis_amount,
+                entry_basis_amount=entry_basis_amount,
+                mark_basis_amount=mark_basis_amount,
                 spot_price=spot,
                 market_value=market_value,
                 maintenance_margin_required=maintenance_margin_required,
@@ -2653,13 +2657,13 @@ def user_profile_to_out(
                 position=str(position.player.position),
                 shares_owned=float(position.shares),
                 average_entry_price=float(position.average_entry_price),
-                basis_amount=float(position.basis_amount),
+                basis_amount=float(position_display_basis_amount(position)),
                 spot_price=float(position.spot_price),
                 market_value=float(position.market_value),
-                unrealized_pnl=float(position.market_value - position.basis_amount),
+                unrealized_pnl=float(position_unrealized_pnl(position)),
                 unrealized_pnl_pct=float(
-                    ((position.market_value - position.basis_amount) / position.basis_amount) * Decimal("100")
-                    if position.basis_amount > 0
+                    (position_unrealized_pnl(position) / position_display_basis_amount(position)) * Decimal("100")
+                    if position_display_basis_amount(position) > 0
                     else Decimal("0")
                 ),
                 allocation_pct=float((abs(position.market_value) / snapshot.gross_exposure) * Decimal("100"))
@@ -2670,6 +2674,25 @@ def user_profile_to_out(
         ],
         friendship=friendship or FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False),
     )
+
+
+def position_display_basis_amount(position: PositionRisk) -> Decimal:
+    if position.mark_basis_amount > 0:
+        return position.mark_basis_amount
+    if position.entry_basis_amount > 0:
+        return position.entry_basis_amount
+    return position.basis_amount
+
+
+def position_unrealized_pnl(position: PositionRisk) -> Decimal:
+    display_basis = position_display_basis_amount(position)
+    abs_shares = abs(position.shares)
+    if display_basis <= 0 or abs_shares <= 0:
+        return Decimal("0")
+    current_notional = abs_shares * position.spot_price
+    if position.shares > 0:
+        return current_notional - display_basis
+    return display_basis - current_notional
 
 
 def filtered_snapshot_for_sport(snapshot: AccountRiskSnapshot, sport: str) -> AccountRiskSnapshot:
@@ -5305,7 +5328,7 @@ def portfolio(
                 player_id=position.player.id,
                 shares_owned=float(position.shares),
                 average_entry_price=float(position.average_entry_price),
-                basis_amount=float(position.basis_amount),
+                basis_amount=float(position_display_basis_amount(position)),
                 spot_price=float(position.spot_price),
                 market_value=float(position.market_value),
             )
