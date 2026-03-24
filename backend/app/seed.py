@@ -693,6 +693,7 @@ def backfill_holding_entry_basis_amounts(db: Session) -> None:
     holdings = db.execute(
         select(Holding).where(
             Holding.shares_owned != 0,
+            Holding.entry_basis_amount == 0,
         )
     ).scalars().all()
 
@@ -776,6 +777,7 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
     holdings = db.execute(
         select(Holding).where(
             Holding.shares_owned != 0,
+            Holding.mark_basis_amount == 0,
         )
     ).scalars().all()
 
@@ -905,7 +907,6 @@ def normalize_open_holdings_to_latest_spot_basis(db: Session) -> None:
                 holding.entry_basis_amount = float(current_notional)
             if mark_basis < current_notional:
                 holding.mark_basis_amount = float(current_notional)
-
 
 def seed(db: Session):
     sandbox_username = DEFAULT_SANDBOX_USERNAME

@@ -940,6 +940,61 @@ def invalidate_market_read_cache(
     invalidate_cache_prefixes(*prefixes)
 
 
+def rebuild_players_from_open_holdings(
+    db: Session,
+    *,
+    player_ids: set[int] | list[int] | tuple[int, ...],
+    source: str,
+) -> tuple[set[int], set[str]]:
+    normalized_player_ids = sorted({int(player_id) for player_id in player_ids})
+    if not normalized_player_ids:
+        return set(), set()
+
+    players = db.execute(
+        select(Player).where(Player.id.in_(normalized_player_ids)).order_by(Player.id.asc())
+    ).scalars().all()
+    if not players:
+        return set(), set()
+
+    share_rows = db.execute(
+        select(Holding.player_id, func.sum(Holding.shares_owned))
+        .where(
+            Holding.player_id.in_(normalized_player_ids),
+            Holding.shares_owned != 0,
+        )
+        .group_by(Holding.player_id)
+    ).all()
+    shares_by_player_id = {
+        int(player_id): Decimal(str(total_shares or 0))
+        for player_id, total_shares in share_rows
+    }
+    stats_snapshot = get_stats_snapshot_by_player(db, normalized_player_ids)
+    touched_players: set[int] = set()
+    touched_sports: set[str] = set()
+
+    for player in players:
+        player_id = int(player.id)
+        net_open_shares = shares_by_player_id.get(player_id, Decimal("0"))
+        previous_total_shares = Decimal(str(player.total_shares or 0))
+        previous_market_bias = current_market_bias(player)
+        if previous_total_shares != net_open_shares or previous_market_bias != net_open_shares:
+            touched_players.add(player_id)
+            touched_sports.add(str(player.sport))
+        player.total_shares = float(net_open_shares)
+        set_market_bias(player, bias=net_open_shares)
+        fundamental_price, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+        add_price_point(
+            db=db,
+            player=player,
+            source=source,
+            fundamental_price=fundamental_price,
+            points_to_date=points_to_date,
+            latest_week=latest_week,
+        )
+
+    return touched_players, touched_sports
+
+
 def enforce_ip_rate_limit(
     request: Request,
     *,
@@ -6942,6 +6997,15 @@ def admin_delete_user(
 
     user_id = int(user.id)
     username_value = str(user.username)
+    affected_player_ids = set(
+        int(player_id)
+        for player_id in db.execute(
+            select(Holding.player_id).where(
+                Holding.user_id == user_id,
+                Holding.player_id.is_not(None),
+            )
+        ).scalars().all()
+    )
     post_ids = db.execute(
         select(ForumPost.id).where(ForumPost.user_id == user_id)
     ).scalars().all()
@@ -7049,8 +7113,17 @@ def admin_delete_user(
         delete(ArchivedHolding).where(ArchivedHolding.user_id == user_id)
     )
 
+    touched_players, touched_sports = rebuild_players_from_open_holdings(
+        db,
+        player_ids=affected_player_ids,
+        source="ADMIN_USER_DELETE_REBUILD",
+    )
     db.delete(user)
     db.commit()
+    invalidate_market_read_cache(
+        player_ids=touched_players,
+        sports=touched_sports,
+    )
 
     return AdminDeleteUserOut(
         user_id=user_id,
