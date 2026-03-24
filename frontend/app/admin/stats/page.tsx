@@ -54,6 +54,7 @@ export default function AdminStatsPage() {
   const [ipoSeasonBySport, setIpoSeasonBySport] = useState<Record<string, string>>({});
   const [busyIpoAction, setBusyIpoAction] = useState("");
   const [ipoMessage, setIpoMessage] = useState("");
+  const [sportReviewOpen, setSportReviewOpen] = useState(false);
   const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
   const [globalHaltReason, setGlobalHaltReason] = useState("");
   const [sportHaltReasonBySport, setSportHaltReasonBySport] = useState<Record<string, string>>({});
@@ -1642,56 +1643,67 @@ export default function AdminStatsPage() {
       </section>
 
       <section className="table-panel">
-        <h3>Sport Player Review</h3>
-        <div className="admin-review-controls">
-          <select value={reviewSport} onChange={(event) => setReviewSport(event.target.value)}>
-            {activeSportOptions.map((sport) => (
-              <option key={sport} value={sport}>
-                {sport}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => void loadIpoReview(reviewSport)} disabled={!reviewSport}>
-            Refresh Sport Review
+        <div className="home-snapshot-head">
+          <h3>Sport Player Review</h3>
+          <button type="button" onClick={() => setSportReviewOpen((previous) => !previous)}>
+            {sportReviewOpen ? "Hide Review" : "Show Review"}
           </button>
         </div>
-
-        {!review ? (
-          <p className="subtle">Select a sport to inspect player listing status.</p>
-        ) : (
+        {sportReviewOpen ? (
           <>
-            <p className="subtle">
-              {review.sport}: listed {formatNumber(review.listed_players)} / {formatNumber(review.total_players)} players.
-            </p>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Player</th>
-                    <th>Team</th>
-                    <th>Pos</th>
-                    <th>Listed</th>
-                    <th>IPO Season</th>
-                    <th>Purchase Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {review.players.map((player) => (
-                    <tr key={`${player.id}-${player.name}`}>
-                      <td>{player.name}</td>
-                      <td>{player.team}</td>
-                      <td>{player.position}</td>
-                      <td>
-                        <span className={listedClass(player.listed)}>{player.listed ? "Yes" : "No"}</span>
-                      </td>
-                      <td>{player.ipo_season == null ? "--" : String(player.ipo_season)}</td>
-                      <td>{formatCurrency(player.base_price, 2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="admin-review-controls">
+              <select value={reviewSport} onChange={(event) => setReviewSport(event.target.value)}>
+                {activeSportOptions.map((sport) => (
+                  <option key={sport} value={sport}>
+                    {sport}
+                  </option>
+                ))}
+              </select>
+              <button onClick={() => void loadIpoReview(reviewSport)} disabled={!reviewSport}>
+                Refresh Sport Review
+              </button>
             </div>
+
+            {!review ? (
+              <p className="subtle">Select a sport to inspect player listing status.</p>
+            ) : (
+              <>
+                <p className="subtle">
+                  {review.sport}: listed {formatNumber(review.listed_players)} / {formatNumber(review.total_players)} players.
+                </p>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>Pos</th>
+                        <th>Listed</th>
+                        <th>IPO Season</th>
+                        <th>Purchase Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {review.players.map((player) => (
+                        <tr key={`${player.id}-${player.name}`}>
+                          <td>{player.name}</td>
+                          <td>{player.team}</td>
+                          <td>{player.position}</td>
+                          <td>
+                            <span className={listedClass(player.listed)}>{player.listed ? "Yes" : "No"}</span>
+                          </td>
+                          <td>{player.ipo_season == null ? "--" : String(player.ipo_season)}</td>
+                          <td>{formatCurrency(player.base_price, 2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </>
+        ) : (
+          <p className="subtle">Hidden by default to keep the rest of the admin controls easier to reach.</p>
         )}
       </section>
 
