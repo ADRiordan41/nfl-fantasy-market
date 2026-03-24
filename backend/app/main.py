@@ -5709,7 +5709,7 @@ def buy(
     next_shares_owned = Decimal(str(holding.shares_owned)) + qty
     holding.shares_owned = float(next_shares_owned)
     holding.basis_amount = float(previous_basis_amount + total_cost)
-    holding.entry_basis_amount = float(previous_entry_basis_amount + raw_cost)
+    holding.entry_basis_amount = float(abs(next_shares_owned) * spot_after)
     player.total_shares = float(total_shares + qty)
     holding.mark_basis_amount = float(abs(next_shares_owned) * spot_after)
     set_market_bias(player, bias=next_market_bias)
@@ -5968,7 +5968,7 @@ def short(
     next_shares_owned = net_shares - qty
     holding.shares_owned = float(next_shares_owned)
     holding.basis_amount = float(previous_basis_amount + raw_notional)
-    holding.entry_basis_amount = float(previous_entry_basis_amount + raw_notional)
+    holding.entry_basis_amount = float(abs(next_shares_owned) * spot_after)
     player.total_shares = float(total_shares - qty)
     holding.mark_basis_amount = float(abs(next_shares_owned) * spot_after)
     set_market_bias(player, bias=next_market_bias)

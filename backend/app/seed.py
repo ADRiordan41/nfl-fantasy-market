@@ -724,11 +724,10 @@ def backfill_holding_entry_basis_amounts(db: Session) -> None:
                 max(Decimal("0"), Decimal(str(transaction.unit_price or 0))),
             )
             tx_type = str(transaction.type)
-            entry_notional = shares * unit_price
 
             if tx_type == "BUY":
                 running_shares += shares
-                running_entry_basis += entry_notional
+                running_entry_basis = abs(running_shares) * unit_price
                 continue
 
             if tx_type in {"SELL", "LIQUIDATE_SELL"}:
@@ -748,7 +747,7 @@ def backfill_holding_entry_basis_amounts(db: Session) -> None:
 
             if tx_type == "SHORT":
                 running_shares -= shares
-                running_entry_basis += entry_notional
+                running_entry_basis = abs(running_shares) * unit_price
                 continue
 
             if tx_type in {"COVER", "LIQUIDATE_COVER"}:
@@ -807,11 +806,9 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
             tx_type = str(transaction.type)
             entry_mark_price = canonical_prices.get(int(transaction.id), unit_price)
 
-            entry_mark_notional = shares * entry_mark_price
-
             if tx_type == "BUY":
                 running_shares += shares
-                running_mark_basis += entry_mark_notional
+                running_mark_basis = abs(running_shares) * entry_mark_price
                 continue
 
             if tx_type in {"SELL", "LIQUIDATE_SELL"}:
@@ -831,7 +828,7 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
 
             if tx_type == "SHORT":
                 running_shares -= shares
-                running_mark_basis += entry_mark_notional
+                running_mark_basis = abs(running_shares) * entry_mark_price
                 continue
 
             if tx_type in {"COVER", "LIQUIDATE_COVER"}:
