@@ -355,6 +355,12 @@ export type AdminNormalizeHoldingsResult = {
   message: string;
 };
 
+export type AdminPricingConfig = {
+  price_impact_multiplier: number;
+  default_price_impact_multiplier: number;
+  message: string | null;
+};
+
 export type AdminUserEquity = {
   user_id: number;
   username: string;

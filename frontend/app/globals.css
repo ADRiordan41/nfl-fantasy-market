@@ -984,6 +984,43 @@ textarea[aria-invalid="true"] {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.admin-kpi-grid .kpi-card {
+  min-height: 96px;
+}
+
+.admin-jump-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.admin-jump-grid button {
+  justify-content: center;
+}
+
+.admin-settings-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.admin-setting-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.admin-setting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .admin-ipo-grid {
   margin-top: 10px;
   display: grid;

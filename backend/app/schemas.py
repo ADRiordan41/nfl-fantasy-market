@@ -816,6 +816,16 @@ class AdminDeleteUserOut(BaseModel):
     message: str
 
 
+class AdminPricingConfigOut(BaseModel):
+    price_impact_multiplier: float
+    default_price_impact_multiplier: float
+    message: str | None = None
+
+
+class AdminPricingConfigUpdateIn(BaseModel):
+    price_impact_multiplier: float = Field(ge=0.000001, le=5.0)
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int

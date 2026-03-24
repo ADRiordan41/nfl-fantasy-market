@@ -54,6 +54,7 @@ from .models import (
     PricePoint,
     SeasonClose,
     SeasonReset,
+    SystemSetting,
     TradingControl,
     Transaction,
     User,
@@ -61,14 +62,17 @@ from .models import (
     WeeklyStat,
 )
 from .pricing import (
+    DEFAULT_PRICE_IMPACT_MULTIPLIER,
     LIVE_POINTS_WEIGHT,
     RECENT_FORM_WINDOW,
     adjusted_base_price,
     blended_fair_value,
     cost_to_buy,
     effective_k,
+    get_price_impact_multiplier,
     proceeds_to_sell,
     recent_form_anchor,
+    set_price_impact_multiplier,
     spot_price,
     spread_percentage,
 )
@@ -112,6 +116,8 @@ from .schemas import (
     AdminDeleteUserOut,
     AdminFlattenUserEquityIn,
     AdminFlattenUserEquityOut,
+    AdminPricingConfigOut,
+    AdminPricingConfigUpdateIn,
     AdminSportTradingHaltUpdateIn,
     AdminTradingHaltUpdateIn,
     FeedbackCreateIn,
@@ -759,6 +765,13 @@ def on_startup():
     db = SessionLocal()
     try:
         seed(db)
+        set_price_impact_multiplier(
+            load_decimal_system_setting(
+                db,
+                key=PRICE_IMPACT_SETTING_KEY,
+                default=DEFAULT_PRICE_IMPACT_MULTIPLIER,
+            )
+        )
         ensure_initial_price_history(db)
     finally:
         db.close()
@@ -1284,6 +1297,44 @@ def get_admin_context(auth: AuthContext = Depends(get_auth_context)) -> AuthCont
     if username not in ADMIN_USERNAMES:
         raise HTTPException(status_code=403, detail="Admin access required.")
     return auth
+
+
+PRICE_IMPACT_SETTING_KEY = "price_impact_multiplier"
+
+
+def load_decimal_system_setting(
+    db: Session,
+    *,
+    key: str,
+    default: Decimal,
+) -> Decimal:
+    row = db.execute(
+        select(SystemSetting).where(SystemSetting.key == key)
+    ).scalar_one_or_none()
+    if row is None:
+        return default
+    try:
+        return Decimal(str(row.value))
+    except Exception:
+        return default
+
+
+def upsert_decimal_system_setting(
+    db: Session,
+    *,
+    key: str,
+    value: Decimal,
+) -> Decimal:
+    normalized_value = max(Decimal("0.000001"), value)
+    row = db.execute(
+        select(SystemSetting).where(SystemSetting.key == key).with_for_update()
+    ).scalar_one_or_none()
+    if row is None:
+        row = SystemSetting(key=key, value=str(normalized_value))
+        db.add(row)
+    else:
+        row.value = str(normalized_value)
+    return normalized_value
 
 
 def normalize_text(value: str | None) -> str:
@@ -6890,6 +6941,45 @@ def admin_normalize_open_holdings_to_current_spot(
             f"Flattened {holdings_updated} open position(s) across {len(touched_users)} user(s) "
             "to current spot so purchase price now matches current price."
         ),
+    )
+
+
+@app.get("/admin/pricing/config", response_model=AdminPricingConfigOut)
+def admin_get_pricing_config(
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    configured_value = load_decimal_system_setting(
+        db,
+        key=PRICE_IMPACT_SETTING_KEY,
+        default=DEFAULT_PRICE_IMPACT_MULTIPLIER,
+    )
+    runtime_value = set_price_impact_multiplier(configured_value)
+    return AdminPricingConfigOut(
+        price_impact_multiplier=float(runtime_value),
+        default_price_impact_multiplier=float(DEFAULT_PRICE_IMPACT_MULTIPLIER),
+        message="Loaded current pricing controls.",
+    )
+
+
+@app.post("/admin/pricing/config", response_model=AdminPricingConfigOut)
+def admin_update_pricing_config(
+    payload: AdminPricingConfigUpdateIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    normalized_value = upsert_decimal_system_setting(
+        db,
+        key=PRICE_IMPACT_SETTING_KEY,
+        value=Decimal(str(payload.price_impact_multiplier)),
+    )
+    db.commit()
+    runtime_value = set_price_impact_multiplier(normalized_value)
+    invalidate_market_read_cache()
+    return AdminPricingConfigOut(
+        price_impact_multiplier=float(runtime_value),
+        default_price_impact_multiplier=float(DEFAULT_PRICE_IMPACT_MULTIPLIER),
+        message=f"Trade impact multiplier updated to {float(runtime_value):.2f}.",
     )
 
 

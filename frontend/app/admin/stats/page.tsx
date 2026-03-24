@@ -12,6 +12,7 @@ import type {
   AdminDeleteUserResult,
   AdminFlattenUserEquityResult,
   AdminNormalizeHoldingsResult,
+  AdminPricingConfig,
   AdminUserEquity,
   AdminUserListItem,
   AdminBotSimulationStatus,
@@ -94,6 +95,9 @@ export default function AdminStatsPage() {
   const [siteResetResult, setSiteResetResult] = useState<AdminSiteResetResult | null>(null);
   const [busyNormalizeHoldings, setBusyNormalizeHoldings] = useState(false);
   const [normalizeHoldingsResult, setNormalizeHoldingsResult] = useState<AdminNormalizeHoldingsResult | null>(null);
+  const [pricingConfig, setPricingConfig] = useState<AdminPricingConfig | null>(null);
+  const [priceImpactInput, setPriceImpactInput] = useState("0.40");
+  const [busyPricingConfig, setBusyPricingConfig] = useState(false);
   const [equityLookupUsername, setEquityLookupUsername] = useState("foreverhopeful");
   const [adminUsers, setAdminUsers] = useState<AdminUserListItem[]>([]);
   const [userPickerQuery, setUserPickerQuery] = useState("");
@@ -206,6 +210,19 @@ export default function AdminStatsPage() {
     }
   }, [equityLookupUsername, handleApiError, userPickerQuery]);
 
+  const loadPricingConfig = useCallback(async () => {
+    setBusyPricingConfig(true);
+    try {
+      const result = await apiGet<AdminPricingConfig>("/admin/pricing/config");
+      setPricingConfig(result);
+      setPriceImpactInput(result.price_impact_multiplier.toFixed(2));
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyPricingConfig(false);
+    }
+  }, [handleApiError]);
+
   const loadFeedback = useCallback(async () => {
     setBusyFeedback(true);
     try {
@@ -285,6 +302,10 @@ export default function AdminStatsPage() {
     void loadIpoSports();
     void loadTradingStatus();
   }, [loadIpoSports, loadTradingStatus]);
+
+  useEffect(() => {
+    void loadPricingConfig();
+  }, [loadPricingConfig]);
 
   useEffect(() => {
     void loadAdminUsers();
@@ -548,6 +569,33 @@ export default function AdminStatsPage() {
     } finally {
       setBusyNormalizeHoldings(false);
     }
+  }
+
+  async function savePricingConfig() {
+    const parsed = Number.parseFloat(priceImpactInput.trim());
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setError("Trade impact multiplier must be a positive number.");
+      notifyError("Invalid trade impact multiplier.");
+      return;
+    }
+    setBusyPricingConfig(true);
+    setError("");
+    try {
+      const result = await apiPost<AdminPricingConfig>("/admin/pricing/config", {
+        price_impact_multiplier: parsed,
+      });
+      setPricingConfig(result);
+      setPriceImpactInput(result.price_impact_multiplier.toFixed(2));
+      notifySuccess(result.message ?? "Pricing controls updated.");
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyPricingConfig(false);
+    }
+  }
+
+  function jumpToSection(sectionId: string) {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function lookupUserEquity() {
@@ -847,16 +895,107 @@ export default function AdminStatsPage() {
         : [{ key: "lurker", label: "Lurker", description: "", market_maker: false }],
     [botPersonas],
   );
+  const openModerationCount = useMemo(
+    () => moderationRows.filter((row) => row.status === "OPEN").length,
+    [moderationRows],
+  );
+  const newFeedbackCount = useMemo(
+    () => feedbackRows.filter((row) => row.status === "NEW").length,
+    [feedbackRows],
+  );
 
   return (
     <main className="page-shell">
       <section className="hero-panel">
         <div>
           <p className="eyebrow">Admin</p>
-          <h1>IPO + Stats Control</h1>
+          <h1>Admin Control Center</h1>
           <p className="subtle">
-            Review players by sport, launch IPO visibility per sport/season, and import stat rows for pricing and game history.
+            Tune market behavior, manage users, review moderation, and run resets without digging through one endless tool list.
           </p>
+        </div>
+      </section>
+
+      <section className="metrics-grid admin-kpi-grid">
+        <article className="kpi-card">
+          <span>Trade Impact</span>
+          <strong>{pricingConfig ? pricingConfig.price_impact_multiplier.toFixed(2) : "--"}</strong>
+        </article>
+        <article className="kpi-card">
+          <span>Sports</span>
+          <strong>{formatNumber(sportSummaries.length)}</strong>
+        </article>
+        <article className="kpi-card">
+          <span>Open Reports</span>
+          <strong>{formatNumber(openModerationCount)}</strong>
+        </article>
+        <article className="kpi-card">
+          <span>New Feedback</span>
+          <strong>{formatNumber(newFeedbackCount)}</strong>
+        </article>
+      </section>
+
+      <section className="table-panel">
+        <div className="admin-jump-grid">
+          <button type="button" onClick={() => jumpToSection("market-config")}>Market Controls</button>
+          <button type="button" onClick={() => jumpToSection("user-tools")}>User Tools</button>
+          <button type="button" onClick={() => jumpToSection("feedback-inbox")}>Feedback</button>
+          <button type="button" onClick={() => jumpToSection("moderation")}>Moderation</button>
+          <button type="button" onClick={() => jumpToSection("review")}>Player Review</button>
+          <button type="button" onClick={() => jumpToSection("destructive-tools")}>Resets</button>
+          <button type="button" onClick={() => jumpToSection("stats-import")}>Stats Import</button>
+          <button type="button" onClick={() => jumpToSection("bots")}>Bots</button>
+          <button type="button" onClick={() => jumpToSection("activity-audit")}>Activity</button>
+        </div>
+      </section>
+
+      <section id="market-config" className="table-panel">
+        <h3>Market Configuration</h3>
+        <p className="subtle">
+          Adjust how strongly each trade moves price. Higher values make low-volume markets feel more active but also easier to push around.
+        </p>
+        <div className="admin-settings-grid">
+          <article className="admin-setting-card">
+            <div className="admin-setting-head">
+              <strong>Trade Impact Multiplier</strong>
+              <span className="admin-status ready">Live</span>
+            </div>
+            <div className="admin-input-grid">
+              <div>
+                <label className="field-label" htmlFor="price-impact-input">
+                  Current Multiplier
+                </label>
+                <input
+                  id="price-impact-input"
+                  inputMode="decimal"
+                  value={priceImpactInput}
+                  onChange={(event) => setPriceImpactInput(event.target.value)}
+                  placeholder="0.40"
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="price-impact-default">
+                  Default Multiplier
+                </label>
+                <input
+                  id="price-impact-default"
+                  value={pricingConfig ? pricingConfig.default_price_impact_multiplier.toFixed(2) : "--"}
+                  disabled
+                />
+              </div>
+            </div>
+            <div className="admin-actions">
+              <button className="primary-btn" onClick={() => void savePricingConfig()} disabled={busyPricingConfig}>
+                {busyPricingConfig ? "Saving..." : "Save Pricing"}
+              </button>
+              <button onClick={() => void loadPricingConfig()} disabled={busyPricingConfig}>
+                {busyPricingConfig ? "Refreshing..." : "Reload Pricing"}
+              </button>
+            </div>
+            <p className="subtle">
+              {pricingConfig?.message ?? "Use this to tune trade responsiveness without redeploying."}
+            </p>
+          </article>
         </div>
       </section>
 
@@ -1007,7 +1146,7 @@ export default function AdminStatsPage() {
         </div>
       </section>
 
-      <section className="table-panel">
+      <section id="activity-audit" className="table-panel">
         <h3>Activity Audit</h3>
         <div className="admin-review-controls">
           <div className="subtle">
@@ -1238,7 +1377,7 @@ export default function AdminStatsPage() {
         )}
       </section>
 
-      <section className="table-panel">
+      <section id="bots" className="table-panel">
         <h3>Synthetic Bot Control</h3>
         <p className="subtle">
           Create named bot profiles, choose personas, and toggle which profiles are active for simulator runs.
@@ -1529,7 +1668,7 @@ export default function AdminStatsPage() {
         )}
       </section>
 
-      <section className="table-panel">
+      <section id="feedback-inbox" className="table-panel">
         <h3>Feedback Inbox</h3>
         <div className="admin-review-controls">
           <select value={feedbackStatusFilter} onChange={(event) => setFeedbackStatusFilter(event.target.value)}>
@@ -1667,7 +1806,7 @@ export default function AdminStatsPage() {
         )}
       </section>
 
-      <section className="table-panel">
+      <section id="moderation" className="table-panel">
         <h3>Moderation Queue</h3>
         <div className="admin-review-controls">
           <select value={moderationStatusFilter} onChange={(event) => setModerationStatusFilter(event.target.value)}>
@@ -1753,7 +1892,7 @@ export default function AdminStatsPage() {
         )}
       </section>
 
-      <section className="table-panel">
+      <section id="review" className="table-panel">
         <div className="home-snapshot-head">
           <h3>Sport Player Review</h3>
           <button type="button" onClick={() => setSportReviewOpen((previous) => !previous)}>
@@ -1818,7 +1957,7 @@ export default function AdminStatsPage() {
         )}
       </section>
 
-      <section className="table-panel">
+      <section id="destructive-tools" className="table-panel">
         <h3>Site Reset</h3>
         <p className="subtle">
           Clears all positions, transactions, pricing/stat history, resets all users to starting cash, and optionally
@@ -1937,7 +2076,7 @@ export default function AdminStatsPage() {
         ) : null}
       </section>
 
-      <section className="table-panel">
+      <section id="user-tools" className="table-panel">
         <h3>User Equity Inspector</h3>
         <p className="subtle">
           Select a user to inspect, flatten, or delete without typing usernames manually.
@@ -2099,7 +2238,7 @@ export default function AdminStatsPage() {
           ) : null}
         </section>
 
-      <section className="admin-panel">
+      <section id="stats-import" className="admin-panel">
         <label className="field-label" htmlFor="csv-text">
           CSV Data
         </label>

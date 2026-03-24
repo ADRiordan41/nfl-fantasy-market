@@ -2,10 +2,11 @@ import os
 from decimal import Decimal
 
 
-PRICE_IMPACT_MULTIPLIER = max(
+DEFAULT_PRICE_IMPACT_MULTIPLIER = max(
     Decimal("0.000001"),
     Decimal(os.environ.get("PRICE_IMPACT_MULTIPLIER", "0.40")),
 )
+_runtime_price_impact_multiplier = DEFAULT_PRICE_IMPACT_MULTIPLIER
 BASE_SPREAD_PCT = max(
     Decimal("0.0005"),
     Decimal(os.environ.get("BASE_SPREAD_PCT", "0.012")),
@@ -59,6 +60,16 @@ def liquidity_multiplier(anchor_price: Decimal) -> Decimal:
     multiplier = ratio.sqrt() if ratio > 0 else Decimal("1")
     return min(MAX_LIQUIDITY_MULTIPLIER, max(MIN_LIQUIDITY_MULTIPLIER, multiplier))
 
+
+def get_price_impact_multiplier() -> Decimal:
+    return _runtime_price_impact_multiplier
+
+
+def set_price_impact_multiplier(value: Decimal) -> Decimal:
+    global _runtime_price_impact_multiplier
+    _runtime_price_impact_multiplier = max(Decimal("0.000001"), value)
+    return _runtime_price_impact_multiplier
+
 def effective_k(
     k: Decimal,
     anchor_price: Decimal | None = None,
@@ -67,7 +78,7 @@ def effective_k(
 ) -> Decimal:
     liquidity = liquidity_multiplier(anchor_price if anchor_price is not None else Decimal("100"))
     live_multiplier = LIVE_IMPACT_MULTIPLIER if live_now else Decimal("1")
-    return (k * PRICE_IMPACT_MULTIPLIER * live_multiplier) / liquidity
+    return (k * get_price_impact_multiplier() * live_multiplier) / liquidity
 
 
 def spread_percentage(
