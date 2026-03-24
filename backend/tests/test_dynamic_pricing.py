@@ -276,6 +276,39 @@ class DynamicPricingTests(unittest.TestCase):
             places=6,
         )
 
+    def test_same_user_scale_in_stays_flat_but_later_other_user_buy_creates_gain(self) -> None:
+        first_user = self.make_user(username="scalea", cash_balance=100000.0)
+        second_user = self.make_user(username="scaleb", cash_balance=100000.0)
+        player = self.make_player(name="Pete Crow-Armstrong", team="CHC", sport="MLB", position="OF", base_price=160.0, k=0.0021)
+
+        buy(
+            TradeIn(player_id=int(player.id), shares=1),
+            self.auth_for(first_user),
+            self.db,
+        )
+        after_first_buy = portfolio(self.auth_for(first_user), self.db)
+        row_after_first_buy = next(row for row in after_first_buy.holdings if row.player_id == int(player.id))
+        self.assertAlmostEqual(row_after_first_buy.average_entry_price, row_after_first_buy.spot_price, places=6)
+
+        buy(
+            TradeIn(player_id=int(player.id), shares=1),
+            self.auth_for(first_user),
+            self.db,
+        )
+        after_scale_in = portfolio(self.auth_for(first_user), self.db)
+        row_after_scale_in = next(row for row in after_scale_in.holdings if row.player_id == int(player.id))
+        self.assertAlmostEqual(row_after_scale_in.average_entry_price, row_after_scale_in.spot_price, places=6)
+
+        buy(
+            TradeIn(player_id=int(player.id), shares=1),
+            self.auth_for(second_user),
+            self.db,
+        )
+        after_other_user_buy = portfolio(self.auth_for(first_user), self.db)
+        row_after_other_user_buy = next(row for row in after_other_user_buy.holdings if row.player_id == int(player.id))
+        self.assertGreater(row_after_other_user_buy.spot_price, row_after_scale_in.spot_price)
+        self.assertGreater(row_after_other_user_buy.market_value, row_after_scale_in.market_value)
+
     def test_admin_publish_accepts_multiple_games_same_week(self) -> None:
         admin = self.make_user()
         player = self.make_player(name="Josh Allen", team="BUF")

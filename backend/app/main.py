@@ -5692,7 +5692,6 @@ def buy(
 
     previous_basis_amount = holding_basis_amount(holding)
     previous_entry_basis_amount = holding_entry_basis_amount(holding)
-    previous_mark_basis_amount = holding_mark_basis_amount(holding)
     next_market_bias = market_bias + qty
     spot_after = canonical_executed_spot_price(
         player=player,
@@ -5707,11 +5706,12 @@ def buy(
         raise HTTPException(400, f"Insufficient cash. Need {float(total_cost):.2f}, have {float(cash):.2f}")
 
     user.cash_balance = float(cash - total_cost)
-    holding.shares_owned = float(Decimal(str(holding.shares_owned)) + qty)
+    next_shares_owned = Decimal(str(holding.shares_owned)) + qty
+    holding.shares_owned = float(next_shares_owned)
     holding.basis_amount = float(previous_basis_amount + total_cost)
     holding.entry_basis_amount = float(previous_entry_basis_amount + raw_cost)
     player.total_shares = float(total_shares + qty)
-    holding.mark_basis_amount = float(previous_mark_basis_amount + raw_cost)
+    holding.mark_basis_amount = float(abs(next_shares_owned) * spot_after)
     set_market_bias(player, bias=next_market_bias)
 
     unit_estimate = spot_after
@@ -5965,12 +5965,12 @@ def short(
 
     previous_basis_amount = holding_basis_amount(holding)
     previous_entry_basis_amount = holding_entry_basis_amount(holding)
-    previous_mark_basis_amount = holding_mark_basis_amount(holding)
-    holding.shares_owned = float(net_shares - qty)
+    next_shares_owned = net_shares - qty
+    holding.shares_owned = float(next_shares_owned)
     holding.basis_amount = float(previous_basis_amount + raw_notional)
     holding.entry_basis_amount = float(previous_entry_basis_amount + raw_notional)
     player.total_shares = float(total_shares - qty)
-    holding.mark_basis_amount = float(previous_mark_basis_amount + raw_notional)
+    holding.mark_basis_amount = float(abs(next_shares_owned) * spot_after)
     set_market_bias(player, bias=next_market_bias)
 
     unit_estimate = spot_after
