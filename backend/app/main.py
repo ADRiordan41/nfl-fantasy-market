@@ -546,11 +546,7 @@ def apply_market_bias_delta(player: Player, *, delta: Decimal, now: datetime | N
 
 
 def pricing_spread_pct(player: Player, *, fundamental_price: Decimal) -> Decimal:
-    return spread_percentage(
-        anchor_price=fundamental_price,
-        reference_price=Decimal(str(player.base_price)),
-        live_now=bool(player.live_now),
-    )
+    return Decimal("0")
 
 
 def current_spot_price(

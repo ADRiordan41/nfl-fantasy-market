@@ -569,6 +569,7 @@ def init_db():
         backfill_holding_basis_amounts(db)
         backfill_holding_entry_basis_amounts(db)
         backfill_holding_mark_basis_amounts(db)
+        normalize_open_holdings_to_latest_spot_basis(db)
         db.commit()
 
 
@@ -821,6 +822,61 @@ def backfill_holding_mark_basis_amounts(db: Session) -> None:
         if abs(actual_shares - running_shares) > tolerance:
             continue
         holding.mark_basis_amount = float(max(running_mark_basis, Decimal("0")))
+
+
+def normalize_open_holdings_to_latest_spot_basis(db: Session) -> None:
+    holdings = db.execute(
+        select(Holding).where(Holding.shares_owned != 0)
+    ).scalars().all()
+
+    if not holdings:
+        return
+
+    player_ids = sorted({int(holding.player_id) for holding in holdings})
+    latest_points = db.execute(
+        text(
+            """
+            SELECT pp.player_id, pp.spot_price
+            FROM price_points pp
+            JOIN (
+                SELECT player_id, MAX(created_at) AS max_created_at
+                FROM price_points
+                WHERE player_id = ANY(:player_ids)
+                GROUP BY player_id
+            ) latest
+              ON latest.player_id = pp.player_id
+             AND latest.max_created_at = pp.created_at
+            """
+        ),
+        {"player_ids": player_ids},
+    ).all()
+    latest_spot_by_player = {
+        int(row.player_id): max(Decimal("0"), Decimal(str(row.spot_price or 0)))
+        for row in latest_points
+    }
+
+    for holding in holdings:
+        shares = Decimal(str(holding.shares_owned or 0))
+        if shares == 0:
+            continue
+        latest_spot = latest_spot_by_player.get(int(holding.player_id))
+        if latest_spot is None or latest_spot <= 0:
+            continue
+
+        current_notional = abs(shares) * latest_spot
+        entry_basis = max(Decimal("0"), Decimal(str(holding.entry_basis_amount or 0)))
+        mark_basis = max(Decimal("0"), Decimal(str(holding.mark_basis_amount or 0)))
+
+        if shares > 0:
+            if entry_basis > current_notional:
+                holding.entry_basis_amount = float(current_notional)
+            if mark_basis > current_notional:
+                holding.mark_basis_amount = float(current_notional)
+        else:
+            if entry_basis < current_notional:
+                holding.entry_basis_amount = float(current_notional)
+            if mark_basis < current_notional:
+                holding.mark_basis_amount = float(current_notional)
 
 
 def seed(db: Session):
