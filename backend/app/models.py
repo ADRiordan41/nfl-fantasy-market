@@ -362,6 +362,7 @@ class Holding(Base):
 
     shares_owned: Mapped[float] = mapped_column(NUM, default=0)
     basis_amount: Mapped[float] = mapped_column(NUM, default=0)
+    entry_basis_amount: Mapped[float] = mapped_column(NUM, default=0)
     mark_basis_amount: Mapped[float] = mapped_column(NUM, default=0)
 
     user: Mapped["User"] = relationship(back_populates="holdings")

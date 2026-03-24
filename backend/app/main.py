@@ -499,6 +499,10 @@ def holding_basis_amount(holding: Holding) -> Decimal:
     return max(Decimal("0"), Decimal(str(holding.basis_amount or 0)))
 
 
+def holding_entry_basis_amount(holding: Holding) -> Decimal:
+    return max(Decimal("0"), Decimal(str(getattr(holding, "entry_basis_amount", 0) or 0)))
+
+
 def holding_mark_basis_amount(holding: Holding) -> Decimal:
     return max(Decimal("0"), Decimal(str(getattr(holding, "mark_basis_amount", 0) or 0)))
 
@@ -2124,9 +2128,10 @@ def build_account_risk_snapshot(
 
         fundamental_price, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
         basis_amount = holding_basis_amount(holding)
+        entry_basis_amount = holding_entry_basis_amount(holding)
         mark_basis_amount = holding_mark_basis_amount(holding)
         average_entry_price = average_entry_price_for_position(
-            basis_amount=basis_amount,
+            basis_amount=entry_basis_amount if entry_basis_amount > 0 else basis_amount,
             shares=shares,
         )
         market_bias = current_market_bias(player)
@@ -5660,13 +5665,22 @@ def buy(
     user.cash_balance = float(cash - total_cost)
 
     if not holding:
-        holding = Holding(user_id=user.id, player_id=player.id, shares_owned=0, basis_amount=0, mark_basis_amount=0)
+        holding = Holding(
+            user_id=user.id,
+            player_id=player.id,
+            shares_owned=0,
+            basis_amount=0,
+            entry_basis_amount=0,
+            mark_basis_amount=0,
+        )
         db.add(holding)
 
     previous_basis_amount = holding_basis_amount(holding)
+    previous_entry_basis_amount = holding_entry_basis_amount(holding)
     previous_mark_basis_amount = holding_mark_basis_amount(holding)
     holding.shares_owned = float(Decimal(str(holding.shares_owned)) + qty)
     holding.basis_amount = float(previous_basis_amount + total_cost)
+    holding.entry_basis_amount = float(previous_entry_basis_amount + raw_cost)
     player.total_shares = float(total_shares + qty)
     next_market_bias = apply_market_bias_delta(player, delta=qty)
     spot_after = current_spot_price(
@@ -5778,11 +5792,19 @@ def sell(
     user.cash_balance = float(cash + proceeds)
 
     previous_basis_amount = holding_basis_amount(holding)
+    previous_entry_basis_amount = holding_entry_basis_amount(holding)
     previous_mark_basis_amount = holding_mark_basis_amount(holding)
     holding.shares_owned = float(owned - qty)
     holding.basis_amount = float(
         reduce_basis_pro_rata(
             basis_amount=previous_basis_amount,
+            shares_before=owned,
+            shares_closed=qty,
+        )
+    )
+    holding.entry_basis_amount = float(
+        reduce_basis_pro_rata(
+            basis_amount=previous_entry_basis_amount,
             shares_before=owned,
             shares_closed=qty,
         )
@@ -5865,7 +5887,14 @@ def short(
         .with_for_update()
     ).scalar_one_or_none()
     if not holding:
-        holding = Holding(user_id=user.id, player_id=player.id, shares_owned=0, basis_amount=0, mark_basis_amount=0)
+        holding = Holding(
+            user_id=user.id,
+            player_id=player.id,
+            shares_owned=0,
+            basis_amount=0,
+            entry_basis_amount=0,
+            mark_basis_amount=0,
+        )
         db.add(holding)
 
     net_shares = Decimal(str(holding.shares_owned))
@@ -5909,9 +5938,11 @@ def short(
     user.cash_balance = float(cash - total_cost)
 
     previous_basis_amount = holding_basis_amount(holding)
+    previous_entry_basis_amount = holding_entry_basis_amount(holding)
     previous_mark_basis_amount = holding_mark_basis_amount(holding)
     holding.shares_owned = float(net_shares - qty)
     holding.basis_amount = float(previous_basis_amount + raw_notional)
+    holding.entry_basis_amount = float(previous_entry_basis_amount + raw_notional)
     player.total_shares = float(total_shares - qty)
     next_market_bias = apply_market_bias_delta(player, delta=-qty)
     spot_after = current_spot_price(
@@ -6005,6 +6036,7 @@ def cover(
     total_shares = Decimal(str(player.total_shares))
     market_bias = current_market_bias(player)
     previous_basis_amount = holding_basis_amount(holding)
+    previous_entry_basis_amount = holding_entry_basis_amount(holding)
     previous_mark_basis_amount = holding_mark_basis_amount(holding)
     closed_basis_amount = basis_amount_closed_pro_rata(
         basis_amount=previous_basis_amount,
@@ -6026,6 +6058,13 @@ def cover(
     holding.basis_amount = float(
         reduce_basis_pro_rata(
             basis_amount=previous_basis_amount,
+            shares_before=net_shares,
+            shares_closed=qty,
+        )
+    )
+    holding.entry_basis_amount = float(
+        reduce_basis_pro_rata(
+            basis_amount=previous_entry_basis_amount,
             shares_before=net_shares,
             shares_closed=qty,
         )
