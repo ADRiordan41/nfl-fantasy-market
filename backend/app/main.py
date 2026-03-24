@@ -2632,6 +2632,7 @@ def user_profile_to_out(
     holdings = sorted(snapshot.positions, key=lambda position: abs(position.market_value), reverse=True)
     baseline_cash = float(REGISTER_STARTING_CASH)
     equity = float(snapshot.equity)
+    gross_exposure = float(snapshot.gross_exposure)
     return UserProfileOut(
         id=int(user.id),
         username=str(user.username),
@@ -2639,6 +2640,7 @@ def user_profile_to_out(
         bio=normalize_optional_profile_field(user.bio),
         cash_balance=float(snapshot.cash_balance),
         holdings_value=float(snapshot.net_exposure),
+        gross_exposure=gross_exposure,
         equity=equity,
         return_pct=((equity - baseline_cash) / baseline_cash) * 100 if baseline_cash > 0 else 0,
         leaderboard_rank=leaderboard_rank,
@@ -2650,8 +2652,19 @@ def user_profile_to_out(
                 team=str(position.player.team),
                 position=str(position.player.position),
                 shares_owned=float(position.shares),
+                average_entry_price=float(position.average_entry_price),
+                basis_amount=float(position.basis_amount),
                 spot_price=float(position.spot_price),
                 market_value=float(position.market_value),
+                unrealized_pnl=float(position.market_value - position.basis_amount),
+                unrealized_pnl_pct=float(
+                    ((position.market_value - position.basis_amount) / position.basis_amount) * Decimal("100")
+                    if position.basis_amount > 0
+                    else Decimal("0")
+                ),
+                allocation_pct=float((abs(position.market_value) / snapshot.gross_exposure) * Decimal("100"))
+                if snapshot.gross_exposure > 0
+                else 0.0,
             )
             for position in holdings
         ],

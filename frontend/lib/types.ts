@@ -260,8 +260,13 @@ export type UserProfileHolding = {
   team: string;
   position: string;
   shares_owned: number;
+  average_entry_price: number;
+  basis_amount: number;
   spot_price: number;
   market_value: number;
+  unrealized_pnl: number;
+  unrealized_pnl_pct: number;
+  allocation_pct: number;
 };
 
 export type UserProfile = {
@@ -271,6 +276,7 @@ export type UserProfile = {
   bio: string | null;
   cash_balance: number;
   holdings_value: number;
+  gross_exposure: number;
   equity: number;
   return_pct: number;
   leaderboard_rank: number | null;

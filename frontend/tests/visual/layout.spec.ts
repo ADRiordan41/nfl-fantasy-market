@@ -1,5 +1,26 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { mockAuthedApi, mockGuestApi, stabilizeUi } from "./helpers/mock-api";
+
+async function waitForStablePageHeight(page: Page, checks = 4, delayMs = 250) {
+  await page.waitForFunction(
+    ({ checks: requiredChecks }) => {
+      const scope = window as Window & {
+        __layoutStableHeight?: { last: number; count: number };
+      };
+      const current = document.documentElement.scrollHeight;
+      const previous = scope.__layoutStableHeight;
+      if (!previous || previous.last !== current) {
+        scope.__layoutStableHeight = { last: current, count: 1 };
+        return false;
+      }
+      previous.count += 1;
+      return previous.count >= requiredChecks;
+    },
+    { checks, delayMs },
+    { polling: delayMs, timeout: checks * delayMs * 6 },
+  );
+}
 
 test.describe("Desktop baselines", () => {
   test("home page layout", async ({ page }, testInfo) => {
@@ -13,6 +34,7 @@ test.describe("Desktop baselines", () => {
     await expect(page.getByText("Loading market snapshot...")).toHaveCount(0);
     await expect(page.getByText("Loading forum snapshot...")).toHaveCount(0);
     await expect(page.getByText("Loading leaderboard...")).toHaveCount(0);
+    await waitForStablePageHeight(page);
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("home-desktop.png", { fullPage: true });

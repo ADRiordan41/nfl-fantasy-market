@@ -432,8 +432,13 @@ class UserProfileHoldingOut(BaseModel):
     team: str
     position: str
     shares_owned: float
+    average_entry_price: float
+    basis_amount: float
     spot_price: float
     market_value: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+    allocation_pct: float
 
 
 class UserProfileOut(BaseModel):
@@ -443,6 +448,7 @@ class UserProfileOut(BaseModel):
     bio: str | None = None
     cash_balance: float
     holdings_value: float
+    gross_exposure: float
     equity: float
     return_pct: float = 0
     leaderboard_rank: int | None = None
