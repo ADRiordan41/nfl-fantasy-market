@@ -104,6 +104,7 @@ from .schemas import (
     AdminModerationResolveIn,
     AdminModerationUnhideIn,
     AdminModerationUnhideOut,
+    AdminNormalizeHoldingsOut,
     AdminFeedbackOut,
     AdminFeedbackUpdateIn,
     AdminSportTradingHaltUpdateIn,
@@ -6723,6 +6724,65 @@ def admin_site_reset(
             f"Site reset complete. Reset {result.users_reset} users to ${result.starting_cash:,.2f}"
             + (f" and hid IPO for {hidden_sports_label}." if hidden_sports_label else ".")
         ),
+    )
+
+
+@app.post("/admin/holdings/normalize-current", response_model=AdminNormalizeHoldingsOut)
+def admin_normalize_open_holdings_to_current_spot(
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    holdings = db.execute(
+        select(Holding).where(Holding.shares_owned != 0)
+    ).scalars().all()
+
+    if not holdings:
+        return AdminNormalizeHoldingsOut(
+            users_affected=0,
+            holdings_updated=0,
+            message="No open holdings to normalize.",
+        )
+
+    player_ids = sorted({int(holding.player_id) for holding in holdings})
+    players = db.execute(select(Player).where(Player.id.in_(player_ids))).scalars().all()
+    players_by_id = {int(player.id): player for player in players}
+    stats_snapshot = get_stats_snapshot_by_player(db, player_ids)
+
+    touched_users: set[int] = set()
+    touched_players: set[int] = set()
+    holdings_updated = 0
+
+    for holding in holdings:
+        player = players_by_id.get(int(holding.player_id))
+        if player is None:
+            continue
+
+        shares = Decimal(str(holding.shares_owned or 0))
+        if shares == 0:
+            continue
+
+        fundamental_price, _, _ = get_pricing_context(player, stats_snapshot)
+        spot = current_spot_price(
+            player,
+            fundamental_price=fundamental_price,
+        )
+        normalized_basis = abs(shares) * spot
+        holding.basis_amount = float(normalized_basis)
+        holding.entry_basis_amount = float(normalized_basis)
+        holding.mark_basis_amount = float(normalized_basis)
+        touched_users.add(int(holding.user_id))
+        touched_players.add(int(holding.player_id))
+        holdings_updated += 1
+
+    db.commit()
+    invalidate_market_read_cache(
+        player_ids=touched_players,
+        sports={str(player.sport) for player in players if int(player.id) in touched_players},
+    )
+    return AdminNormalizeHoldingsOut(
+        users_affected=len(touched_users),
+        holdings_updated=holdings_updated,
+        message=f"Normalized {holdings_updated} open holding(s) across {len(touched_users)} user(s) to current spot.",
     )
 
 

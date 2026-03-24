@@ -9,6 +9,7 @@ import type {
   AdminActivityAudit,
   AdminBotPersona,
   AdminBotProfile,
+  AdminNormalizeHoldingsResult,
   AdminBotSimulationStatus,
   AdminFeedbackMessage,
   AdminIpoActionResult,
@@ -86,6 +87,8 @@ export default function AdminStatsPage() {
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [busySiteReset, setBusySiteReset] = useState(false);
   const [siteResetResult, setSiteResetResult] = useState<AdminSiteResetResult | null>(null);
+  const [busyNormalizeHoldings, setBusyNormalizeHoldings] = useState(false);
+  const [normalizeHoldingsResult, setNormalizeHoldingsResult] = useState<AdminNormalizeHoldingsResult | null>(null);
 
   const [error, setError] = useState("");
 
@@ -492,6 +495,20 @@ export default function AdminStatsPage() {
       handleApiError(err);
     } finally {
       setBusySiteReset(false);
+    }
+  }
+
+  async function normalizeOpenHoldings() {
+    setBusyNormalizeHoldings(true);
+    setError("");
+    try {
+      const result = await apiPost<AdminNormalizeHoldingsResult>("/admin/holdings/normalize-current", {});
+      setNormalizeHoldingsResult(result);
+      notifySuccess(result.message);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyNormalizeHoldings(false);
     }
   }
 
@@ -1758,6 +1775,41 @@ export default function AdminStatsPage() {
               </tbody>
             </table>
             <p className="subtle">{siteResetResult.message}</p>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="table-panel">
+        <h3>Normalize Open Holdings</h3>
+        <p className="subtle">
+          Resets every current open position so its purchase basis matches the player&apos;s current spot price. Use this once to flatten old beta holdings under the new no-spread pricing model.
+        </p>
+        <div className="admin-actions">
+          <button
+            className="primary-btn"
+            onClick={() => void normalizeOpenHoldings()}
+            disabled={busyNormalizeHoldings}
+          >
+            {busyNormalizeHoldings ? "Normalizing..." : "Normalize Holdings To Current Spot"}
+          </button>
+        </div>
+        {normalizeHoldingsResult ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Users Affected</th>
+                  <th>Holdings Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{formatNumber(normalizeHoldingsResult.users_affected)}</td>
+                  <td>{formatNumber(normalizeHoldingsResult.holdings_updated)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="subtle">{normalizeHoldingsResult.message}</p>
           </div>
         ) : null}
       </section>

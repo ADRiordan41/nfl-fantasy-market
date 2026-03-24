@@ -349,6 +349,12 @@ export type AdminSiteResetResult = {
   message: string;
 };
 
+export type AdminNormalizeHoldingsResult = {
+  users_affected: number;
+  holdings_updated: number;
+  message: string;
+};
+
 export type AdminIpoSport = {
   sport: string;
   total_players: number;

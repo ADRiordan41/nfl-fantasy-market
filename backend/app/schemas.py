@@ -753,6 +753,12 @@ class AdminSiteResetOut(BaseModel):
     message: str
 
 
+class AdminNormalizeHoldingsOut(BaseModel):
+    users_affected: int
+    holdings_updated: int
+    message: str
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int
