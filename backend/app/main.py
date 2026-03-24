@@ -6805,7 +6805,10 @@ def admin_normalize_open_holdings_to_current_spot(
     return AdminNormalizeHoldingsOut(
         users_affected=len(touched_users),
         holdings_updated=holdings_updated,
-        message=f"Normalized {holdings_updated} open holding(s) across {len(touched_users)} user(s) to current spot.",
+        message=(
+            f"Flattened {holdings_updated} open position(s) across {len(touched_users)} user(s) "
+            "to current spot so purchase price now matches current price."
+        ),
     )
 
 

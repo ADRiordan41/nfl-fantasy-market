@@ -1845,9 +1845,9 @@ export default function AdminStatsPage() {
       </section>
 
       <section className="table-panel">
-        <h3>Normalize Open Holdings</h3>
+        <h3>Flatten All Open Positions</h3>
         <p className="subtle">
-          Resets every current open position so its purchase basis matches the player&apos;s current spot price. Use this once to flatten old beta holdings under the new no-spread pricing model.
+          One-time repair for all users. This resets every current open position so purchase price equals the player&apos;s current spot price right now, which makes unrealized P/L start from $0 under the final pricing rules.
         </p>
         <div className="admin-actions">
           <button
@@ -1855,7 +1855,7 @@ export default function AdminStatsPage() {
             onClick={() => void normalizeOpenHoldings()}
             disabled={busyNormalizeHoldings}
           >
-            {busyNormalizeHoldings ? "Normalizing..." : "Normalize Holdings To Current Spot"}
+            {busyNormalizeHoldings ? "Flattening..." : "Flatten All Open Positions To Current Spot"}
           </button>
         </div>
         {normalizeHoldingsResult ? (
