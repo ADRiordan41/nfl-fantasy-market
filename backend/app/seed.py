@@ -423,6 +423,7 @@ def init_db():
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS market_bias NUMERIC(18,6) DEFAULT 0"))
         conn.execute(text("ALTER TABLE players ADD COLUMN IF NOT EXISTS market_bias_updated_at TIMESTAMP"))
         conn.execute(text("ALTER TABLE holdings ADD COLUMN IF NOT EXISTS basis_amount NUMERIC(18,6) DEFAULT 0"))
+        conn.execute(text("ALTER TABLE holdings ADD COLUMN IF NOT EXISTS mark_basis_amount NUMERIC(18,6) DEFAULT 0"))
         conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS name VARCHAR(64)"))
         conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS username VARCHAR(64)"))
         conn.execute(text("ALTER TABLE bot_profiles ADD COLUMN IF NOT EXISTS persona VARCHAR(48)"))
@@ -502,6 +503,7 @@ def init_db():
         conn.execute(text("UPDATE players SET market_bias=0 WHERE market_bias IS NULL"))
         conn.execute(text("UPDATE forum_posts SET view_count=0 WHERE view_count IS NULL"))
         conn.execute(text("UPDATE holdings SET basis_amount=0 WHERE basis_amount IS NULL"))
+        conn.execute(text("UPDATE holdings SET mark_basis_amount=0 WHERE mark_basis_amount IS NULL"))
         conn.execute(text("UPDATE bot_profiles SET is_active=TRUE WHERE is_active IS NULL"))
         conn.execute(text("UPDATE bot_profiles SET created_at=NOW() WHERE created_at IS NULL"))
         conn.execute(text("UPDATE bot_profiles SET updated_at=NOW() WHERE updated_at IS NULL"))
@@ -559,6 +561,7 @@ def init_db():
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_friendships_pair_unique ON friendships(user_low_id, user_high_id)"))
     with Session(engine) as db:
         backfill_holding_basis_amounts(db)
+        backfill_holding_mark_basis_amounts(db)
         db.commit()
 
 
@@ -627,6 +630,82 @@ def backfill_holding_basis_amounts(db: Session) -> None:
         if abs(actual_shares - running_shares) > tolerance:
             continue
         holding.basis_amount = float(max(running_basis, Decimal("0")))
+
+
+def backfill_holding_mark_basis_amounts(db: Session) -> None:
+    tolerance = Decimal("0.000001")
+    holdings = db.execute(
+        select(Holding).where(
+            Holding.shares_owned != 0,
+            Holding.mark_basis_amount == 0,
+        )
+    ).scalars().all()
+
+    for holding in holdings:
+        transactions = db.execute(
+            select(Transaction)
+            .where(
+                Transaction.user_id == holding.user_id,
+                Transaction.player_id == holding.player_id,
+                Transaction.type.in_(OPEN_BASIS_TRANSACTION_TYPES),
+            )
+            .order_by(Transaction.created_at.asc(), Transaction.id.asc())
+        ).scalars().all()
+        if not transactions:
+            continue
+
+        running_shares = Decimal("0")
+        running_mark_basis = Decimal("0")
+        for transaction in transactions:
+            shares = Decimal(str(transaction.shares))
+            unit_price = max(Decimal("0"), Decimal(str(transaction.unit_price or 0)))
+            tx_type = str(transaction.type)
+            entry_mark_notional = shares * unit_price
+
+            if tx_type == "BUY":
+                running_shares += shares
+                running_mark_basis += entry_mark_notional
+                continue
+
+            if tx_type in {"SELL", "LIQUIDATE_SELL"}:
+                if running_shares <= 0 or shares <= 0:
+                    continue
+                basis_reduction = (
+                    running_mark_basis
+                    if shares >= running_shares
+                    else running_mark_basis * shares / running_shares
+                )
+                running_shares -= shares
+                running_mark_basis -= basis_reduction
+                if abs(running_shares) <= tolerance:
+                    running_shares = Decimal("0")
+                    running_mark_basis = Decimal("0")
+                continue
+
+            if tx_type == "SHORT":
+                running_shares -= shares
+                running_mark_basis += entry_mark_notional
+                continue
+
+            if tx_type in {"COVER", "LIQUIDATE_COVER"}:
+                short_size = -running_shares
+                if short_size <= 0 or shares <= 0:
+                    continue
+                basis_reduction = (
+                    running_mark_basis
+                    if shares >= short_size
+                    else running_mark_basis * shares / short_size
+                )
+                running_shares += shares
+                running_mark_basis -= basis_reduction
+                if abs(running_shares) <= tolerance:
+                    running_shares = Decimal("0")
+                    running_mark_basis = Decimal("0")
+
+        actual_shares = Decimal(str(holding.shares_owned))
+        if abs(actual_shares - running_shares) > tolerance:
+            continue
+        holding.mark_basis_amount = float(max(running_mark_basis, Decimal("0")))
 
 
 def seed(db: Session):
