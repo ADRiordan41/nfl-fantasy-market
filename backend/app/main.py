@@ -108,6 +108,8 @@ from .schemas import (
     AdminUserEquityOut,
     AdminFeedbackOut,
     AdminFeedbackUpdateIn,
+    AdminFlattenUserEquityIn,
+    AdminFlattenUserEquityOut,
     AdminSportTradingHaltUpdateIn,
     AdminTradingHaltUpdateIn,
     FeedbackCreateIn,
@@ -6841,6 +6843,66 @@ def admin_user_equity_snapshot(
         cash_vs_starting_cash=cash_vs_starting_cash,
         unrealized_pnl=unrealized_pnl,
         implied_realized_pnl=(equity - baseline_cash) - unrealized_pnl,
+    )
+
+
+@app.post("/admin/users/{username}/flatten-equity", response_model=AdminFlattenUserEquityOut)
+def admin_flatten_user_equity(
+    username: str,
+    payload: AdminFlattenUserEquityIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    normalized_username = normalize_username(username)
+    user = db.execute(
+        select(User).where(func.lower(User.username) == normalized_username)
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(404, "User not found")
+
+    snapshot = build_account_risk_snapshot(
+        db=db,
+        user=user,
+        for_update=True,
+    )
+    target_equity = Decimal(str(payload.target_equity))
+    holdings_value = snapshot.net_exposure
+    previous_cash_balance = snapshot.cash_balance
+    previous_equity = snapshot.equity
+    baseline_cash = Decimal(str(REGISTER_STARTING_CASH))
+    new_cash_balance = target_equity - holdings_value
+    user.cash_balance = float(new_cash_balance)
+    db.commit()
+
+    refreshed_snapshot = build_account_risk_snapshot(
+        db=db,
+        user=user,
+        for_update=False,
+    )
+    refreshed_equity = refreshed_snapshot.equity
+    return AdminFlattenUserEquityOut(
+        user_id=int(user.id),
+        username=str(user.username),
+        target_equity=float(target_equity),
+        holdings_value=float(holdings_value),
+        previous_cash_balance=float(previous_cash_balance),
+        new_cash_balance=float(refreshed_snapshot.cash_balance),
+        previous_equity=float(previous_equity),
+        new_equity=float(refreshed_equity),
+        previous_return_pct=(
+            float(((previous_equity - baseline_cash) / baseline_cash) * 100)
+            if baseline_cash > 0
+            else 0
+        ),
+        new_return_pct=(
+            float(((refreshed_equity - baseline_cash) / baseline_cash) * 100)
+            if baseline_cash > 0
+            else 0
+        ),
+        message=(
+            f"Flattened {user.username} to ${float(refreshed_equity):,.2f} total equity "
+            f"by setting cash to ${float(refreshed_snapshot.cash_balance):,.2f}."
+        ),
     )
 
 

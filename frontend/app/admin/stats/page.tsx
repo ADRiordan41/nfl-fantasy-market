@@ -9,6 +9,7 @@ import type {
   AdminActivityAudit,
   AdminBotPersona,
   AdminBotProfile,
+  AdminFlattenUserEquityResult,
   AdminNormalizeHoldingsResult,
   AdminUserEquity,
   AdminBotSimulationStatus,
@@ -94,6 +95,8 @@ export default function AdminStatsPage() {
   const [equityLookupUsername, setEquityLookupUsername] = useState("foreverhopeful");
   const [busyEquityLookup, setBusyEquityLookup] = useState(false);
   const [equityLookupResult, setEquityLookupResult] = useState<AdminUserEquity | null>(null);
+  const [busyFlattenUserEquity, setBusyFlattenUserEquity] = useState(false);
+  const [flattenUserEquityResult, setFlattenUserEquityResult] = useState<AdminFlattenUserEquityResult | null>(null);
 
   const [error, setError] = useState("");
 
@@ -529,11 +532,37 @@ export default function AdminStatsPage() {
     try {
       const result = await apiGet<AdminUserEquity>(`/admin/users/${encodeURIComponent(trimmed)}/equity`);
       setEquityLookupResult(result);
+      setFlattenUserEquityResult(null);
       notifySuccess(`Loaded equity snapshot for ${result.username}.`);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
       setBusyEquityLookup(false);
+    }
+  }
+
+  async function flattenUserEquity() {
+    const trimmed = equityLookupUsername.trim();
+    if (!trimmed) {
+      setError("Enter a username to flatten.");
+      notifyError("Username required.");
+      return;
+    }
+    setBusyFlattenUserEquity(true);
+    setError("");
+    try {
+      const result = await apiPost<AdminFlattenUserEquityResult>(
+        `/admin/users/${encodeURIComponent(trimmed)}/flatten-equity`,
+        { target_equity: 100000 },
+      );
+      setFlattenUserEquityResult(result);
+      const refreshed = await apiGet<AdminUserEquity>(`/admin/users/${encodeURIComponent(trimmed)}/equity`);
+      setEquityLookupResult(refreshed);
+      notifySuccess(result.message);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyFlattenUserEquity(false);
     }
   }
 
@@ -1872,6 +1901,13 @@ export default function AdminStatsPage() {
           <button onClick={() => void lookupUserEquity()} disabled={busyEquityLookup}>
             {busyEquityLookup ? "Loading..." : "Inspect User Equity"}
           </button>
+          <button
+            className="primary-btn"
+            onClick={() => void flattenUserEquity()}
+            disabled={busyFlattenUserEquity}
+          >
+            {busyFlattenUserEquity ? "Flattening..." : "Flatten User To $100k Equity"}
+          </button>
         </div>
         {equityLookupResult ? (
           <div className="table-wrap">
@@ -1905,6 +1941,37 @@ export default function AdminStatsPage() {
                 </tr>
               </tbody>
             </table>
+          </div>
+        ) : null}
+        {flattenUserEquityResult ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Previous Equity</th>
+                  <th>New Equity</th>
+                  <th>Previous Cash</th>
+                  <th>New Cash</th>
+                  <th>Previous Return</th>
+                  <th>New Return</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    {flattenUserEquityResult.username} (#{formatNumber(flattenUserEquityResult.user_id)})
+                  </td>
+                  <td>{formatCurrency(flattenUserEquityResult.previous_equity)}</td>
+                  <td>{formatCurrency(flattenUserEquityResult.new_equity)}</td>
+                  <td>{formatCurrency(flattenUserEquityResult.previous_cash_balance)}</td>
+                  <td>{formatCurrency(flattenUserEquityResult.new_cash_balance)}</td>
+                  <td>{formatSignedNumber(flattenUserEquityResult.previous_return_pct, 2)}%</td>
+                  <td>{formatSignedNumber(flattenUserEquityResult.new_return_pct, 2)}%</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="subtle">{flattenUserEquityResult.message}</p>
           </div>
         ) : null}
       </section>

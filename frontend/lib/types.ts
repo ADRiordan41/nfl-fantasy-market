@@ -368,6 +368,20 @@ export type AdminUserEquity = {
   implied_realized_pnl: number;
 };
 
+export type AdminFlattenUserEquityResult = {
+  user_id: number;
+  username: string;
+  target_equity: number;
+  holdings_value: number;
+  previous_cash_balance: number;
+  new_cash_balance: number;
+  previous_equity: number;
+  new_equity: number;
+  previous_return_pct: number;
+  new_return_pct: number;
+  message: string;
+};
+
 export type AdminIpoSport = {
   sport: string;
   total_players: number;

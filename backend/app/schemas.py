@@ -772,6 +772,24 @@ class AdminUserEquityOut(BaseModel):
     implied_realized_pnl: float
 
 
+class AdminFlattenUserEquityIn(BaseModel):
+    target_equity: float = Field(default=100000.0, ge=0)
+
+
+class AdminFlattenUserEquityOut(BaseModel):
+    user_id: int
+    username: str
+    target_equity: float
+    holdings_value: float
+    previous_cash_balance: float
+    new_cash_balance: float
+    previous_equity: float
+    new_equity: float
+    previous_return_pct: float
+    new_return_pct: float
+    message: str
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int
