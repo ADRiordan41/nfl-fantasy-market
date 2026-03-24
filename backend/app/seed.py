@@ -569,7 +569,6 @@ def init_db():
         backfill_holding_basis_amounts(db)
         backfill_holding_entry_basis_amounts(db)
         backfill_holding_mark_basis_amounts(db)
-        normalize_open_holdings_to_latest_spot_basis(db)
         db.commit()
 
 
