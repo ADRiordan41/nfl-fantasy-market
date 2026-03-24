@@ -616,19 +616,28 @@ def trade_execution_notional_after_move(
     return qty * spot_price_after
 
 
-def short_position_close_value(
+def canonical_executed_spot_price(
     *,
     player: Player,
     fundamental_price: Decimal,
-    qty: Decimal,
-    basis_amount: Decimal,
-    market_bias: Decimal,
+    next_market_bias: Decimal,
 ) -> Decimal:
-    cover_cost = current_cost_to_buy(
+    return current_spot_price(
         player,
         fundamental_price=fundamental_price,
+        market_bias=next_market_bias,
+    )
+
+
+def short_position_close_value(
+    *,
+    qty: Decimal,
+    basis_amount: Decimal,
+    executed_spot_price: Decimal,
+) -> Decimal:
+    cover_cost = trade_execution_notional_after_move(
         qty=qty,
-        market_bias=market_bias,
+        spot_price_after=executed_spot_price,
     )
     return (basis_amount * Decimal("2")) - cover_cost
 
@@ -649,12 +658,15 @@ def market_value_for_position(
             market_bias=market_bias,
         )
     if shares < 0:
-        return short_position_close_value(
+        executed_spot_price = canonical_executed_spot_price(
             player=player,
             fundamental_price=fundamental_price,
+            next_market_bias=market_bias + abs(shares),
+        )
+        return short_position_close_value(
             qty=abs(shares),
             basis_amount=basis_amount,
-            market_bias=market_bias,
+            executed_spot_price=executed_spot_price,
         )
     return Decimal("0")
 
@@ -666,9 +678,9 @@ def mark_to_market_value_for_position(
     spot_price: Decimal,
 ) -> Decimal:
     if shares > 0:
-        return max(mark_basis_amount, shares * spot_price)
+        return shares * spot_price
     if shares < 0:
-        return max(mark_basis_amount, (mark_basis_amount * Decimal("2")) - (abs(shares) * spot_price))
+        return (mark_basis_amount * Decimal("2")) - (abs(shares) * spot_price)
     return Decimal("0")
 
 
@@ -5399,14 +5411,14 @@ def quote_buy(
         additional_shares=qty,
         spot_before=spot_before,
     )
-    spot_after = current_spot_price(
-        player,
+    spot_after = canonical_executed_spot_price(
+        player=player,
         fundamental_price=fundamental,
-        market_bias=market_bias + qty,
+        next_market_bias=market_bias + qty,
     )
     raw_cost = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     total_cost = raw_cost + calculate_open_position_fee(raw_cost)
-    average_price = (raw_cost / qty) if qty > 0 else Decimal("0")
+    average_price = spot_after
 
     return QuoteOut(
         player_id=player.id,
@@ -5462,13 +5474,13 @@ def quote_sell(
         fundamental_price=fundamental,
         market_bias=market_bias,
     )
-    spot_after = current_spot_price(
-        player,
+    spot_after = canonical_executed_spot_price(
+        player=player,
         fundamental_price=fundamental,
-        market_bias=market_bias - qty,
+        next_market_bias=market_bias - qty,
     )
     proceeds = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
-    average_price = (proceeds / qty) if qty > 0 else Decimal("0")
+    average_price = spot_after
 
     return QuoteOut(
         player_id=player.id,
@@ -5529,14 +5541,14 @@ def quote_short(
         additional_shares=qty,
         spot_before=spot_before,
     )
-    spot_after = current_spot_price(
-        player,
+    spot_after = canonical_executed_spot_price(
+        player=player,
         fundamental_price=fundamental,
-        market_bias=market_bias - qty,
+        next_market_bias=market_bias - qty,
     )
     raw_notional = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     total_cost = raw_notional + calculate_open_position_fee(raw_notional)
-    average_price = (raw_notional / qty) if qty > 0 else Decimal("0")
+    average_price = spot_after
 
     return QuoteOut(
         player_id=player.id,
@@ -5595,19 +5607,17 @@ def quote_cover(
         shares_before=net_shares,
         shares_closed=qty,
     )
-    proceeds = short_position_close_value(
+    spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
+        next_market_bias=market_bias + qty,
+    )
+    proceeds = short_position_close_value(
         qty=qty,
         basis_amount=closed_basis_amount,
-        market_bias=market_bias,
+        executed_spot_price=spot_after,
     )
-    spot_after = current_spot_price(
-        player,
-        fundamental_price=fundamental,
-        market_bias=market_bias + qty,
-    )
-    average_price = (proceeds / qty) if qty > 0 else Decimal("0")
+    average_price = spot_after
 
     return QuoteOut(
         player_id=player.id,
@@ -5683,10 +5693,10 @@ def buy(
     previous_entry_basis_amount = holding_entry_basis_amount(holding)
     previous_mark_basis_amount = holding_mark_basis_amount(holding)
     next_market_bias = market_bias + qty
-    spot_after = current_spot_price(
-        player,
+    spot_after = canonical_executed_spot_price(
+        player=player,
         fundamental_price=fundamental,
-        market_bias=next_market_bias,
+        next_market_bias=next_market_bias,
     )
     raw_cost = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     total_cost = raw_cost + calculate_open_position_fee(raw_cost)
@@ -5703,7 +5713,7 @@ def buy(
     holding.mark_basis_amount = float(previous_mark_basis_amount + raw_cost)
     set_market_bias(player, bias=next_market_bias)
 
-    unit_estimate = (raw_cost / qty) if qty > 0 else Decimal("0")
+    unit_estimate = spot_after
     db.add(
         Transaction(
             user_id=user.id,
@@ -5794,12 +5804,13 @@ def sell(
         fundamental_price=fundamental,
         market_bias=market_bias,
     )
-    proceeds = current_proceeds_to_sell(
-        player,
+    next_market_bias = market_bias - qty
+    spot_after = canonical_executed_spot_price(
+        player=player,
         fundamental_price=fundamental,
-        qty=qty,
-        market_bias=market_bias,
+        next_market_bias=next_market_bias,
     )
+    proceeds = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
 
     cash = Decimal(str(user.cash_balance))
     user.cash_balance = float(cash + proceeds)
@@ -5830,9 +5841,9 @@ def sell(
         )
     )
     player.total_shares = float(total_shares - qty)
-    set_market_bias(player, bias=market_bias - qty)
+    set_market_bias(player, bias=next_market_bias)
 
-    unit_estimate = (proceeds / qty) if qty > 0 else Decimal("0")
+    unit_estimate = spot_after
     db.add(
         Transaction(
             user_id=user.id,
@@ -5938,10 +5949,10 @@ def short(
     )
 
     next_market_bias = market_bias - qty
-    spot_after = current_spot_price(
-        player,
+    spot_after = canonical_executed_spot_price(
+        player=player,
         fundamental_price=fundamental,
-        market_bias=next_market_bias,
+        next_market_bias=next_market_bias,
     )
     raw_notional = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     total_cost = raw_notional + calculate_open_position_fee(raw_notional)
@@ -5961,7 +5972,7 @@ def short(
     holding.mark_basis_amount = float(previous_mark_basis_amount + raw_notional)
     set_market_bias(player, bias=next_market_bias)
 
-    unit_estimate = (raw_notional / qty) if qty > 0 else Decimal("0")
+    unit_estimate = spot_after
     db.add(
         Transaction(
             user_id=user.id,
@@ -6052,12 +6063,16 @@ def cover(
         shares_before=net_shares,
         shares_closed=qty,
     )
-    proceeds = short_position_close_value(
+    next_market_bias = market_bias + qty
+    executed_spot_price = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
+        next_market_bias=next_market_bias,
+    )
+    proceeds = short_position_close_value(
         qty=qty,
         basis_amount=closed_basis_amount,
-        market_bias=market_bias,
+        executed_spot_price=executed_spot_price,
     )
 
     cash = Decimal(str(user.cash_balance))
@@ -6086,9 +6101,9 @@ def cover(
         )
     )
     player.total_shares = float(total_shares + qty)
-    apply_market_bias_delta(player, delta=qty)
+    set_market_bias(player, bias=next_market_bias)
 
-    unit_estimate = (proceeds / qty) if qty > 0 else Decimal("0")
+    unit_estimate = executed_spot_price
     db.add(
         Transaction(
             user_id=user.id,
@@ -6415,31 +6430,36 @@ def close_out_sport_holdings_for_ipo_hide(
             if shares < 0:
                 qty = -shares
                 basis_amount = holding_basis_amount(holding)
-                proceeds = short_position_close_value(
+                next_market_bias = market_bias + qty
+                executed_spot_price = canonical_executed_spot_price(
                     player=player,
                     fundamental_price=fundamental,
+                    next_market_bias=next_market_bias,
+                )
+                proceeds = short_position_close_value(
                     qty=qty,
                     basis_amount=basis_amount,
-                    market_bias=market_bias,
+                    executed_spot_price=executed_spot_price,
                 )
                 user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
                 player.total_shares = float(total_shares + qty)
-                apply_market_bias_delta(player, delta=qty)
-                unit_price = (proceeds / qty) if qty > 0 else Decimal("0")
+                set_market_bias(player, bias=next_market_bias)
+                unit_price = executed_spot_price if qty > 0 else Decimal("0")
                 amount = proceeds
                 tx_type = "IPO_HIDE_COVER"
             else:
                 qty = shares
-                proceeds = current_proceeds_to_sell(
-                    player,
+                next_market_bias = market_bias - qty
+                executed_spot_price = canonical_executed_spot_price(
+                    player=player,
                     fundamental_price=fundamental,
-                    qty=qty,
-                    market_bias=market_bias,
+                    next_market_bias=next_market_bias,
                 )
+                proceeds = trade_execution_notional_after_move(qty=qty, spot_price_after=executed_spot_price)
                 user.cash_balance = float(Decimal(str(user.cash_balance)) + proceeds)
                 player.total_shares = float(total_shares - qty)
-                apply_market_bias_delta(player, delta=-qty)
-                unit_price = (proceeds / qty) if qty > 0 else Decimal("0")
+                set_market_bias(player, bias=next_market_bias)
+                unit_price = executed_spot_price if qty > 0 else Decimal("0")
                 amount = proceeds
                 tx_type = "IPO_HIDE_SELL"
 
