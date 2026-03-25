@@ -17,6 +17,7 @@ try:
         get_pricing_context,
         get_stats_snapshot_by_player,
         portfolio,
+        quote_buy,
         short,
         upsert_weekly_stat,
     )
@@ -31,6 +32,7 @@ except ModuleNotFoundError:
         get_pricing_context,
         get_stats_snapshot_by_player,
         portfolio,
+        quote_buy,
         short,
         upsert_weekly_stat,
     )
@@ -311,6 +313,81 @@ class DynamicPricingTests(unittest.TestCase):
         row_after_other_user_buy = next(row for row in after_other_user_buy.holdings if row.player_id == int(player.id))
         self.assertGreater(row_after_other_user_buy.spot_price, row_after_scale_in.spot_price)
         self.assertGreater(row_after_other_user_buy.market_value, row_after_scale_in.market_value)
+
+    def test_equal_dollar_buy_impact_is_not_extreme_across_price_levels(self) -> None:
+        user = self.make_user(username="dollarimpact", cash_balance=200000.0)
+        low_price_player = self.make_player(
+            name="Low Price Player",
+            team="L",
+            base_price=40.0,
+            k=0.0020,
+        )
+        high_price_player = self.make_player(
+            name="High Price Player",
+            team="H",
+            base_price=240.0,
+            k=0.0020,
+        )
+
+        target_notional = 4000.0
+        low_shares = max(1, int(target_notional / float(low_price_player.base_price)))
+        high_shares = max(1, int(target_notional / float(high_price_player.base_price)))
+
+        low_quote = quote_buy(
+            TradeIn(player_id=int(low_price_player.id), shares=low_shares),
+            self.auth_for(user),
+            self.db,
+        )
+        high_quote = quote_buy(
+            TradeIn(player_id=int(high_price_player.id), shares=high_shares),
+            self.auth_for(user),
+            self.db,
+        )
+
+        low_pct_move = (low_quote.spot_price_after - low_quote.spot_price_before) / low_quote.spot_price_before
+        high_pct_move = (high_quote.spot_price_after - high_quote.spot_price_before) / high_quote.spot_price_before
+        ratio = low_pct_move / high_pct_move if high_pct_move > 0 else float("inf")
+
+        self.assertGreater(low_pct_move, 0.0)
+        self.assertGreater(high_pct_move, 0.0)
+        self.assertLess(ratio, 2.0)
+
+    def test_second_equal_dollar_buy_moves_less_than_first_for_same_player(self) -> None:
+        user = self.make_user(username="decayimpact", cash_balance=200000.0)
+        player = self.make_player(
+            name="Decay Test Player",
+            team="D",
+            base_price=120.0,
+            k=0.0020,
+        )
+
+        target_notional = 4000.0
+
+        first_shares = max(1, int(target_notional / float(player.base_price)))
+        first_quote = quote_buy(
+            TradeIn(player_id=int(player.id), shares=first_shares),
+            self.auth_for(user),
+            self.db,
+        )
+        first_pct_move = (first_quote.spot_price_after - first_quote.spot_price_before) / first_quote.spot_price_before
+
+        buy(
+            TradeIn(player_id=int(player.id), shares=first_shares),
+            self.auth_for(user),
+            self.db,
+        )
+
+        second_shares = max(1, int(target_notional / float(first_quote.spot_price_after)))
+        second_quote = quote_buy(
+            TradeIn(player_id=int(player.id), shares=second_shares),
+            self.auth_for(user),
+            self.db,
+        )
+        second_pct_move = (second_quote.spot_price_after - second_quote.spot_price_before) / second_quote.spot_price_before
+
+        self.assertGreater(first_pct_move, 0.0)
+        self.assertGreater(second_pct_move, 0.0)
+        self.assertLess(second_pct_move, first_pct_move)
 
     def test_admin_publish_accepts_multiple_games_same_week(self) -> None:
         admin = self.make_user()

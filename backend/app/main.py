@@ -361,6 +361,14 @@ MIN_SPOT_PRICE = Decimal(os.environ.get("MIN_SPOT_PRICE", "1.0"))
 MAINTENANCE_MARGIN_LONG = Decimal(os.environ.get("MAINTENANCE_MARGIN_LONG", "0.0"))
 MAINTENANCE_MARGIN_SHORT = Decimal(os.environ.get("MAINTENANCE_MARGIN_SHORT", "0.0"))
 MAX_POSITION_NOTIONAL_PER_PLAYER = Decimal(os.environ.get("MAX_POSITION_NOTIONAL_PER_PLAYER", "10000"))
+MARKET_IMPACT_REFERENCE_PRICE = max(
+    Decimal("1"),
+    Decimal(os.environ.get("MARKET_IMPACT_REFERENCE_PRICE", "100")),
+)
+MARKET_IMPACT_DECAY_RATE = max(
+    Decimal("0"),
+    Decimal(os.environ.get("MARKET_IMPACT_DECAY_RATE", "0.05")),
+)
 OPEN_POSITION_FEE_RATE = max(Decimal("0"), Decimal(os.environ.get("OPEN_POSITION_FEE_RATE", "0.0")))
 MARKET_REVERSION_HALF_LIFE_MINUTES = max(
     Decimal("1"),
@@ -562,6 +570,20 @@ def current_spot_price(
         current_market_bias(player) if market_bias is None else market_bias,
         live_now=bool(player.live_now),
     )
+
+
+def market_impact_bias_delta_for_trade(
+    *,
+    qty: Decimal,
+    spot_price_before: Decimal,
+    market_bias_before: Decimal,
+) -> Decimal:
+    if qty <= 0:
+        return Decimal("0")
+    safe_spot = max(Decimal("0.000001"), spot_price_before)
+    base_delta = qty * (safe_spot / MARKET_IMPACT_REFERENCE_PRICE)
+    decay_scale = Decimal("1") + (abs(market_bias_before) * MARKET_IMPACT_DECAY_RATE)
+    return base_delta / decay_scale
 
 
 def current_bid_ask_prices(
@@ -2156,13 +2178,23 @@ def max_sell_qty_before_price_floor(
     player: Player,
     market_bias: Decimal,
     fundamental_price: Decimal,
+    spot_price_before: Decimal,
 ) -> Decimal:
     minimum_market_bias = min_market_bias_for_price_floor(
         player=player,
         fundamental_price=fundamental_price,
     )
-    available = market_bias - minimum_market_bias
-    return max(Decimal("0"), available)
+    available_bias = market_bias - minimum_market_bias
+    if available_bias <= 0:
+        return Decimal("0")
+    per_share_bias = market_impact_bias_delta_for_trade(
+        qty=Decimal("1"),
+        spot_price_before=spot_price_before,
+        market_bias_before=market_bias,
+    )
+    if per_share_bias <= 0:
+        return Decimal("0")
+    return max(Decimal("0"), available_bias / per_share_bias)
 
 
 def ensure_sell_side_allowed_or_raise(
@@ -2171,11 +2203,13 @@ def ensure_sell_side_allowed_or_raise(
     market_bias: Decimal,
     qty: Decimal,
     fundamental_price: Decimal,
+    spot_price_before: Decimal,
 ) -> None:
     max_qty = max_sell_qty_before_price_floor(
         player=player,
         market_bias=market_bias,
         fundamental_price=fundamental_price,
+        spot_price_before=spot_price_before,
     )
     if qty > max_qty:
         raise HTTPException(
@@ -5535,10 +5569,15 @@ def quote_buy(
         additional_shares=qty,
         spot_before=spot_before,
     )
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
     spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
-        next_market_bias=market_bias + qty,
+        next_market_bias=market_bias + market_impact_delta,
     )
     raw_cost = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     total_cost = raw_cost + calculate_open_position_fee(raw_cost)
@@ -5586,22 +5625,27 @@ def quote_sell(
     fundamental, _, _ = get_pricing_context(player, stats_snapshot)
 
     market_bias = current_market_bias(player)
-    ensure_sell_side_allowed_or_raise(
-        player=player,
-        market_bias=market_bias,
-        qty=qty,
-        fundamental_price=fundamental,
-    )
-
     spot_before = current_spot_price(
         player,
         fundamental_price=fundamental,
         market_bias=market_bias,
     )
+    ensure_sell_side_allowed_or_raise(
+        player=player,
+        market_bias=market_bias,
+        qty=qty,
+        fundamental_price=fundamental,
+        spot_price_before=spot_before,
+    )
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
     spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
-        next_market_bias=market_bias - qty,
+        next_market_bias=market_bias - market_impact_delta,
     )
     proceeds = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     average_price = spot_after
@@ -5648,27 +5692,32 @@ def quote_short(
     fundamental, _, _ = get_pricing_context(player, stats_snapshot)
 
     market_bias = current_market_bias(player)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
     ensure_sell_side_allowed_or_raise(
         player=player,
         market_bias=market_bias,
         qty=qty,
         fundamental_price=fundamental,
-    )
-
-    spot_before = current_spot_price(
-        player,
-        fundamental_price=fundamental,
-        market_bias=market_bias,
+        spot_price_before=spot_before,
     )
     ensure_open_position_cap_or_raise(
         current_abs_shares=abs(min(Decimal("0"), net_shares)),
         additional_shares=qty,
         spot_before=spot_before,
     )
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
     spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
-        next_market_bias=market_bias - qty,
+        next_market_bias=market_bias - market_impact_delta,
     )
     raw_notional = trade_execution_notional_after_move(qty=qty, spot_price_after=spot_after)
     total_cost = raw_notional + calculate_open_position_fee(raw_notional)
@@ -5731,10 +5780,15 @@ def quote_cover(
         shares_before=net_shares,
         shares_closed=qty,
     )
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
     spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
-        next_market_bias=market_bias + qty,
+        next_market_bias=market_bias + market_impact_delta,
     )
     proceeds = short_position_close_value(
         qty=qty,
@@ -5801,6 +5855,11 @@ def buy(
         additional_shares=qty,
         spot_before=spot_before,
     )
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
 
     if not holding:
         holding = Holding(
@@ -5814,7 +5873,7 @@ def buy(
         db.add(holding)
 
     previous_basis_amount = holding_basis_amount(holding)
-    next_market_bias = market_bias + qty
+    next_market_bias = market_bias + market_impact_delta
     spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
@@ -5921,19 +5980,24 @@ def sell(
 
     total_shares = Decimal(str(player.total_shares))
     market_bias = current_market_bias(player)
-    ensure_sell_side_allowed_or_raise(
-        player=player,
-        market_bias=market_bias,
-        qty=qty,
-        fundamental_price=fundamental,
-    )
-
     spot_before = current_spot_price(
         player,
         fundamental_price=fundamental,
         market_bias=market_bias,
     )
-    next_market_bias = market_bias - qty
+    ensure_sell_side_allowed_or_raise(
+        player=player,
+        market_bias=market_bias,
+        qty=qty,
+        fundamental_price=fundamental,
+        spot_price_before=spot_before,
+    )
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
+    next_market_bias = market_bias - market_impact_delta
     spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
@@ -6059,17 +6123,17 @@ def short(
 
     total_shares = Decimal(str(player.total_shares))
     market_bias = current_market_bias(player)
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
     ensure_sell_side_allowed_or_raise(
         player=player,
         market_bias=market_bias,
         qty=qty,
         fundamental_price=fundamental,
-    )
-
-    spot_before = current_spot_price(
-        player,
-        fundamental_price=fundamental,
-        market_bias=market_bias,
+        spot_price_before=spot_before,
     )
     ensure_open_position_cap_or_raise(
         current_abs_shares=abs(min(Decimal("0"), net_shares)),
@@ -6077,7 +6141,12 @@ def short(
         spot_before=spot_before,
     )
 
-    next_market_bias = market_bias - qty
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
+    next_market_bias = market_bias - market_impact_delta
     spot_after = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
@@ -6197,7 +6266,17 @@ def cover(
         shares_before=net_shares,
         shares_closed=qty,
     )
-    next_market_bias = market_bias + qty
+    spot_before = current_spot_price(
+        player,
+        fundamental_price=fundamental,
+        market_bias=market_bias,
+    )
+    market_impact_delta = market_impact_bias_delta_for_trade(
+        qty=qty,
+        spot_price_before=spot_before,
+        market_bias_before=market_bias,
+    )
+    next_market_bias = market_bias + market_impact_delta
     executed_spot_price = canonical_executed_spot_price(
         player=player,
         fundamental_price=fundamental,
@@ -6564,7 +6643,17 @@ def close_out_sport_holdings_for_ipo_hide(
             if shares < 0:
                 qty = -shares
                 basis_amount = holding_basis_amount(holding)
-                next_market_bias = market_bias + qty
+                spot_before = current_spot_price(
+                    player,
+                    fundamental_price=fundamental,
+                    market_bias=market_bias,
+                )
+                market_impact_delta = market_impact_bias_delta_for_trade(
+                    qty=qty,
+                    spot_price_before=spot_before,
+                    market_bias_before=market_bias,
+                )
+                next_market_bias = market_bias + market_impact_delta
                 executed_spot_price = canonical_executed_spot_price(
                     player=player,
                     fundamental_price=fundamental,
@@ -6583,7 +6672,17 @@ def close_out_sport_holdings_for_ipo_hide(
                 tx_type = "IPO_HIDE_COVER"
             else:
                 qty = shares
-                next_market_bias = market_bias - qty
+                spot_before = current_spot_price(
+                    player,
+                    fundamental_price=fundamental,
+                    market_bias=market_bias,
+                )
+                market_impact_delta = market_impact_bias_delta_for_trade(
+                    qty=qty,
+                    spot_price_before=spot_before,
+                    market_bias_before=market_bias,
+                )
+                next_market_bias = market_bias - market_impact_delta
                 executed_spot_price = canonical_executed_spot_price(
                     player=player,
                     fundamental_price=fundamental,
