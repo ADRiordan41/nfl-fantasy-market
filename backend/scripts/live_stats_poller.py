@@ -949,13 +949,6 @@ def run_cycle(
         )
         if not ref:
             counts.unmatched_rows += 1
-            if counts.unmatched_rows <= 10:
-                log(
-                    "[unmatched] "
-                    + f"name='{row.name}' "
-                    + f"team='{row.team}' "
-                    + f"game='{row.live_game_label or ''}'"
-                )
             continue
         counts.matched_rows += 1
 
