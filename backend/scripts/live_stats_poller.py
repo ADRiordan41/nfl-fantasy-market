@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import time
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -12,7 +13,15 @@ from urllib import error, parse, request
 MLB_STATS_API_BASE = "https://statsapi.mlb.com"
 MLB_STATS_API_SCHEDULE_PATH = "/api/v1/schedule"
 MLB_STATS_API_LIVE_FEED_PATH = "/api/v1.1/game/{game_pk}/feed/live"
-DEFAULT_MLB_ALLOWED_GAME_TYPES = {"R", "F", "D", "L", "W"}
+DEFAULT_MLB_ALLOWED_GAME_TYPES = {"R", "F", "D", "L", "W", "S"}
+MLB_TEAM_ALIASES = {
+    "SFG": "SF",
+    "SFN": "SF",
+    "CHW": "CWS",
+    "KCR": "KC",
+    "TBR": "TB",
+    "WSN": "WSH",
+}
 
 
 @dataclass
@@ -95,7 +104,17 @@ def log(message: str) -> None:
 
 
 def normalize(value: str) -> str:
-    return " ".join((value or "").strip().lower().split())
+    raw = unicodedata.normalize("NFKD", str(value or ""))
+    folded = "".join(ch for ch in raw if not unicodedata.combining(ch))
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in folded.lower())
+    return " ".join(cleaned.split())
+
+
+def normalize_team_code(value: str) -> str:
+    token = normalize(value).replace(" ", "").upper()
+    if not token:
+        return ""
+    return MLB_TEAM_ALIASES.get(token, token)
 
 
 def detect_column(sample_row: dict[str, Any], candidates: Iterable[str]) -> str:
@@ -123,6 +142,10 @@ def parse_mlb_allowed_game_types(raw_value: str | None) -> set[str]:
         for token in raw.replace(";", ",").split(",")
         if token.strip()
     }
+    # Backward compatibility: previous defaults excluded spring training ("S"),
+    # which can suppress live MLB games before Opening Day.
+    if allowed == {"R", "F", "D", "L", "W"}:
+        allowed.add("S")
     return allowed or set(DEFAULT_MLB_ALLOWED_GAME_TYPES)
 
 
@@ -232,19 +255,34 @@ def format_mlb_live_stat_line(
     game_batting: dict[str, Any],
     game_pitching: dict[str, Any],
 ) -> str | None:
+    # Prefer pitching line when innings are recorded (starter/reliever appearance).
     batting_hits = parse_float(game_batting.get("hits"))
+    batting_ab = parse_float(game_batting.get("atBats"))
+    batting_runs = parse_float(game_batting.get("runs"))
     batting_hr = parse_float(game_batting.get("homeRuns"))
     batting_rbi = parse_float(game_batting.get("rbi"))
+    batting_bb = parse_float(game_batting.get("baseOnBalls"))
     batting_sb = parse_float(game_batting.get("stolenBases"))
 
     pitching_ip_raw = str(game_pitching.get("inningsPitched") or "").strip()
     pitching_k = parse_float(game_pitching.get("strikeOuts"))
     pitching_er = parse_float(game_pitching.get("earnedRuns"))
+    pitching_hits = parse_float(game_pitching.get("hits"))
+    pitching_bb = parse_float(game_pitching.get("baseOnBalls"))
 
-    if batting_hits > 0 or batting_hr > 0 or batting_rbi > 0 or batting_sb > 0:
-        return f"H {int(batting_hits)} | HR {int(batting_hr)} | RBI {int(batting_rbi)} | SB {int(batting_sb)}"
     if pitching_ip_raw or pitching_k > 0 or pitching_er > 0:
-        return f"IP {pitching_ip_raw or '0.0'} | K {int(pitching_k)} | ER {int(pitching_er)}"
+        return (
+            f"IP {pitching_ip_raw or '0.0'} | K {int(pitching_k)} | ER {int(pitching_er)}"
+            f" | H {int(pitching_hits)} | BB {int(pitching_bb)}"
+        )
+    if any(
+        key in game_batting
+        for key in ("atBats", "hits", "runs", "rbi", "baseOnBalls", "stolenBases", "strikeOuts")
+    ):
+        return (
+            f"AB {int(batting_ab)} | H {int(batting_hits)} | R {int(batting_runs)}"
+            f" | RBI {int(batting_rbi)} | BB {int(batting_bb)} | SB {int(batting_sb)}"
+        )
     return None
 
 
@@ -464,7 +502,7 @@ def fetch_mlb_statsapi_rows(
                 row = IncomingStat(
                     row_number=int(game_pk),
                     name=name,
-                    team=team_abbr,
+                    team=normalize_team_code(team_abbr),
                     week=row_week,
                     fantasy_points=round(max(0.0, season_points), 6),
                     live_now=live_now,
@@ -476,7 +514,7 @@ def fetch_mlb_statsapi_rows(
                     live_game_fantasy_points=round(max(0.0, game_points), 6),
                 )
 
-                dedupe_key = (normalize(name), normalize(team_abbr))
+                dedupe_key = (normalize(name), normalize_team_code(team_abbr))
                 existing = out_rows.get(dedupe_key)
                 if existing is None:
                     out_rows[dedupe_key] = row
@@ -723,7 +761,7 @@ def resolve_player(
     by_name: dict[str, list[PlayerRef]],
 ) -> PlayerRef | None:
     key_name = normalize(name)
-    key_team = normalize(team)
+    key_team = normalize_team_code(team)
     if key_name and key_team:
         direct = by_name_team.get((key_name, key_team))
         if direct:
@@ -747,7 +785,7 @@ def build_player_indexes(players: list[dict[str, Any]]) -> tuple[dict[tuple[str,
             team=str(player["team"]),
         )
         key_name = normalize(ref.name)
-        key_team = normalize(ref.team)
+        key_team = normalize_team_code(ref.team)
         by_name_team[(key_name, key_team)] = ref
         by_name.setdefault(key_name, []).append(ref)
     return by_name_team, by_name
@@ -897,6 +935,13 @@ def run_cycle(
         )
         if not ref:
             counts.unmatched_rows += 1
+            if counts.unmatched_rows <= 10:
+                log(
+                    "[unmatched] "
+                    + f"name='{row.name}' "
+                    + f"team='{row.team}' "
+                    + f"game='{row.live_game_label or ''}'"
+                )
             continue
         counts.matched_rows += 1
 
@@ -980,8 +1025,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mlb-live-only", action="store_true", help="When using MLB provider, include only games currently live")
     parser.add_argument(
         "--mlb-allowed-game-types",
-        default="R,F,D,L,W",
-        help="Comma-separated MLB gameType codes to ingest (default: regular season + postseason only)",
+        default="R,F,D,L,W,S",
+        help="Comma-separated MLB gameType codes to ingest (default includes regular season, postseason, and spring training)",
     )
     parser.add_argument("--week", type=int, default=None, help="Optional week override")
     parser.add_argument("--interval-seconds", type=int, default=60, help="Polling interval for continuous mode")
