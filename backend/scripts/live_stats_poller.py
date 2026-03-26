@@ -9,11 +9,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from urllib import error, parse, request
+from zoneinfo import ZoneInfo
 
 MLB_STATS_API_BASE = "https://statsapi.mlb.com"
 MLB_STATS_API_SCHEDULE_PATH = "/api/v1/schedule"
 MLB_STATS_API_LIVE_FEED_PATH = "/api/v1.1/game/{game_pk}/feed/live"
 DEFAULT_MLB_ALLOWED_GAME_TYPES = {"R", "F", "D", "L", "W", "S"}
+MLB_SCHEDULE_TIMEZONE = ZoneInfo("America/New_York")
 MLB_TEAM_ALIASES = {
     "SFG": "SF",
     "SFN": "SF",
@@ -395,25 +397,37 @@ def fetch_mlb_statsapi_rows(
     live_only: bool,
     allowed_game_types: set[str],
 ) -> tuple[list[IncomingStat], int]:
-    target_date = (schedule_date or datetime.now(timezone.utc).date().isoformat()).strip()
-    if not target_date:
-        target_date = datetime.now(timezone.utc).date().isoformat()
+    requested_date = (schedule_date or "").strip()
+    if requested_date:
+        target_dates = [requested_date]
+    else:
+        now_et = datetime.now(MLB_SCHEDULE_TIMEZONE).date()
+        target_dates = [
+            now_et.isoformat(),
+            (now_et - timedelta(days=1)).isoformat(),
+        ]
 
-    params = parse.urlencode({"sportId": 1, "date": target_date})
-    schedule_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_SCHEDULE_PATH}?{params}"
-    schedule_payload = http_get_json(url=schedule_url, timeout=timeout)
+    game_rows_by_pk: dict[str, dict[str, Any]] = {}
+    for target_date in target_dates:
+        params = parse.urlencode({"sportId": 1, "date": target_date})
+        schedule_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_SCHEDULE_PATH}?{params}"
+        schedule_payload = http_get_json(url=schedule_url, timeout=timeout)
+        dates = schedule_payload.get("dates", []) if isinstance(schedule_payload, dict) else []
+        for date_block in dates:
+            if not isinstance(date_block, dict):
+                continue
+            games = date_block.get("games", [])
+            if not isinstance(games, list):
+                continue
+            for game in games:
+                if not isinstance(game, dict):
+                    continue
+                game_pk = game.get("gamePk")
+                if game_pk is None:
+                    continue
+                game_rows_by_pk[str(game_pk)] = game
 
-    dates = schedule_payload.get("dates", []) if isinstance(schedule_payload, dict) else []
-    game_rows: list[dict[str, Any]] = []
-    for date_block in dates:
-        if not isinstance(date_block, dict):
-            continue
-        games = date_block.get("games", [])
-        if not isinstance(games, list):
-            continue
-        for game in games:
-            if isinstance(game, dict):
-                game_rows.append(game)
+    game_rows = list(game_rows_by_pk.values())
 
     out_rows: dict[tuple[str, str], IncomingStat] = {}
     row_week = int(week_override) if week_override is not None else 1
