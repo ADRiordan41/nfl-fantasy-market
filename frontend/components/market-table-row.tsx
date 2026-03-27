@@ -192,6 +192,10 @@ function MarketTableRow({
       : holdingTotalValueNumeric >= 0
         ? "up"
         : "down";
+  const positionSharesLabel =
+    positionValue < 0
+      ? `S${formatNumber(Math.abs(positionValue), 0)}`
+      : formatNumber(Math.abs(positionValue), 0);
 
   return (
     <tr
@@ -245,7 +249,8 @@ function MarketTableRow({
       {combinePositionColumn ? (
         <td className="market-cell-numeric">
           <div className="market-position-stack">
-            <span className={positionClass}>{formatNumber(Math.abs(positionValue), 0)}</span>
+            <span className={positionClass}>{positionSharesLabel}</span>
+            <span className="market-position-separator">/</span>
             <span className={`market-position-value ${holdingValueToneClass}`}>{formatCurrency(holdingTotalValueNumeric)}</span>
           </div>
         </td>

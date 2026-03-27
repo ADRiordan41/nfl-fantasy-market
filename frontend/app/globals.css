@@ -3273,6 +3273,12 @@ button.segment.danger-segment.danger-active {
   width: 106px;
 }
 
+.portfolio-market-table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .market-table th,
 .market-table td {
   padding: 4px 5px;
@@ -3570,14 +3576,21 @@ button.segment.danger-segment.danger-active {
 .market-position-stack {
   display: inline-flex;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.market-position-separator {
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .market-position-value {
   font-weight: 800;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .market-cell-control {
