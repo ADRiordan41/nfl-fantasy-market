@@ -884,7 +884,7 @@ export default function PortfolioPage() {
                           {renderSortButton("name", "Player")}
                         </th>
                         <th>{renderSortButton("spot_price", "Price")}</th>
-                        <th>{renderSortButton("avg_purchase", "Avg Purchase")}</th>
+                        <th>{renderSortButton("avg_purchase", "Cost")}</th>
                         <th>{renderSortButton("total_gain", "Total Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
                         <th>{renderSortButton("position", "Position")}</th>
