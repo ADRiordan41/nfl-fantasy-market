@@ -352,6 +352,14 @@ export default function PortfolioPage() {
     return nextRows;
   }, [change24hById, playersById, rowsWithAllocation, sortColumn, sortDirection]);
 
+  const holdingRowByPlayerId = useMemo(() => {
+    const map = new Map<number, HoldingRow>();
+    for (const row of rowsWithAllocation) {
+      map.set(row.id, row);
+    }
+    return map;
+  }, [rowsWithAllocation]);
+
   const cash = portfolio?.cash_balance ?? 0;
   const holdings = portfolio?.net_exposure ?? computedNetExposure;
   const totalAccount = portfolio?.equity ?? cash + holdings;
@@ -854,6 +862,8 @@ export default function PortfolioPage() {
                       <col className="market-col-change" />
                       <col className="market-col-change-24h" />
                       <col className="market-col-earnings" />
+                      <col className="market-col-earnings" />
+                      <col className="market-col-change" />
                       <col className="market-col-shares-held" />
                       <col className="market-col-shares-short" />
                       <col className="market-col-quick" />
@@ -870,6 +880,8 @@ export default function PortfolioPage() {
                         <th>{renderSortButton("change_pct", "Total Gain")}</th>
                         <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
+                        <th>Avg Purchase</th>
+                        <th>Your Total Gain</th>
                         <th>Shares Held</th>
                         <th>Shares Short</th>
                         <th className="market-header-single">Quick Actions</th>
@@ -879,16 +891,22 @@ export default function PortfolioPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {marketRows.map((row) => (
-                        <MarketTableRow
-                          key={row.player.id}
-                          row={row}
-                          isTradingHalted={Boolean(haltedForSport(row.player.sport))}
-                          onSetError={setError}
-                          onPreviewQuote={requestQuote}
-                          onExecuteTrade={executeTrade}
-                        />
-                      ))}
+                      {marketRows.map((row) => {
+                        const holdingRow = holdingRowByPlayerId.get(row.player.id);
+                        return (
+                          <MarketTableRow
+                            key={row.player.id}
+                            row={row}
+                            averageEntryPrice={holdingRow?.averageEntryPrice ?? null}
+                            userTotalGain={holdingRow?.pnl ?? null}
+                            userTotalGainPct={holdingRow?.pnlPct ?? null}
+                            isTradingHalted={Boolean(haltedForSport(row.player.sport))}
+                            onSetError={setError}
+                            onPreviewQuote={requestQuote}
+                            onExecuteTrade={executeTrade}
+                          />
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

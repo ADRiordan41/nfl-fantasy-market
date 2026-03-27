@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
+import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import type { Quote } from "@/lib/types";
 
 export type MarketTradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
@@ -36,6 +36,9 @@ export type MarketTableRowModel = {
 type MarketTableRowProps = {
   row: MarketTableRowModel;
   isTradingHalted: boolean;
+  averageEntryPrice?: number | null;
+  userTotalGain?: number | null;
+  userTotalGainPct?: number | null;
   priceFlash?: MarketPriceFlashState;
   measureRow?: boolean;
   onMeasureRow?: (height: number) => void;
@@ -65,6 +68,9 @@ function flashClass(direction: "up" | "down" | undefined): string {
 function MarketTableRow({
   row,
   isTradingHalted,
+  averageEntryPrice,
+  userTotalGain,
+  userTotalGainPct,
   priceFlash,
   measureRow = false,
   onMeasureRow,
@@ -183,6 +189,15 @@ function MarketTableRow({
         {formatSignedPercent(row.change24hPct)}
       </td>
       <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+      {averageEntryPrice != null && Number.isFinite(averageEntryPrice) ? (
+        <td className="market-cell-numeric">{formatCurrency(averageEntryPrice)}</td>
+      ) : null}
+      {userTotalGain != null && Number.isFinite(userTotalGain) ? (
+        <td className={`market-cell-numeric ${userTotalGain >= 0 ? "up" : "down"}`}>
+          {formatSignedCurrency(userTotalGain)}{" "}
+          {userTotalGainPct != null && Number.isFinite(userTotalGainPct) ? `(${formatPercent(userTotalGainPct)})` : ""}
+        </td>
+      ) : null}
       <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
       <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
       <td className="market-cell-control">
