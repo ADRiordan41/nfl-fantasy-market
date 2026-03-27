@@ -25,6 +25,7 @@ export type MarketTableRowModel = {
   };
   sharesHeld: number;
   sharesShort: number;
+  seasonEarnings: number;
   totalChangePct: number;
   change24hPct: number;
   change7dPct: number;
@@ -181,6 +182,7 @@ function MarketTableRow({
       <td className={`market-cell-numeric ${row.change24hPct >= 0 ? "up" : "down"}`}>
         {formatSignedPercent(row.change24hPct)}
       </td>
+      <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
       <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
       <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
       <td className="market-cell-control">

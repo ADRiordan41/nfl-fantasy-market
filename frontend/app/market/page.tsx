@@ -70,7 +70,7 @@ const MARKET_PRICE_FLASH_MS = 1100;
 const MARKET_FILTER_DEBOUNCE_MS = 180;
 const MARKET_VIRTUALIZATION_THRESHOLD = 60;
 const MARKET_VIRTUALIZATION_OVERSCAN = 8;
-const MARKET_TABLE_COLUMN_COUNT = 10;
+const MARKET_TABLE_COLUMN_COUNT = 11;
 
 type MobileTradeState = {
   row: MarketTableRowModel;
@@ -400,6 +400,7 @@ export default function MarketPage() {
         const owned = ownedById[player.id] ?? 0;
         const sharesHeld = player.shares_held ?? 0;
         const sharesShort = player.shares_short ?? 0;
+        const seasonEarnings = player.points_to_date ?? 0;
         const totalChangePct = getSignedPercent(player.base_price, player.spot_price);
         const change24hPct = change24hById[player.id] ?? 0;
         const change7dPct = change7dById[player.id] ?? 0;
@@ -411,6 +412,7 @@ export default function MarketPage() {
           player,
           sharesHeld,
           sharesShort,
+          seasonEarnings,
           totalChangePct,
           change24hPct,
           change7dPct,
@@ -825,6 +827,7 @@ export default function MarketPage() {
                   <col className="market-col-price" />
                   <col className="market-col-change" />
                   <col className="market-col-change-24h" />
+                  <col className="market-col-earnings" />
                   <col className="market-col-shares-held" />
                   <col className="market-col-shares-short" />
                   <col className="market-col-quick" />
@@ -840,6 +843,7 @@ export default function MarketPage() {
                     <th>{renderSortButton("spot_price", "Price")}</th>
                     <th>{renderSortButton("change_pct", "Total Gain")}</th>
                     <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
+                    <th>Earnings</th>
                     <th>Shares Held</th>
                     <th>Shares Short</th>
                     <th className="market-header-single">Quick Actions</th>
