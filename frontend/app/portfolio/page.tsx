@@ -20,6 +20,7 @@ type HoldingRow = {
   team: string;
   position: string;
   shares: number;
+  earnings: number;
   averageEntryPrice: number;
   spot: number;
   basisNotional: number;
@@ -205,6 +206,7 @@ export default function PortfolioPage() {
           team: player.team,
           position: player.position,
           shares,
+          earnings: Number(player.points_to_date ?? 0),
           averageEntryPrice,
           spot,
           basisNotional,
@@ -715,6 +717,7 @@ export default function PortfolioPage() {
                           <col className="portfolio-col-shares" />
                           <col className="portfolio-col-purchase" />
                           <col className="portfolio-col-current" />
+                          <col className="portfolio-col-earnings" />
                           <col className="portfolio-col-value" />
                           <col className="portfolio-col-pnl" />
                           <col className="portfolio-col-allocation" />
@@ -728,6 +731,7 @@ export default function PortfolioPage() {
                             <th>Shares</th>
                             <th>Purchase Price</th>
                             <th>Current Price</th>
+                            <th>Earnings</th>
                             <th>Market Value</th>
                             <th>Unrealized P/L</th>
                             <th>Allocation</th>
@@ -747,6 +751,7 @@ export default function PortfolioPage() {
                               <td>{formatNumber(row.shares, 0)}</td>
                               <td>{formatCurrency(row.averageEntryPrice)}</td>
                               <td>{formatCurrency(row.spot)}</td>
+                              <td>{formatCurrency(row.earnings)}</td>
                               <td>{formatCurrency(row.marketValue)}</td>
                               <td className={row.pnl >= 0 ? "up" : "down"}>
                                 {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})

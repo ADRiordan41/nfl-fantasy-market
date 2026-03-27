@@ -2645,6 +2645,7 @@ button.segment.danger-segment.danger-active {
 
 .portfolio-table col.portfolio-col-purchase,
 .portfolio-table col.portfolio-col-current,
+.portfolio-table col.portfolio-col-earnings,
 .portfolio-table col.portfolio-col-value {
   width: 112px;
 }
