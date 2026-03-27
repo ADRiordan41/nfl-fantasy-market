@@ -2349,6 +2349,14 @@ h1 {
   color: #14385d;
 }
 
+.live-top-name-clickable {
+  cursor: pointer;
+}
+
+.live-top-name-clickable:hover {
+  text-decoration: underline;
+}
+
 .live-card-footer {
   display: flex;
   justify-content: flex-end;

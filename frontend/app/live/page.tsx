@@ -208,7 +208,16 @@ export default function LivePage() {
                                 {team.topPlayers.map((player) => (
                                   <div key={`${game.game_id}-${team.team}-${player.player_id}`} className="live-top-row">
                                     <div className="live-top-player">
-                                      <span className="live-top-name">{player.name}</span>
+                                      <span
+                                        className="live-top-name live-top-name-clickable"
+                                        onClick={(event) => {
+                                          event.preventDefault();
+                                          event.stopPropagation();
+                                          void router.push(`/player/${player.player_id}`);
+                                        }}
+                                      >
+                                        {player.name}
+                                      </span>
                                       <span className="subtle">{player.position}</span>
                                     </div>
                                     <div className="live-top-metrics">
