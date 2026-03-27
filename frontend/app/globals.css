@@ -3269,6 +3269,10 @@ button.segment.danger-segment.danger-active {
   width: 128px;
 }
 
+.portfolio-market-table .market-col-quote {
+  width: 106px;
+}
+
 .market-table th,
 .market-table td {
   padding: 4px 5px;
@@ -3633,6 +3637,12 @@ button.segment.danger-segment.danger-active {
   width: 128px;
   min-width: 128px;
   max-width: 128px;
+}
+
+.portfolio-market-table .market-quote-cell {
+  width: 106px;
+  min-width: 106px;
+  max-width: 106px;
 }
 
 .market-quote-with-action {

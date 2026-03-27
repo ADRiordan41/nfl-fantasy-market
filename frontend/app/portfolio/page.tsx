@@ -15,7 +15,7 @@ import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { AdminAuditTrade, MarketMovers, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
 
-type MarketSortColumn = "name" | "spot_price" | "avg_purchase" | "total_gain" | "earnings";
+type MarketSortColumn = "name" | "spot_price" | "avg_purchase" | "total_gain" | "earnings" | "position";
 type SortDirection = "asc" | "desc";
 
 type PortfolioTradeSide = "SELL" | "COVER";
@@ -77,6 +77,7 @@ const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   avg_purchase: "desc",
   total_gain: "desc",
   earnings: "desc",
+  position: "desc",
 };
 
 function toMessage(err: unknown): string {
@@ -363,6 +364,7 @@ export default function PortfolioPage() {
       if (sortColumn === "avg_purchase") return direction * (a.averageEntryPrice - b.averageEntryPrice);
       if (sortColumn === "total_gain") return direction * (a.totalGain - b.totalGain);
       if (sortColumn === "earnings") return direction * (a.market.seasonEarnings - b.market.seasonEarnings);
+      if (sortColumn === "position") return direction * (a.totalValue - b.totalValue);
       return 0;
     });
     return nextRows;
@@ -863,7 +865,7 @@ export default function PortfolioPage() {
                   </p>
                 </div>
                 <div className="table-wrap">
-                  <table className="market-table">
+                  <table className="market-table portfolio-market-table">
                     <colgroup>
                       <col className="market-col-player" />
                       <col className="market-col-price" />
@@ -885,7 +887,7 @@ export default function PortfolioPage() {
                         <th>{renderSortButton("avg_purchase", "Avg Purchase")}</th>
                         <th>{renderSortButton("total_gain", "Total Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
-                        <th>Position</th>
+                        <th>{renderSortButton("position", "Position")}</th>
                         <th className="market-header-single">Quick Action</th>
                         <th className="market-header-single">Action</th>
                         <th className="market-header-single">Qty</th>
