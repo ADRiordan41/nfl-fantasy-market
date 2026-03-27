@@ -15,7 +15,7 @@ import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { AdminAuditTrade, MarketMovers, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
 
-type MarketSortColumn = "name" | "spot_price" | "change_pct" | "change_24h_pct" | "earnings";
+type MarketSortColumn = "name" | "spot_price" | "earnings";
 type SortDirection = "asc" | "desc";
 
 type PortfolioTradeSide = "SELL" | "COVER";
@@ -65,8 +65,6 @@ const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
 const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   name: "asc",
   spot_price: "desc",
-  change_pct: "desc",
-  change_24h_pct: "desc",
   earnings: "desc",
 };
 
@@ -344,8 +342,6 @@ export default function PortfolioPage() {
     nextRows.sort((a, b) => {
       if (sortColumn === "name") return direction * a.player.name.localeCompare(b.player.name);
       if (sortColumn === "spot_price") return direction * (a.player.spot_price - b.player.spot_price);
-      if (sortColumn === "change_pct") return direction * (a.totalChangePct - b.totalChangePct);
-      if (sortColumn === "change_24h_pct") return direction * (a.change24hPct - b.change24hPct);
       if (sortColumn === "earnings") return direction * (a.seasonEarnings - b.seasonEarnings);
       return 0;
     });
@@ -859,8 +855,6 @@ export default function PortfolioPage() {
                     <colgroup>
                       <col className="market-col-player" />
                       <col className="market-col-price" />
-                      <col className="market-col-change" />
-                      <col className="market-col-change-24h" />
                       <col className="market-col-earnings" />
                       <col className="market-col-earnings" />
                       <col className="market-col-change" />
@@ -877,8 +871,6 @@ export default function PortfolioPage() {
                           {renderSortButton("name", "Player")}
                         </th>
                         <th>{renderSortButton("spot_price", "Price")}</th>
-                        <th>{renderSortButton("change_pct", "Total Gain")}</th>
-                        <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
                         <th>Avg Purchase</th>
                         <th>Your Total Gain</th>
@@ -897,6 +889,7 @@ export default function PortfolioPage() {
                           <MarketTableRow
                             key={row.player.id}
                             row={row}
+                            hidePerformanceColumns
                             averageEntryPrice={holdingRow?.averageEntryPrice ?? null}
                             userTotalGain={holdingRow?.pnl ?? null}
                             userTotalGainPct={holdingRow?.pnlPct ?? null}

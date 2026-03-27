@@ -36,6 +36,7 @@ export type MarketTableRowModel = {
 type MarketTableRowProps = {
   row: MarketTableRowModel;
   isTradingHalted: boolean;
+  hidePerformanceColumns?: boolean;
   averageEntryPrice?: number | null;
   userTotalGain?: number | null;
   userTotalGainPct?: number | null;
@@ -68,6 +69,7 @@ function flashClass(direction: "up" | "down" | undefined): string {
 function MarketTableRow({
   row,
   isTradingHalted,
+  hidePerformanceColumns = false,
   averageEntryPrice,
   userTotalGain,
   userTotalGainPct,
@@ -182,12 +184,16 @@ function MarketTableRow({
       <td className={`market-cell-numeric market-price-cell market-mid-cell${flashClass(priceFlash?.spot)}`}>
         {formatCurrency(row.player.spot_price)}
       </td>
-      <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
-        {formatSignedPercent(row.totalChangePct)}
-      </td>
-      <td className={`market-cell-numeric ${row.change24hPct >= 0 ? "up" : "down"}`}>
-        {formatSignedPercent(row.change24hPct)}
-      </td>
+      {!hidePerformanceColumns ? (
+        <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
+          {formatSignedPercent(row.totalChangePct)}
+        </td>
+      ) : null}
+      {!hidePerformanceColumns ? (
+        <td className={`market-cell-numeric ${row.change24hPct >= 0 ? "up" : "down"}`}>
+          {formatSignedPercent(row.change24hPct)}
+        </td>
+      ) : null}
       <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
       {averageEntryPrice != null && Number.isFinite(averageEntryPrice) ? (
         <td className="market-cell-numeric">{formatCurrency(averageEntryPrice)}</td>
