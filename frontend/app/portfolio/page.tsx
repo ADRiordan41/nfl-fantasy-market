@@ -3,13 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import MarketTableRow, {
+  type MarketTableRowModel,
+  type MarketTradeSide,
+} from "@/components/market-table-row";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
 import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
-import type { AdminAuditTrade, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
+import type { AdminAuditTrade, MarketMovers, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
+
+type MarketSortColumn = "name" | "spot_price" | "change_pct" | "change_24h_pct" | "earnings";
+type SortDirection = "asc" | "desc";
 
 type PortfolioTradeSide = "SELL" | "COVER";
 
@@ -54,6 +61,14 @@ type AccountMixSegment = AccountMixSlice & {
 
 const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
 const MAX_ACCOUNT_MIX_HOLDINGS = 8;
+const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
+const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
+  name: "asc",
+  spot_price: "desc",
+  change_pct: "desc",
+  change_24h_pct: "desc",
+  earnings: "desc",
+};
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -77,6 +92,11 @@ function parseWholeShares(value: string): number | null {
   if (!/^[0-9]+$/.test(trimmed)) return null;
   const parsed = Number.parseInt(trimmed, 10);
   return parsed > 0 ? parsed : null;
+}
+
+function getSignedPercent(base: number, spot: number): number {
+  if (!base) return 0;
+  return ((spot - base) / base) * 100;
 }
 
 function sideForRow(row: HoldingRow): PortfolioTradeSide {
@@ -122,6 +142,9 @@ export default function PortfolioPage() {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [recentTransactions, setRecentTransactions] = useState<AdminAuditTrade[]>([]);
   const [playersById, setPlayersById] = useState<Record<number, Player>>({});
+  const [change24hById, setChange24hById] = useState<Record<number, number>>({});
+  const [sortColumn, setSortColumn] = useState<MarketSortColumn>("spot_price");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [qtyById, setQtyById] = useState<Record<number, string>>({});
   const [quoteById, setQuoteById] = useState<Record<number, Quote | null>>({});
   const [previewingId, setPreviewingId] = useState<number | null>(null);
@@ -145,16 +168,27 @@ export default function PortfolioPage() {
   const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
     try {
-      const [portfolioData, transactions, players, me, statusData] = await Promise.all([
+      const [portfolioData, transactions, players, me, statusData, movers24hData] = await Promise.all([
         apiGet<Portfolio>("/portfolio"),
         apiGet<AdminAuditTrade[]>("/transactions/me?limit=50"),
         apiGet<Player[]>("/players"),
         apiGet<UserAccount>("/auth/me"),
         apiGet<TradingStatus>("/trading/status").catch(() => null),
+        apiGet<MarketMovers>("/market/movers?limit=100&window_hours=24").catch(() => null),
       ]);
+      const next24hById: Record<number, number> = {};
+      if (movers24hData) {
+        for (const row of [...movers24hData.gainers, ...movers24hData.losers]) {
+          const existing = next24hById[row.player_id];
+          if (existing === undefined || Math.abs(row.change_percent) > Math.abs(existing)) {
+            next24hById[row.player_id] = row.change_percent;
+          }
+        }
+      }
       setRecentTransactions(transactions);
       setPortfolio(portfolioData);
       setPlayersById(Object.fromEntries(players.map((player) => [player.id, player])));
+      setChange24hById(next24hById);
       setCurrentUser(me);
       setTradingStatus(statusData);
       setLastUpdated(new Date().toISOString());
@@ -275,6 +309,49 @@ export default function PortfolioPage() {
       });
   }, [computedGrossExposure, rowsWithAllocation]);
 
+  const marketRows = useMemo<MarketTableRowModel[]>(() => {
+    const direction = sortDirection === "asc" ? 1 : -1;
+    const nextRows: MarketTableRowModel[] = [];
+    for (const row of rowsWithAllocation) {
+      const player = playersById[row.id];
+      if (!player) continue;
+      const owned = Number(row.shares);
+      const maxOpenSharesAtSpot = MAX_POSITION_NOTIONAL_PER_PLAYER / Math.max(0.0001, Number(player.spot_price));
+      const buyRemaining = owned < 0 ? 0 : Math.max(0, Math.floor(maxOpenSharesAtSpot - Math.max(0, owned)));
+      const shortRemaining =
+        owned > 0 ? 0 : Math.max(0, Math.floor(maxOpenSharesAtSpot - Math.max(0, Math.abs(owned))));
+      nextRows.push({
+        player: {
+          id: player.id,
+          name: player.name,
+          team: player.team,
+          position: player.position,
+          sport: player.sport,
+          spot_price: Number(player.spot_price),
+          live: player.live ? { live_now: Boolean(player.live.live_now) } : null,
+        },
+        sharesHeld: Number(player.shares_held ?? 0),
+        sharesShort: Number(player.shares_short ?? 0),
+        seasonEarnings: Number(player.points_to_date ?? 0),
+        totalChangePct: getSignedPercent(Number(player.base_price), Number(player.spot_price)),
+        change24hPct: Number(change24hById[player.id] ?? 0),
+        change7dPct: 0,
+        buyRemaining,
+        shortRemaining,
+      });
+    }
+
+    nextRows.sort((a, b) => {
+      if (sortColumn === "name") return direction * a.player.name.localeCompare(b.player.name);
+      if (sortColumn === "spot_price") return direction * (a.player.spot_price - b.player.spot_price);
+      if (sortColumn === "change_pct") return direction * (a.totalChangePct - b.totalChangePct);
+      if (sortColumn === "change_24h_pct") return direction * (a.change24hPct - b.change24hPct);
+      if (sortColumn === "earnings") return direction * (a.seasonEarnings - b.seasonEarnings);
+      return 0;
+    });
+    return nextRows;
+  }, [change24hById, playersById, rowsWithAllocation, sortColumn, sortDirection]);
+
   const cash = portfolio?.cash_balance ?? 0;
   const holdings = portfolio?.net_exposure ?? computedNetExposure;
   const totalAccount = portfolio?.equity ?? cash + holdings;
@@ -359,12 +436,16 @@ export default function PortfolioPage() {
     return pieSegments.find((slice) => slice.key === activeAccountMixSliceKey) ?? pieSegments[0];
   }, [activeAccountMixSliceKey, pieSegments]);
 
+  function haltedForSport(sport: string): TradingHaltState | null {
+    if (globalHalt) return globalHalt;
+    return haltBySport.get(sport) ?? null;
+  }
+
   function maxTradableShares(row: HoldingRow): number {
     return Math.max(0, Math.abs(Math.trunc(row.shares)));
   }
   function haltedForRow(row: HoldingRow): TradingHaltState | null {
-    if (globalHalt) return globalHalt;
-    return haltBySport.get(row.sport) ?? null;
+    return haltedForSport(row.sport);
   }
 
   function clearQuote(playerId: number) {
@@ -381,6 +462,63 @@ export default function PortfolioPage() {
     if (haltedForRow(row)) return;
     setQuantity(row.id, String(maxTradableShares(row)));
   }
+
+  function toggleSort(column: MarketSortColumn) {
+    if (sortColumn === column) {
+      setSortDirection((previous) => (previous === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection(SORT_DEFAULT_DIRECTION[column]);
+  }
+
+  function renderSortButton(column: MarketSortColumn, label: string) {
+    const active = sortColumn === column;
+    const indicator = active ? sortDirection : "both";
+    return (
+      <button
+        type="button"
+        className={`market-sort-btn${active ? " active" : ""}`}
+        onClick={() => toggleSort(column)}
+        aria-pressed={active}
+      >
+        <span className="market-sort-label">{label}</span>
+        <span className={`market-sort-indicator ${indicator}`} aria-hidden="true" />
+      </button>
+    );
+  }
+
+  const requestQuote = useCallback(
+    async (playerId: number, side: MarketTradeSide, shares: number) => {
+      try {
+        return await apiPost<Quote>(`/quote/${side.toLowerCase()}`, {
+          player_id: playerId,
+          shares,
+        });
+      } catch (err: unknown) {
+        handleRequestError(err);
+        throw err;
+      }
+    },
+    [handleRequestError],
+  );
+
+  const executeTrade = useCallback(
+    async (playerId: number, side: MarketTradeSide, shares: number) => {
+      try {
+        await apiPost(`/trade/${side.toLowerCase()}`, {
+          player_id: playerId,
+          shares,
+        });
+        await load({ silent: true });
+        notifySuccess(`${side} executed.`);
+      } catch (err: unknown) {
+        handleRequestError(err);
+        throw err;
+      }
+    },
+    [handleRequestError, load],
+  );
 
   async function previewTrade(row: HoldingRow) {
     const halt = haltedForRow(row);
@@ -701,134 +839,59 @@ export default function PortfolioPage() {
                 ))}
               </section>
 
-              <section className="desktop-only portfolio-holdings-groups">
-                {sportGroups.map((group) => (
-                  <section key={group.sport} className="table-panel">
-                    <div className="portfolio-sport-group-head">
-                      <h3>{group.sport}</h3>
-                      <p className="subtle portfolio-sport-summary">
-                        {formatNumber(group.rows.length)} positions | Net {formatCurrency(group.netValue)} | Gross {formatCurrency(group.grossValue)} | {formatPercent(group.allocationPct, 1)} allocation
-                      </p>
-                    </div>
-                    <div className="table-wrap">
-                      <table className="portfolio-table">
-                        <colgroup>
-                          <col className="portfolio-col-player" />
-                          <col className="portfolio-col-shares" />
-                          <col className="portfolio-col-purchase" />
-                          <col className="portfolio-col-current" />
-                          <col className="portfolio-col-earnings" />
-                          <col className="portfolio-col-value" />
-                          <col className="portfolio-col-pnl" />
-                          <col className="portfolio-col-allocation" />
-                          <col className="portfolio-col-action" />
-                          <col className="portfolio-col-qty" />
-                          <col className="portfolio-col-quote" />
-                        </colgroup>
-                        <thead>
-                          <tr>
-                            <th>Player</th>
-                            <th>Shares</th>
-                            <th>Purchase Price</th>
-                            <th>Current Price</th>
-                            <th>Earnings</th>
-                            <th>Market Value</th>
-                            <th>Unrealized P/L</th>
-                            <th>Allocation</th>
-                            <th>Action</th>
-                            <th>Qty</th>
-                            <th>Quote</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.rows.map((row) => (
-                            <tr key={row.id}>
-                              <td>
-                                <Link href={`/player/${row.id}`} className="card-title">
-                                  {row.name}
-                                </Link>
-                              </td>
-                              <td>{formatNumber(row.shares, 0)}</td>
-                              <td>{formatCurrency(row.averageEntryPrice)}</td>
-                              <td>{formatCurrency(row.spot)}</td>
-                              <td>{formatCurrency(row.earnings)}</td>
-                              <td>{formatCurrency(row.marketValue)}</td>
-                              <td className={row.pnl >= 0 ? "up" : "down"}>
-                                {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})
-                              </td>
-                              <td>{formatPercent(row.allocationPct, 1)}</td>
-                              <td>
-                                <button
-                                  type="button"
-                                  className={`chip market-mini-btn portfolio-trade-action-btn ${
-                                    sideForRow(row) === "SELL" ? "portfolio-trade-sell-btn" : "portfolio-trade-cover-btn"
-                                  }`}
-                                  onClick={() => setMaxQuantity(row)}
-                                  disabled={
-                                    Boolean(haltedForRow(row)) ||
-                                    maxTradableShares(row) <= 0 ||
-                                    previewingId === row.id ||
-                                    placingId === row.id
-                                  }
-                                >
-                                  {sideForRow(row)} Max
-                                </button>
-                              </td>
-                              <td className="market-qty-cell">
-                                <input
-                                  className="market-qty-input"
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
-                                  maxLength={4}
-                                  value={qtyById[row.id] ?? ""}
-                                  onChange={(event) => setQuantity(row.id, event.target.value)}
-                                  placeholder="qty"
-                                  disabled={Boolean(haltedForRow(row))}
-                                />
-                              </td>
-                              <td className="market-quote-cell">
-                                {haltedForRow(row) && (
-                                  <p className="subtle portfolio-row-halt-note">
-                                    Trading paused{haltedForRow(row)?.reason ? `: ${haltedForRow(row)?.reason}` : "."}
-                                  </p>
-                                )}
-                                {quoteById[row.id] ? (
-                                  <div className="market-quote-with-action">
-                                    <div className="market-quote-text">
-                                      <p className="market-quote-main">
-                                        Net: {formatCurrency(quoteById[row.id]!.total)}
-                                      </p>
-                                      <p className="market-quote-sub">Avg {formatCurrency(quoteById[row.id]!.average_price, 3)}</p>
-                                    </div>
-                                    <button
-                                      className={
-                                        sideForRow(row) === "SELL"
-                                          ? "primary-btn short-btn market-quote-action-btn"
-                                          : "primary-btn market-quote-action-btn"
-                                      }
-                                      disabled={Boolean(haltedForRow(row)) || placingId === row.id}
-                                      onClick={() => void placeTrade(row)}
-                                    >
-                                      {placingId === row.id ? "Placing..." : "Execute"}
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    className="market-quote-action-btn market-quote-preview-btn"
-                                    onClick={() => void previewTrade(row)}
-                                    disabled={Boolean(haltedForRow(row)) || previewingId === row.id}
-                                  >
-                                    {previewingId === row.id ? "Quoting..." : "Preview"}
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                ))}
+              <section className="desktop-only table-panel market-table-panel desktop-market-table">
+                <div className="portfolio-sport-group-head">
+                  <h3>Held Players (Market View)</h3>
+                  <p className="subtle portfolio-sport-summary">
+                    {formatNumber(marketRows.length)} held players shown with the same columns and actions as the market table.
+                  </p>
+                </div>
+                <div className="table-wrap">
+                  <table className="market-table">
+                    <colgroup>
+                      <col className="market-col-player" />
+                      <col className="market-col-price" />
+                      <col className="market-col-change" />
+                      <col className="market-col-change-24h" />
+                      <col className="market-col-earnings" />
+                      <col className="market-col-shares-held" />
+                      <col className="market-col-shares-short" />
+                      <col className="market-col-quick" />
+                      <col className="market-col-action" />
+                      <col className="market-col-qty" />
+                      <col className="market-col-quote" />
+                    </colgroup>
+                    <thead>
+                      <tr className="market-header-detail-row">
+                        <th className="market-sticky-player-cell market-header-corner">
+                          {renderSortButton("name", "Player")}
+                        </th>
+                        <th>{renderSortButton("spot_price", "Price")}</th>
+                        <th>{renderSortButton("change_pct", "Total Gain")}</th>
+                        <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
+                        <th>{renderSortButton("earnings", "Earnings")}</th>
+                        <th>Shares Held</th>
+                        <th>Shares Short</th>
+                        <th className="market-header-single">Quick Actions</th>
+                        <th className="market-header-single">Action</th>
+                        <th className="market-header-single">Qty</th>
+                        <th className="market-header-single">Quote</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {marketRows.map((row) => (
+                        <MarketTableRow
+                          key={row.player.id}
+                          row={row}
+                          isTradingHalted={Boolean(haltedForSport(row.player.sport))}
+                          onSetError={setError}
+                          onPreviewQuote={requestQuote}
+                          onExecuteTrade={executeTrade}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </section>
             </>
           )}
