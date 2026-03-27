@@ -37,6 +37,7 @@ type MarketTableRowProps = {
   row: MarketTableRowModel;
   isTradingHalted: boolean;
   hidePerformanceColumns?: boolean;
+  extraColumnsBeforeEarnings?: boolean;
   averageEntryPrice?: number | null;
   userTotalGain?: number | null;
   userTotalGainPct?: number | null;
@@ -70,6 +71,7 @@ function MarketTableRow({
   row,
   isTradingHalted,
   hidePerformanceColumns = false,
+  extraColumnsBeforeEarnings = false,
   averageEntryPrice,
   userTotalGain,
   userTotalGainPct,
@@ -163,6 +165,8 @@ function MarketTableRow({
   );
 
   const rowHighlighted = Boolean(quote) || isPreviewing || isPlacing;
+  const hasAverageEntry = averageEntryPrice != null && Number.isFinite(averageEntryPrice);
+  const hasUserTotalGain = userTotalGain != null && Number.isFinite(userTotalGain);
 
   return (
     <tr
@@ -194,11 +198,20 @@ function MarketTableRow({
           {formatSignedPercent(row.change24hPct)}
         </td>
       ) : null}
-      <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
-      {averageEntryPrice != null && Number.isFinite(averageEntryPrice) ? (
+      {extraColumnsBeforeEarnings && hasAverageEntry ? (
         <td className="market-cell-numeric">{formatCurrency(averageEntryPrice)}</td>
       ) : null}
-      {userTotalGain != null && Number.isFinite(userTotalGain) ? (
+      {extraColumnsBeforeEarnings && hasUserTotalGain ? (
+        <td className={`market-cell-numeric ${userTotalGain >= 0 ? "up" : "down"}`}>
+          {formatSignedCurrency(userTotalGain)}{" "}
+          {userTotalGainPct != null && Number.isFinite(userTotalGainPct) ? `(${formatPercent(userTotalGainPct)})` : ""}
+        </td>
+      ) : null}
+      <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+      {!extraColumnsBeforeEarnings && hasAverageEntry ? (
+        <td className="market-cell-numeric">{formatCurrency(averageEntryPrice)}</td>
+      ) : null}
+      {!extraColumnsBeforeEarnings && hasUserTotalGain ? (
         <td className={`market-cell-numeric ${userTotalGain >= 0 ? "up" : "down"}`}>
           {formatSignedCurrency(userTotalGain)}{" "}
           {userTotalGainPct != null && Number.isFinite(userTotalGainPct) ? `(${formatPercent(userTotalGainPct)})` : ""}

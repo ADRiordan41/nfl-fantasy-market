@@ -15,7 +15,7 @@ import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { AdminAuditTrade, MarketMovers, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
 
-type MarketSortColumn = "name" | "spot_price" | "earnings";
+type MarketSortColumn = "name" | "spot_price" | "avg_purchase" | "total_gain" | "earnings";
 type SortDirection = "asc" | "desc";
 
 type PortfolioTradeSide = "SELL" | "COVER";
@@ -35,6 +35,13 @@ type HoldingRow = {
   pnl: number;
   pnlPct: number;
   allocationPct: number;
+};
+
+type PortfolioMarketRow = {
+  market: MarketTableRowModel;
+  averageEntryPrice: number;
+  totalGain: number;
+  totalGainPct: number;
 };
 
 type SportGroup = {
@@ -65,6 +72,8 @@ const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
 const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   name: "asc",
   spot_price: "desc",
+  avg_purchase: "desc",
+  total_gain: "desc",
   earnings: "desc",
 };
 
@@ -307,9 +316,9 @@ export default function PortfolioPage() {
       });
   }, [computedGrossExposure, rowsWithAllocation]);
 
-  const marketRows = useMemo<MarketTableRowModel[]>(() => {
+  const marketRows = useMemo<PortfolioMarketRow[]>(() => {
     const direction = sortDirection === "asc" ? 1 : -1;
-    const nextRows: MarketTableRowModel[] = [];
+    const nextRows: PortfolioMarketRow[] = [];
     for (const row of rowsWithAllocation) {
       const player = playersById[row.id];
       if (!player) continue;
@@ -319,42 +328,41 @@ export default function PortfolioPage() {
       const shortRemaining =
         owned > 0 ? 0 : Math.max(0, Math.floor(maxOpenSharesAtSpot - Math.max(0, Math.abs(owned))));
       nextRows.push({
-        player: {
-          id: player.id,
-          name: player.name,
-          team: player.team,
-          position: player.position,
-          sport: player.sport,
-          spot_price: Number(player.spot_price),
-          live: player.live ? { live_now: Boolean(player.live.live_now) } : null,
+        market: {
+          player: {
+            id: player.id,
+            name: player.name,
+            team: player.team,
+            position: player.position,
+            sport: player.sport,
+            spot_price: Number(player.spot_price),
+            live: player.live ? { live_now: Boolean(player.live.live_now) } : null,
+          },
+          sharesHeld: Number(player.shares_held ?? 0),
+          sharesShort: Number(player.shares_short ?? 0),
+          seasonEarnings: Number(player.points_to_date ?? 0),
+          totalChangePct: getSignedPercent(Number(player.base_price), Number(player.spot_price)),
+          change24hPct: Number(change24hById[player.id] ?? 0),
+          change7dPct: 0,
+          buyRemaining,
+          shortRemaining,
         },
-        sharesHeld: Number(player.shares_held ?? 0),
-        sharesShort: Number(player.shares_short ?? 0),
-        seasonEarnings: Number(player.points_to_date ?? 0),
-        totalChangePct: getSignedPercent(Number(player.base_price), Number(player.spot_price)),
-        change24hPct: Number(change24hById[player.id] ?? 0),
-        change7dPct: 0,
-        buyRemaining,
-        shortRemaining,
+        averageEntryPrice: Number(row.averageEntryPrice),
+        totalGain: Number(row.pnl),
+        totalGainPct: Number(row.pnlPct),
       });
     }
 
     nextRows.sort((a, b) => {
-      if (sortColumn === "name") return direction * a.player.name.localeCompare(b.player.name);
-      if (sortColumn === "spot_price") return direction * (a.player.spot_price - b.player.spot_price);
-      if (sortColumn === "earnings") return direction * (a.seasonEarnings - b.seasonEarnings);
+      if (sortColumn === "name") return direction * a.market.player.name.localeCompare(b.market.player.name);
+      if (sortColumn === "spot_price") return direction * (a.market.player.spot_price - b.market.player.spot_price);
+      if (sortColumn === "avg_purchase") return direction * (a.averageEntryPrice - b.averageEntryPrice);
+      if (sortColumn === "total_gain") return direction * (a.totalGain - b.totalGain);
+      if (sortColumn === "earnings") return direction * (a.market.seasonEarnings - b.market.seasonEarnings);
       return 0;
     });
     return nextRows;
   }, [change24hById, playersById, rowsWithAllocation, sortColumn, sortDirection]);
-
-  const holdingRowByPlayerId = useMemo(() => {
-    const map = new Map<number, HoldingRow>();
-    for (const row of rowsWithAllocation) {
-      map.set(row.id, row);
-    }
-    return map;
-  }, [rowsWithAllocation]);
 
   const cash = portfolio?.cash_balance ?? 0;
   const holdings = portfolio?.net_exposure ?? computedNetExposure;
@@ -856,8 +864,8 @@ export default function PortfolioPage() {
                       <col className="market-col-player" />
                       <col className="market-col-price" />
                       <col className="market-col-earnings" />
-                      <col className="market-col-earnings" />
                       <col className="market-col-change" />
+                      <col className="market-col-earnings" />
                       <col className="market-col-shares-held" />
                       <col className="market-col-shares-short" />
                       <col className="market-col-quick" />
@@ -871,9 +879,9 @@ export default function PortfolioPage() {
                           {renderSortButton("name", "Player")}
                         </th>
                         <th>{renderSortButton("spot_price", "Price")}</th>
+                        <th>{renderSortButton("avg_purchase", "Avg Purchase")}</th>
+                        <th>{renderSortButton("total_gain", "Total Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
-                        <th>Avg Purchase</th>
-                        <th>Your Total Gain</th>
                         <th>Shares Held</th>
                         <th>Shares Short</th>
                         <th className="market-header-single">Quick Actions</th>
@@ -883,23 +891,21 @@ export default function PortfolioPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {marketRows.map((row) => {
-                        const holdingRow = holdingRowByPlayerId.get(row.player.id);
-                        return (
-                          <MarketTableRow
-                            key={row.player.id}
-                            row={row}
-                            hidePerformanceColumns
-                            averageEntryPrice={holdingRow?.averageEntryPrice ?? null}
-                            userTotalGain={holdingRow?.pnl ?? null}
-                            userTotalGainPct={holdingRow?.pnlPct ?? null}
-                            isTradingHalted={Boolean(haltedForSport(row.player.sport))}
-                            onSetError={setError}
-                            onPreviewQuote={requestQuote}
-                            onExecuteTrade={executeTrade}
-                          />
-                        );
-                      })}
+                      {marketRows.map((row) => (
+                        <MarketTableRow
+                          key={row.market.player.id}
+                          row={row.market}
+                          hidePerformanceColumns
+                          extraColumnsBeforeEarnings
+                          averageEntryPrice={row.averageEntryPrice}
+                          userTotalGain={row.totalGain}
+                          userTotalGainPct={row.totalGainPct}
+                          isTradingHalted={Boolean(haltedForSport(row.market.player.sport))}
+                          onSetError={setError}
+                          onPreviewQuote={requestQuote}
+                          onExecuteTrade={executeTrade}
+                        />
+                      ))}
                     </tbody>
                   </table>
                 </div>
