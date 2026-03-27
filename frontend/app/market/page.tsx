@@ -17,6 +17,25 @@ import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount
 
 type MarketSortColumn = "name" | "team" | "position" | "spot_price" | "change_pct" | "change_24h_pct";
 type SortDirection = "asc" | "desc";
+type MobileMarketSortMode =
+  | "price_desc"
+  | "price_asc"
+  | "overall_gainers"
+  | "overall_losers"
+  | "daily_gainers"
+  | "daily_losers"
+  | "weekly_gainers"
+  | "weekly_losers";
+const MOBILE_SORT_OPTIONS: Array<{ value: MobileMarketSortMode; label: string }> = [
+  { value: "price_desc", label: "Price: High to low" },
+  { value: "price_asc", label: "Price: Low to high" },
+  { value: "overall_gainers", label: "Overall: Biggest gainers" },
+  { value: "overall_losers", label: "Overall: Biggest losers" },
+  { value: "daily_gainers", label: "24H: Biggest gainers" },
+  { value: "daily_losers", label: "24H: Biggest losers" },
+  { value: "weekly_gainers", label: "7D: Biggest gainers" },
+  { value: "weekly_losers", label: "7D: Biggest losers" },
+];
 type PriceSnapshot = {
   spot: number;
 };
@@ -122,6 +141,7 @@ export default function MarketPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [change24hById, setChange24hById] = useState<Record<number, number>>({});
+  const [change7dById, setChange7dById] = useState<Record<number, number>>({});
   const [priceFlashById, setPriceFlashById] = useState<Record<number, MarketPriceFlashState>>({});
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
@@ -129,6 +149,7 @@ export default function MarketPage() {
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [sortColumn, setSortColumn] = useState<MarketSortColumn>("spot_price");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [mobileSortMode, setMobileSortMode] = useState<MobileMarketSortMode>("price_desc");
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [hydratedSortKey, setHydratedSortKey] = useState("");
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -207,10 +228,13 @@ export default function MarketPage() {
     async (options?: { silent?: boolean }) => {
       if (!options?.silent) setLoading(true);
       try {
-        const [playersData, portfolioData, moversData, statusData] = await Promise.all([
+        const [playersData, portfolioData, movers24hData, movers7dData, statusData] = await Promise.all([
           apiGet<Player[]>("/players"),
           apiGet<Portfolio>("/portfolio"),
           apiGet<MarketMovers>(`/market/movers?limit=100&window_hours=24&sport=${encodeURIComponent(activeSport)}`).catch(
+            () => null,
+          ),
+          apiGet<MarketMovers>(`/market/movers?limit=100&window_hours=168&sport=${encodeURIComponent(activeSport)}`).catch(
             () => null,
           ),
           apiGet<TradingStatus>("/trading/status").catch(() => null),
@@ -219,15 +243,25 @@ export default function MarketPage() {
         setPlayers(playersData);
         setPortfolio(portfolioData);
         const next24hById: Record<number, number> = {};
-        if (moversData) {
-          for (const row of [...moversData.gainers, ...moversData.losers]) {
+        if (movers24hData) {
+          for (const row of [...movers24hData.gainers, ...movers24hData.losers]) {
             const existing = next24hById[row.player_id];
             if (existing === undefined || Math.abs(row.change_percent) > Math.abs(existing)) {
               next24hById[row.player_id] = row.change_percent;
             }
           }
         }
+        const next7dById: Record<number, number> = {};
+        if (movers7dData) {
+          for (const row of [...movers7dData.gainers, ...movers7dData.losers]) {
+            const existing = next7dById[row.player_id];
+            if (existing === undefined || Math.abs(row.change_percent) > Math.abs(existing)) {
+              next7dById[row.player_id] = row.change_percent;
+            }
+          }
+        }
         setChange24hById(next24hById);
+        setChange7dById(next7dById);
         setTradingStatus(statusData);
         setLastUpdated(new Date().toISOString());
         setError("");
@@ -368,6 +402,7 @@ export default function MarketPage() {
         const sharesShort = player.shares_short ?? 0;
         const totalChangePct = getSignedPercent(player.base_price, player.spot_price);
         const change24hPct = change24hById[player.id] ?? 0;
+        const change7dPct = change7dById[player.id] ?? 0;
         const maxOpenSharesAtSpot = MAX_POSITION_NOTIONAL_PER_PLAYER / Math.max(0.0001, player.spot_price);
         const buyRemaining = owned < 0 ? 0 : Math.max(0, Math.floor(maxOpenSharesAtSpot - Math.max(0, owned)));
         const shortRemaining =
@@ -378,6 +413,7 @@ export default function MarketPage() {
           sharesShort,
           totalChangePct,
           change24hPct,
+          change7dPct,
           buyRemaining,
           shortRemaining,
         };
@@ -394,7 +430,24 @@ export default function MarketPage() {
     });
 
     return filteredRows;
-  }, [activeSport, change24hById, ownedById, players, positionFilter, query, sortColumn, sortDirection]);
+  }, [activeSport, change24hById, change7dById, ownedById, players, positionFilter, query, sortColumn, sortDirection]);
+
+  const mobileVisibleRows = useMemo(() => {
+    const sortedRows = [...visibleRows];
+    const tiebreak = (a: MarketTableRowModel, b: MarketTableRowModel) => a.player.name.localeCompare(b.player.name);
+    sortedRows.sort((a, b) => {
+      if (mobileSortMode === "price_desc") return b.player.spot_price - a.player.spot_price || tiebreak(a, b);
+      if (mobileSortMode === "price_asc") return a.player.spot_price - b.player.spot_price || tiebreak(a, b);
+      if (mobileSortMode === "overall_gainers") return b.totalChangePct - a.totalChangePct || tiebreak(a, b);
+      if (mobileSortMode === "overall_losers") return a.totalChangePct - b.totalChangePct || tiebreak(a, b);
+      if (mobileSortMode === "daily_gainers") return b.change24hPct - a.change24hPct || tiebreak(a, b);
+      if (mobileSortMode === "daily_losers") return a.change24hPct - b.change24hPct || tiebreak(a, b);
+      if (mobileSortMode === "weekly_gainers") return b.change7dPct - a.change7dPct || tiebreak(a, b);
+      if (mobileSortMode === "weekly_losers") return a.change7dPct - b.change7dPct || tiebreak(a, b);
+      return tiebreak(a, b);
+    });
+    return sortedRows;
+  }, [mobileSortMode, visibleRows]);
 
   useEffect(() => {
     const shell = marketShellRef.current;
@@ -703,7 +756,22 @@ export default function MarketPage() {
       ) : (
         <>
           <section className="market-mobile-list">
-            {visibleRows.map((row) => (
+            <article className="market-mobile-card" aria-label="Sort market cards">
+              <label className="field-label" htmlFor="market-mobile-sort">Sort cards</label>
+              <select
+                id="market-mobile-sort"
+                value={mobileSortMode}
+                onChange={(event) => setMobileSortMode(event.target.value as MobileMarketSortMode)}
+              >
+                {MOBILE_SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </article>
+
+            {mobileVisibleRows.map((row) => (
               <article key={row.player.id} className="market-mobile-card">
                 <div className="holding-head market-mobile-card-head">
                   <div className="market-mobile-title-block">
@@ -726,6 +794,10 @@ export default function MarketPage() {
                     <span>
                       24H{" "}
                       <strong className={row.change24hPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change24hPct)}</strong>
+                    </span>
+                    <span>
+                      7D{" "}
+                      <strong className={row.change7dPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change7dPct)}</strong>
                     </span>
                   </div>
                 </div>

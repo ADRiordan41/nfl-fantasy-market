@@ -27,6 +27,7 @@ export type MarketTableRowModel = {
   sharesShort: number;
   totalChangePct: number;
   change24hPct: number;
+  change7dPct: number;
   buyRemaining: number;
   shortRemaining: number;
 };
