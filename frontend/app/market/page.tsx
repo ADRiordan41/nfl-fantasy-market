@@ -15,7 +15,7 @@ import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
 
-type MarketSortColumn = "name" | "team" | "position" | "spot_price" | "change_pct" | "change_24h_pct";
+type MarketSortColumn = "name" | "team" | "position" | "spot_price" | "change_pct" | "change_24h_pct" | "earnings";
 type SortDirection = "asc" | "desc";
 type MobileMarketSortMode =
   | "price_desc"
@@ -56,6 +56,7 @@ const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   spot_price: "desc",
   change_pct: "desc",
   change_24h_pct: "desc",
+  earnings: "desc",
 };
 const MARKET_SORT_STORAGE_PREFIX = "fsm_market_sort_v1";
 const MARKET_SORT_COLUMN_SET = new Set<MarketSortColumn>([
@@ -65,6 +66,7 @@ const MARKET_SORT_COLUMN_SET = new Set<MarketSortColumn>([
   "spot_price",
   "change_pct",
   "change_24h_pct",
+  "earnings",
 ]);
 const MARKET_PRICE_FLASH_MS = 1100;
 const MARKET_FILTER_DEBOUNCE_MS = 180;
@@ -428,6 +430,7 @@ export default function MarketPage() {
       if (sortColumn === "spot_price") return direction * (a.player.spot_price - b.player.spot_price);
       if (sortColumn === "change_pct") return direction * (a.totalChangePct - b.totalChangePct);
       if (sortColumn === "change_24h_pct") return direction * (a.change24hPct - b.change24hPct);
+      if (sortColumn === "earnings") return direction * (a.seasonEarnings - b.seasonEarnings);
       return 0;
     });
 
@@ -843,7 +846,7 @@ export default function MarketPage() {
                     <th>{renderSortButton("spot_price", "Price")}</th>
                     <th>{renderSortButton("change_pct", "Total Gain")}</th>
                     <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
-                    <th>Earnings</th>
+                    <th>{renderSortButton("earnings", "Earnings")}</th>
                     <th>Shares Held</th>
                     <th>Shares Short</th>
                     <th className="market-header-single">Quick Actions</th>
