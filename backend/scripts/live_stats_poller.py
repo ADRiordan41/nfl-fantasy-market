@@ -16,6 +16,7 @@ MLB_STATS_API_SCHEDULE_PATH = "/api/v1/schedule"
 MLB_STATS_API_LIVE_FEED_PATH = "/api/v1.1/game/{game_pk}/feed/live"
 DEFAULT_MLB_ALLOWED_GAME_TYPES = {"R", "F", "D", "L", "W", "S"}
 MLB_SCHEDULE_TIMEZONE = ZoneInfo("America/New_York")
+STALE_LIVE_CLEAR_MINUTES = 15
 MLB_TEAM_ALIASES = {
     "SFG": "SF",
     "SFN": "SF",
@@ -59,6 +60,7 @@ class CycleCounts:
     unmatched_rows: int = 0
     invalid_rows: int = 0
     failed_posts: int = 0
+    stale_live_clears: int = 0
 
 
 @dataclass
@@ -939,6 +941,11 @@ def run_cycle(
     counts.source_rows = source_rows
     counts.invalid_rows = invalid_rows
     counts.parsed_rows = len(parsed_stats)
+    active_live_game_ids = {
+        str(row.live_game_id).strip()
+        for row in parsed_stats
+        if row.live_now is True and row.live_game_id
+    }
 
     for row in parsed_stats:
         ref = resolve_player(
@@ -1002,6 +1009,85 @@ def run_cycle(
                 f"[error] failed post for {ref.name} ({ref.team}) "
                 f"week={row.week} points={row.fantasy_points:.3f}: {exc}"
             )
+
+    # MLB live-only mode excludes non-live games, which can leave stale live flags
+    # behind. Clear players that are still marked live but no longer belong to an
+    # active live game id, using an age window to avoid overreacting to brief feed gaps.
+    if source_provider == "mlb-statsapi":
+        now_utc = datetime.now(timezone.utc)
+        stale_cutoff = timedelta(minutes=STALE_LIVE_CLEAR_MINUTES)
+        clear_week = int(week_override) if week_override is not None else 1
+        for player in players:
+            live_payload = player.get("live")
+            if not isinstance(live_payload, dict):
+                continue
+            if not bool(live_payload.get("live_now")):
+                continue
+
+            live_game_id = str(live_payload.get("game_id") or "").strip()
+            if live_game_id and live_game_id in active_live_game_ids:
+                continue
+
+            updated_at = parse_api_datetime(live_payload.get("updated_at"))
+            if updated_at is not None and (now_utc - updated_at) < stale_cutoff:
+                continue
+
+            raw_player_id = player.get("id")
+            try:
+                player_id = int(raw_player_id)
+            except (TypeError, ValueError):
+                continue
+
+            fantasy_points = parse_float(player.get("points_to_date"))
+            state_key = f"{player_id}:{clear_week}"
+            clear_signature = row_signature(
+                IncomingStat(
+                    row_number=0,
+                    name=str(player.get("name") or ""),
+                    team=str(player.get("team") or ""),
+                    week=clear_week,
+                    fantasy_points=fantasy_points,
+                    live_now=False,
+                )
+            )
+            previous = state.get(state_key)
+            if previous is not None and previous == clear_signature:
+                counts.unchanged_rows += 1
+                continue
+
+            payload = {
+                "player_id": player_id,
+                "week": clear_week,
+                "fantasy_points": fantasy_points,
+                "live_now": False,
+            }
+            if dry_run:
+                log(
+                    f"[dry-run] clear stale live flag for player_id={player_id} "
+                    f"week={clear_week} points={fantasy_points:.3f}"
+                )
+                counts.posted_rows += 1
+                counts.stale_live_clears += 1
+                continue
+
+            try:
+                post_stat_with_retry(
+                    api_base=api_base,
+                    payload=payload,
+                    auth=auth,
+                    timeout=timeout,
+                    max_retries=max_post_retries,
+                    retry_backoff=retry_backoff,
+                )
+                state[state_key] = clear_signature
+                counts.posted_rows += 1
+                counts.stale_live_clears += 1
+            except Exception as exc:
+                counts.failed_posts += 1
+                log(
+                    f"[error] failed stale-live clear for player_id={player_id} "
+                    f"week={clear_week}: {exc}"
+                )
     return counts
 
 
@@ -1116,6 +1202,7 @@ def main(argv: list[str] | None = None) -> int:
                 + f" parsed={counts.parsed_rows}"
                 + f" matched={counts.matched_rows}"
                 + f" posted={counts.posted_rows}"
+                + f" stale_clears={counts.stale_live_clears}"
                 + f" unchanged={counts.unchanged_rows}"
                 + f" unmatched={counts.unmatched_rows}"
                 + f" invalid={counts.invalid_rows}"
