@@ -3273,6 +3273,10 @@ button.segment.danger-segment.danger-active {
   width: 106px;
 }
 
+.portfolio-market-table .market-col-change {
+  width: 132px;
+}
+
 .portfolio-market-table {
   width: 100%;
   min-width: 0;
@@ -3561,16 +3565,19 @@ button.segment.danger-segment.danger-active {
 .market-position-held {
   color: var(--up);
   font-weight: 800;
+  font-size: 13px;
 }
 
 .market-position-short {
   color: var(--down);
   font-weight: 800;
+  font-size: 13px;
 }
 
 .market-position-flat {
   color: var(--muted);
   font-weight: 700;
+  font-size: 13px;
 }
 
 .market-position-stack {
@@ -3590,7 +3597,7 @@ button.segment.danger-segment.danger-active {
 
 .market-position-value {
   font-weight: 800;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .market-cell-control {
