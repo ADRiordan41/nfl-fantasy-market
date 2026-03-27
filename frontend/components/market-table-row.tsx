@@ -183,6 +183,15 @@ function MarketTableRow({
   const positionValue = Number(positionShares ?? 0);
   const positionClass =
     positionValue > 0 ? "market-position-held" : positionValue < 0 ? "market-position-short" : "market-position-flat";
+  const holdingTotalValueNumeric = Number(holdingTotalValue ?? 0);
+  const holdingValueToneClass =
+    userTotalGain != null && Number.isFinite(userTotalGain)
+      ? userTotalGain >= 0
+        ? "up"
+        : "down"
+      : holdingTotalValueNumeric >= 0
+        ? "up"
+        : "down";
 
   return (
     <tr
@@ -234,13 +243,16 @@ function MarketTableRow({
         </td>
       ) : null}
       {combinePositionColumn ? (
-        <td className={`market-cell-numeric ${positionClass}`}>{formatNumber(Math.abs(positionValue), 0)}</td>
+        <td className="market-cell-numeric">
+          <div className="market-position-stack">
+            <span className={positionClass}>{formatNumber(Math.abs(positionValue), 0)}</span>
+            <span className={`market-position-value ${holdingValueToneClass}`}>{formatCurrency(holdingTotalValueNumeric)}</span>
+          </div>
+        </td>
       ) : (
         <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
       )}
-      {combinePositionColumn ? (
-        <td className="market-cell-numeric">{formatCurrency(Number(holdingTotalValue ?? 0))}</td>
-      ) : (
+      {combinePositionColumn ? null : (
         <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
       )}
       <td className="market-cell-control">

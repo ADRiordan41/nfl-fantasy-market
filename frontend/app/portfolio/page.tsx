@@ -871,7 +871,6 @@ export default function PortfolioPage() {
                       <col className="market-col-change" />
                       <col className="market-col-earnings" />
                       <col className="market-col-position" />
-                      <col className="market-col-total-value" />
                       <col className="market-col-quick" />
                       <col className="market-col-action" />
                       <col className="market-col-qty" />
@@ -887,7 +886,6 @@ export default function PortfolioPage() {
                         <th>{renderSortButton("total_gain", "Total Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
                         <th>Position</th>
-                        <th>Total Value</th>
                         <th className="market-header-single">Quick Action</th>
                         <th className="market-header-single">Action</th>
                         <th className="market-header-single">Qty</th>
