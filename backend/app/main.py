@@ -65,13 +65,10 @@ from .pricing import (
     DEFAULT_PRICE_IMPACT_MULTIPLIER,
     LIVE_POINTS_WEIGHT,
     RECENT_FORM_WINDOW,
-    adjusted_base_price,
-    blended_fair_value,
     cost_to_buy,
     effective_k,
     get_price_impact_multiplier,
     proceeds_to_sell,
-    recent_form_anchor,
     set_price_impact_multiplier,
     spot_price,
     spread_percentage,
@@ -355,7 +352,6 @@ SPORT_SEASON_PROGRESS_UNITS = {
     "NBA": int(os.environ.get("NBA_SEASON_GAMES", "82")),
     "NHL": int(os.environ.get("NHL_SEASON_GAMES", "82")),
 }
-PERFORMANCE_WEIGHT = Decimal(os.environ.get("PERFORMANCE_WEIGHT", "1.0"))
 SEASON_CLOSE_PAYOUT_PER_POINT = Decimal(os.environ.get("SEASON_CLOSE_PAYOUT_PER_POINT", "1.0"))
 MIN_SPOT_PRICE = Decimal(os.environ.get("MIN_SPOT_PRICE", "1.0"))
 MAINTENANCE_MARGIN_LONG = Decimal(os.environ.get("MAINTENANCE_MARGIN_LONG", "0.0"))
@@ -509,6 +505,7 @@ class PlayerStatsSnapshot:
     recent_sample_size: int
     latest_game_id: str | None = None
     uses_game_history: bool = False
+    team_games_played: int = 0
 
 
 def calculate_open_position_fee(notional: Decimal) -> Decimal:
@@ -1739,6 +1736,44 @@ def get_stats_snapshot_by_player(
     if not player_ids:
         return {}
 
+    player_meta_rows = db.execute(
+        select(Player.id, Player.sport, Player.team).where(Player.id.in_(player_ids))
+    ).all()
+    team_key_by_player_id: dict[int, tuple[str, str]] = {}
+    team_keys: set[tuple[str, str]] = set()
+    for player_id, sport, team in player_meta_rows:
+        team_key = (str(sport).strip().upper(), str(team).strip().upper())
+        team_key_by_player_id[int(player_id)] = team_key
+        team_keys.add(team_key)
+
+    team_games_played_by_key: dict[tuple[str, str], int] = {}
+    if team_keys:
+        sports = sorted({sport for sport, _ in team_keys if sport})
+        teams = sorted({team for _, team in team_keys if team})
+        if sports and teams:
+            team_game_rows = db.execute(
+                select(Player.sport, Player.team, PlayerGamePoint.game_id)
+                .join(Player, Player.id == PlayerGamePoint.player_id)
+                .where(
+                    Player.sport.in_(sports),
+                    Player.team.in_(teams),
+                )
+                .distinct()
+            ).all()
+            games_by_team_key: dict[tuple[str, str], set[str]] = defaultdict(set)
+            for sport, team, game_id in team_game_rows:
+                team_key = (str(sport).strip().upper(), str(team).strip().upper())
+                if team_key not in team_keys:
+                    continue
+                normalized_game_id = str(game_id).strip()
+                if not normalized_game_id:
+                    continue
+                games_by_team_key[team_key].add(normalized_game_id)
+            team_games_played_by_key = {
+                team_key: len(game_ids)
+                for team_key, game_ids in games_by_team_key.items()
+            }
+
     snapshots: dict[int, PlayerStatsSnapshot] = {}
     game_rows = db.execute(
         select(
@@ -1766,13 +1801,22 @@ def get_stats_snapshot_by_player(
         latest_game_id, _, season_points = stat_rows[-1]
         recent_rows = stat_rows[-RECENT_FORM_WINDOW:]
         recent_points = sum((game_points for _, game_points, _ in recent_rows), Decimal("0"))
+        player_game_rows = len(stat_rows)
+        team_key = team_key_by_player_id.get(player_id)
+        team_games_played = (
+            team_games_played_by_key.get(team_key, player_game_rows)
+            if team_key is not None
+            else player_game_rows
+        )
+        team_games_played = max(team_games_played, player_game_rows)
         snapshots[player_id] = PlayerStatsSnapshot(
             points_to_date=season_points,
-            latest_week=len(stat_rows),
+            latest_week=player_game_rows,
             recent_points=recent_points,
             recent_sample_size=len(recent_rows),
             latest_game_id=latest_game_id,
             uses_game_history=True,
+            team_games_played=team_games_played,
         )
 
     remaining_player_ids = [player_id for player_id in player_ids if player_id not in players_with_game_history]
@@ -1798,6 +1842,13 @@ def get_stats_snapshot_by_player(
         latest_week = max((week for week, _ in stat_rows), default=0)
         recent_rows = stat_rows[-RECENT_FORM_WINDOW:]
         recent_points = sum((points for _, points in recent_rows), Decimal("0"))
+        team_key = team_key_by_player_id.get(player_id)
+        team_games_played = (
+            team_games_played_by_key.get(team_key, latest_week)
+            if team_key is not None
+            else latest_week
+        )
+        team_games_played = max(team_games_played, latest_week)
         snapshots[player_id] = PlayerStatsSnapshot(
             points_to_date=points_to_date,
             latest_week=latest_week,
@@ -1805,6 +1856,7 @@ def get_stats_snapshot_by_player(
             recent_sample_size=len(recent_rows),
             latest_game_id=None,
             uses_game_history=False,
+            team_games_played=team_games_played,
         )
 
     return snapshots
@@ -1856,8 +1908,7 @@ def get_pricing_context(
     )
     points_to_date = snapshot.points_to_date
     latest_week = snapshot.latest_week
-    recent_points = snapshot.recent_points
-    recent_sample_size = snapshot.recent_sample_size
+    team_games_played = snapshot.team_games_played
     live_game_id = normalize_optional_profile_field(player.live_game_id)
 
     if bool(player.live_now) and player.live_game_fantasy_points is not None:
@@ -1867,32 +1918,12 @@ def get_pricing_context(
         if should_overlay_live_points:
             live_points = Decimal(str(player.live_game_fantasy_points)) * LIVE_POINTS_WEIGHT
             points_to_date += live_points
-            recent_points += live_points
-            recent_sample_size = max(1, recent_sample_size)
             if player.live_week is not None:
                 latest_week = max(latest_week, int(player.live_week))
-
-    season_anchor = adjusted_base_price(
-        projected_points=projected_points,
-        points_to_date=points_to_date,
-        latest_week=latest_week,
-        season_weeks=season_progress_units_for_sport(player.sport),
-        performance_weight=PERFORMANCE_WEIGHT,
-    )
-    recent_anchor = recent_form_anchor(
-        projected_points=projected_points,
-        recent_points=recent_points,
-        recent_sample_size=recent_sample_size,
-        season_weeks=season_progress_units_for_sport(player.sport),
-        performance_weight=PERFORMANCE_WEIGHT,
-    )
-    fundamental = blended_fair_value(
-        projected_points=projected_points,
-        season_anchor=season_anchor,
-        recent_anchor=recent_anchor,
-        latest_week=latest_week,
-        season_weeks=season_progress_units_for_sport(player.sport),
-    )
+    season_units = season_progress_units_for_sport(player.sport)
+    clamped_team_games = min(max(int(team_games_played), 0), season_units)
+    removed_projection = Decimal(clamped_team_games) * (projected_points / Decimal(season_units))
+    fundamental = max(Decimal("1"), projected_points - removed_projection + points_to_date)
     return fundamental, points_to_date, latest_week
 
 
