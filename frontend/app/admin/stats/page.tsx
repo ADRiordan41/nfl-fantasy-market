@@ -22,6 +22,7 @@ import type {
   AdminIpoPlayers,
   AdminIpoSport,
   AdminSiteResetResult,
+  AdminStatsBackfillMlbResult,
   AdminStatsClearSportResult,
   AdminStatsPreview,
   AdminStatsPublishResult,
@@ -45,6 +46,8 @@ function listedClass(listed: boolean): string {
 export default function AdminStatsPage() {
   const router = useRouter();
   const defaultSeason = String(new Date().getFullYear());
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   const [csvText, setCsvText] = useState("");
   const [weekOverride, setWeekOverride] = useState("");
@@ -52,6 +55,12 @@ export default function AdminStatsPage() {
   const [publishResult, setPublishResult] = useState<AdminStatsPublishResult | null>(null);
   const [busyPreview, setBusyPreview] = useState(false);
   const [busyPublish, setBusyPublish] = useState(false);
+  const [mlbBackfillStartDate, setMlbBackfillStartDate] = useState(todayIso);
+  const [mlbBackfillEndDate, setMlbBackfillEndDate] = useState(todayIso);
+  const [mlbBackfillWeek, setMlbBackfillWeek] = useState("1");
+  const [mlbBackfillGameTypes, setMlbBackfillGameTypes] = useState("R,F,D,L,W,S");
+  const [busyMlbBackfill, setBusyMlbBackfill] = useState(false);
+  const [mlbBackfillResult, setMlbBackfillResult] = useState<AdminStatsBackfillMlbResult | null>(null);
 
   const [sportSummaries, setSportSummaries] = useState<AdminIpoSport[]>([]);
   const [reviewSport, setReviewSport] = useState("");
@@ -425,6 +434,46 @@ export default function AdminStatsPage() {
       handleApiError(err);
     } finally {
       setBusyPublish(false);
+    }
+  }
+
+  async function runMlbBackfill() {
+    const startDate = mlbBackfillStartDate.trim();
+    const endDate = mlbBackfillEndDate.trim() || startDate;
+    if (!startDate) {
+      setError("Start date is required for MLB backfill.");
+      notifyError("Enter a start date first.");
+      return;
+    }
+    if (!endDate) {
+      setError("End date is required for MLB backfill.");
+      notifyError("Enter an end date first.");
+      return;
+    }
+    const parsedWeek = Number.parseInt(mlbBackfillWeek.trim(), 10);
+    if (!Number.isFinite(parsedWeek) || parsedWeek < 1) {
+      setError("MLB backfill week must be a positive integer.");
+      notifyError("Invalid MLB week.");
+      return;
+    }
+    const gameTypes = mlbBackfillGameTypes.trim() || "R,F,D,L,W,S";
+
+    setBusyMlbBackfill(true);
+    setError("");
+    setMlbBackfillResult(null);
+    try {
+      const result = await apiPost<AdminStatsBackfillMlbResult>("/admin/stats/backfill-mlb", {
+        start_date: startDate,
+        end_date: endDate,
+        week: parsedWeek,
+        mlb_allowed_game_types: gameTypes,
+      });
+      setMlbBackfillResult(result);
+      notifySuccess(result.message);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyMlbBackfill(false);
     }
   }
 
@@ -2239,6 +2288,110 @@ export default function AdminStatsPage() {
         </section>
 
       <section id="stats-import" className="admin-panel">
+        <h3>MLB StatsAPI Backfill</h3>
+        <p className="subtle">
+          Pull MLB boxscore data for a date range, apply season/game points, and refresh player pricing snapshots.
+        </p>
+        <div className="admin-input-grid">
+          <div>
+            <label className="field-label" htmlFor="mlb-backfill-start-date">
+              Start Date
+            </label>
+            <input
+              id="mlb-backfill-start-date"
+              type="date"
+              value={mlbBackfillStartDate}
+              onChange={(event) => setMlbBackfillStartDate(event.target.value)}
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="mlb-backfill-end-date">
+              End Date
+            </label>
+            <input
+              id="mlb-backfill-end-date"
+              type="date"
+              value={mlbBackfillEndDate}
+              onChange={(event) => setMlbBackfillEndDate(event.target.value)}
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="mlb-backfill-week">
+              Week Slot
+            </label>
+            <input
+              id="mlb-backfill-week"
+              inputMode="numeric"
+              value={mlbBackfillWeek}
+              onChange={(event) => setMlbBackfillWeek(event.target.value)}
+              placeholder="1"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="mlb-backfill-game-types">
+              Allowed Game Types
+            </label>
+            <input
+              id="mlb-backfill-game-types"
+              value={mlbBackfillGameTypes}
+              onChange={(event) => setMlbBackfillGameTypes(event.target.value)}
+              placeholder="R,F,D,L,W,S"
+            />
+          </div>
+        </div>
+        <div className="admin-actions">
+          <button
+            className="primary-btn"
+            onClick={() => void runMlbBackfill()}
+            disabled={busyMlbBackfill || busyPreview || busyPublish}
+          >
+            {busyMlbBackfill ? "Running MLB Backfill..." : "Run MLB Backfill"}
+          </button>
+        </div>
+        {mlbBackfillResult ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dates</th>
+                  <th>Source Games</th>
+                  <th>Source Rows</th>
+                  <th>Matched</th>
+                  <th>Unmatched</th>
+                  <th>Applied</th>
+                  <th>Changed</th>
+                  <th>Unchanged</th>
+                  <th>Failed</th>
+                  <th>Players Refreshed</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    {mlbBackfillResult.start_date} to {mlbBackfillResult.end_date}
+                  </td>
+                  <td>{formatNumber(mlbBackfillResult.source_games)}</td>
+                  <td>{formatNumber(mlbBackfillResult.source_rows)}</td>
+                  <td>{formatNumber(mlbBackfillResult.matched_rows)}</td>
+                  <td>{formatNumber(mlbBackfillResult.unmatched_rows)}</td>
+                  <td>{formatNumber(mlbBackfillResult.applied_rows)}</td>
+                  <td>{formatNumber(mlbBackfillResult.changed_rows)}</td>
+                  <td>{formatNumber(mlbBackfillResult.unchanged_rows)}</td>
+                  <td>{formatNumber(mlbBackfillResult.failed_rows)}</td>
+                  <td>{formatNumber(mlbBackfillResult.players_touched)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="subtle">{mlbBackfillResult.message}</p>
+            {mlbBackfillResult.unmatched_examples.length ? (
+              <p className="subtle">
+                Unmatched examples: {mlbBackfillResult.unmatched_examples.join(" | ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <h3>Manual CSV Import</h3>
         <label className="field-label" htmlFor="csv-text">
           CSV Data
         </label>

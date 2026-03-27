@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 
@@ -724,6 +724,31 @@ class AdminStatsClearSportOut(BaseModel):
     players_affected: int
     stats_deleted: int
     price_points_created: int
+    message: str
+
+
+class AdminStatsBackfillMlbIn(BaseModel):
+    start_date: date
+    end_date: date | None = None
+    week: int = Field(default=1, ge=1)
+    mlb_allowed_game_types: str = Field(default="R,F,D,L,W,S", min_length=1, max_length=64)
+
+
+class AdminStatsBackfillMlbOut(BaseModel):
+    start_date: date
+    end_date: date
+    week: int
+    dates_processed: int
+    source_games: int
+    source_rows: int
+    matched_rows: int
+    unmatched_rows: int
+    applied_rows: int
+    changed_rows: int
+    unchanged_rows: int
+    failed_rows: int
+    players_touched: int
+    unmatched_examples: list[str]
     message: str
 
 

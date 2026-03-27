@@ -8,7 +8,7 @@ import smtplib
 import subprocess
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from dataclasses import dataclass
 from decimal import Decimal
 from math import pow
@@ -32,6 +32,13 @@ from .auth import (
 from .db import SessionLocal, get_db
 from .infra import CACHE, RATE_LIMITER
 from .mailer import SmtpSettings, build_password_reset_email, send_smtp_message
+from .mlb_statsapi import (
+    MlbIncomingStat,
+    fetch_mlb_statsapi_rows,
+    normalize_lookup_text as normalize_mlb_lookup_text,
+    normalize_team_code as normalize_mlb_team_code,
+    parse_mlb_allowed_game_types,
+)
 from .models import (
     ArchivedHolding,
     ArchivedWeeklyStat,
@@ -94,6 +101,8 @@ from .schemas import (
     AdminIpoPlayersOut,
     AdminSiteResetIn,
     AdminSiteResetOut,
+    AdminStatsBackfillMlbIn,
+    AdminStatsBackfillMlbOut,
     AdminStatsClearSportIn,
     AdminStatsClearSportOut,
     AdminIpoSportOut,
@@ -1385,6 +1394,32 @@ def parse_optional_float(value: object) -> float | None:
     except ValueError:
         return None
     return parsed
+
+
+def resolve_mlb_backfill_player(
+    *,
+    row: MlbIncomingStat,
+    by_name_team: dict[tuple[str, str], Player],
+    by_name: dict[str, list[Player]],
+) -> Player | None:
+    key_name = normalize_mlb_lookup_text(row.name)
+    key_team = normalize_mlb_team_code(row.team)
+    if key_name and key_team:
+        direct = by_name_team.get((key_name, key_team))
+        if direct:
+            return direct
+
+    matches = by_name.get(key_name, [])
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def iter_inclusive_dates(start_date: date, end_date: date):
+    current = start_date
+    while current <= end_date:
+        yield current
+        current += timedelta(days=1)
 
 
 def parse_stats_csv(
@@ -6956,6 +6991,156 @@ def admin_clear_sport_stats(
         stats_deleted=deleted_stats,
         price_points_created=len(player_ids),
         message=f"Cleared imported {sport_code} stats and reset live snapshots.",
+    )
+
+
+@app.post("/admin/stats/backfill-mlb", response_model=AdminStatsBackfillMlbOut)
+def admin_backfill_mlb_stats(
+    payload: AdminStatsBackfillMlbIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    start_date = payload.start_date
+    end_date = payload.end_date or start_date
+    if end_date < start_date:
+        raise HTTPException(400, "end_date must be on or after start_date.")
+
+    players = db.execute(
+        select(Player).where(Player.sport == "MLB")
+    ).scalars().all()
+    if not players:
+        raise HTTPException(404, "No MLB players found.")
+
+    allowed_game_types = parse_mlb_allowed_game_types(payload.mlb_allowed_game_types)
+    by_name_team: dict[tuple[str, str], Player] = {}
+    by_name: dict[str, list[Player]] = {}
+    for player in players:
+        key_name = normalize_mlb_lookup_text(str(player.name))
+        key_team = normalize_mlb_team_code(str(player.team))
+        by_name_team[(key_name, key_team)] = player
+        by_name.setdefault(key_name, []).append(player)
+
+    dates_processed = 0
+    source_games = 0
+    source_rows = 0
+    matched_rows = 0
+    unmatched_rows = 0
+    applied_rows = 0
+    changed_rows = 0
+    unchanged_rows = 0
+    failed_rows = 0
+    touched_player_ids: set[int] = set()
+    unmatched_examples: list[str] = []
+
+    try:
+        for target_date in iter_inclusive_dates(start_date, end_date):
+            rows, game_count = fetch_mlb_statsapi_rows(
+                schedule_date=target_date,
+                week=int(payload.week),
+                timeout=25.0,
+                allowed_game_types=allowed_game_types,
+            )
+            dates_processed += 1
+            source_games += int(game_count)
+            source_rows += len(rows)
+
+            for row in rows:
+                player = resolve_mlb_backfill_player(
+                    row=row,
+                    by_name_team=by_name_team,
+                    by_name=by_name,
+                )
+                if not player:
+                    unmatched_rows += 1
+                    if len(unmatched_examples) < 12:
+                        team = normalize_mlb_team_code(row.team) or "--"
+                        unmatched_examples.append(f"{row.name} ({team}) on {target_date.isoformat()}")
+                    continue
+
+                matched_rows += 1
+                try:
+                    stat_payload = StatIn(
+                        player_id=int(player.id),
+                        week=int(payload.week),
+                        fantasy_points=float(row.fantasy_points),
+                        live_now=row.live_now,
+                        live_week=int(row.live_week or payload.week),
+                        live_game_id=row.live_game_id,
+                        live_game_label=row.live_game_label,
+                        live_game_status=row.live_game_status,
+                        live_game_stat_line=row.live_game_stat_line,
+                        live_game_fantasy_points=(
+                            float(row.live_game_fantasy_points)
+                            if row.live_game_fantasy_points is not None
+                            else None
+                        ),
+                    )
+                    _status_label, stat_changed = upsert_weekly_stat_for_player(
+                        db=db,
+                        player=player,
+                        week=stat_payload.week,
+                        fantasy_points=float(stat_payload.fantasy_points),
+                    )
+                    live_changed = False
+                    if stat_payload.live_now is True:
+                        live_changed = apply_live_snapshot_from_stat(player=player, stat=stat_payload)
+                    game_point_changed = upsert_player_game_point_from_stat(
+                        db=db,
+                        player=player,
+                        stat=stat_payload,
+                    )
+                except Exception:
+                    failed_rows += 1
+                    continue
+
+                applied_rows += 1
+                if stat_changed or live_changed or game_point_changed:
+                    changed_rows += 1
+                    touched_player_ids.add(int(player.id))
+                else:
+                    unchanged_rows += 1
+
+        db.flush()
+        if touched_player_ids:
+            refresh_players_after_stats_update(
+                db=db,
+                player_ids=touched_player_ids,
+                source="ADMIN_MLB_BACKFILL",
+            )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(502, f"Failed MLB backfill run: {exc}") from exc
+
+    if touched_player_ids:
+        invalidate_market_read_cache(
+            player_ids=touched_player_ids,
+            sports={"MLB"},
+            include_sports_catalog=True,
+        )
+
+    return AdminStatsBackfillMlbOut(
+        start_date=start_date,
+        end_date=end_date,
+        week=int(payload.week),
+        dates_processed=dates_processed,
+        source_games=source_games,
+        source_rows=source_rows,
+        matched_rows=matched_rows,
+        unmatched_rows=unmatched_rows,
+        applied_rows=applied_rows,
+        changed_rows=changed_rows,
+        unchanged_rows=unchanged_rows,
+        failed_rows=failed_rows,
+        players_touched=len(touched_player_ids),
+        unmatched_examples=unmatched_examples,
+        message=(
+            f"MLB backfill completed for {start_date.isoformat()} through {end_date.isoformat()}. "
+            f"Applied {applied_rows} row(s) and refreshed {len(touched_player_ids)} player price snapshot(s)."
+        ),
     )
 
 

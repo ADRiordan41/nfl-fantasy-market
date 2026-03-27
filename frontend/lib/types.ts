@@ -331,6 +331,24 @@ export type AdminStatsClearSportResult = {
   message: string;
 };
 
+export type AdminStatsBackfillMlbResult = {
+  start_date: string;
+  end_date: string;
+  week: number;
+  dates_processed: number;
+  source_games: number;
+  source_rows: number;
+  matched_rows: number;
+  unmatched_rows: number;
+  applied_rows: number;
+  changed_rows: number;
+  unchanged_rows: number;
+  failed_rows: number;
+  players_touched: number;
+  unmatched_examples: string[];
+  message: string;
+};
+
 export type AdminSiteResetResult = {
   users_reset: number;
   players_reset: number;
