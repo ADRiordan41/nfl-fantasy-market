@@ -1017,7 +1017,7 @@ export default function AdminStatsPage() {
                 <p className="subtle">
                   Listed {formatNumber(summary.listed_players)} / {formatNumber(summary.total_players)} players
                 </p>
-                <div className="admin-input-row">
+                <div className="admin-ipo-season-row">
                   <div>
                     <label className="field-label" htmlFor={`ipo-season-${summary.sport}`}>
                       IPO Season

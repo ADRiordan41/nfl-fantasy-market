@@ -1025,7 +1025,8 @@ textarea[aria-invalid="true"] {
   margin-top: 10px;
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+  min-width: 0;
 }
 
 .admin-ipo-card {
@@ -1035,6 +1036,7 @@ textarea[aria-invalid="true"] {
   padding: 12px;
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .admin-ipo-head {
@@ -1042,6 +1044,14 @@ textarea[aria-invalid="true"] {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.admin-ipo-season-row {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+  min-width: 0;
 }
 
 .admin-review-controls {
