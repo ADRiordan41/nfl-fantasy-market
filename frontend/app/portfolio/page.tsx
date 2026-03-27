@@ -40,6 +40,7 @@ type HoldingRow = {
 type PortfolioMarketRow = {
   market: MarketTableRowModel;
   positionShares: number;
+  totalValue: number;
   averageEntryPrice: number;
   totalGain: number;
   totalGainPct: number;
@@ -349,6 +350,7 @@ export default function PortfolioPage() {
           shortRemaining,
         },
         positionShares: Number(row.shares),
+        totalValue: Number(row.marketValue),
         averageEntryPrice: Number(row.averageEntryPrice),
         totalGain: Number(row.pnl),
         totalGainPct: Number(row.pnlPct),
@@ -868,8 +870,8 @@ export default function PortfolioPage() {
                       <col className="market-col-earnings" />
                       <col className="market-col-change" />
                       <col className="market-col-earnings" />
-                      <col className="market-col-shares-held" />
-                      <col className="market-col-shares-short" />
+                      <col className="market-col-position" />
+                      <col className="market-col-total-value" />
                       <col className="market-col-quick" />
                       <col className="market-col-action" />
                       <col className="market-col-qty" />
@@ -884,8 +886,8 @@ export default function PortfolioPage() {
                         <th>{renderSortButton("avg_purchase", "Avg Purchase")}</th>
                         <th>{renderSortButton("total_gain", "Total Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
-                        <th>Shares Held</th>
-                        <th>Shares Short</th>
+                        <th>Position</th>
+                        <th>Total Value</th>
                         <th className="market-header-single">Quick Action</th>
                         <th className="market-header-single">Action</th>
                         <th className="market-header-single">Qty</th>
@@ -899,6 +901,9 @@ export default function PortfolioPage() {
                           row={row.market}
                           hidePerformanceColumns
                           extraColumnsBeforeEarnings
+                          combinePositionColumn
+                          positionShares={row.positionShares}
+                          holdingTotalValue={row.totalValue}
                           closeOnlyShares={row.positionShares}
                           averageEntryPrice={row.averageEntryPrice}
                           userTotalGain={row.totalGain}

@@ -3245,6 +3245,14 @@ button.segment.danger-segment.danger-active {
   width: 68px;
 }
 
+.market-col-position {
+  width: 74px;
+}
+
+.market-col-total-value {
+  width: 96px;
+}
+
 .market-col-quick {
   width: 112px;
 }
@@ -3538,6 +3546,21 @@ button.segment.danger-segment.danger-active {
 .market-cell-numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.market-position-held {
+  color: var(--up);
+  font-weight: 800;
+}
+
+.market-position-short {
+  color: var(--down);
+  font-weight: 800;
+}
+
+.market-position-flat {
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .market-cell-control {

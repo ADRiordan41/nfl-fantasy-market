@@ -38,6 +38,9 @@ type MarketTableRowProps = {
   isTradingHalted: boolean;
   hidePerformanceColumns?: boolean;
   extraColumnsBeforeEarnings?: boolean;
+  combinePositionColumn?: boolean;
+  positionShares?: number | null;
+  holdingTotalValue?: number | null;
   closeOnlyShares?: number | null;
   averageEntryPrice?: number | null;
   userTotalGain?: number | null;
@@ -73,6 +76,9 @@ function MarketTableRow({
   isTradingHalted,
   hidePerformanceColumns = false,
   extraColumnsBeforeEarnings = false,
+  combinePositionColumn = false,
+  positionShares = null,
+  holdingTotalValue = null,
   closeOnlyShares = null,
   averageEntryPrice,
   userTotalGain,
@@ -174,6 +180,9 @@ function MarketTableRow({
     closeOnlyShares == null ? null : closeOnlyShares > 0 ? "SELL" : closeOnlyShares < 0 ? "COVER" : null;
   const closeQuickSize =
     closeOnlyShares == null ? 0 : Math.max(0, Math.abs(Math.trunc(Number(closeOnlyShares))));
+  const positionValue = Number(positionShares ?? 0);
+  const positionClass =
+    positionValue > 0 ? "market-position-held" : positionValue < 0 ? "market-position-short" : "market-position-flat";
 
   return (
     <tr
@@ -224,8 +233,16 @@ function MarketTableRow({
           {userTotalGainPct != null && Number.isFinite(userTotalGainPct) ? `(${formatPercent(userTotalGainPct)})` : ""}
         </td>
       ) : null}
-      <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
-      <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
+      {combinePositionColumn ? (
+        <td className={`market-cell-numeric ${positionClass}`}>{formatNumber(Math.abs(positionValue), 0)}</td>
+      ) : (
+        <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
+      )}
+      {combinePositionColumn ? (
+        <td className="market-cell-numeric">{formatCurrency(Number(holdingTotalValue ?? 0))}</td>
+      ) : (
+        <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
+      )}
       <td className="market-cell-control">
         <div className={`market-row-actions${closeOnlyEnabled ? " market-row-actions-close-only" : ""}`}>
           {closeOnlyEnabled ? (
