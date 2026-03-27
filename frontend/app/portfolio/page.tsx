@@ -39,6 +39,7 @@ type HoldingRow = {
 
 type PortfolioMarketRow = {
   market: MarketTableRowModel;
+  positionShares: number;
   averageEntryPrice: number;
   totalGain: number;
   totalGainPct: number;
@@ -347,6 +348,7 @@ export default function PortfolioPage() {
           buyRemaining,
           shortRemaining,
         },
+        positionShares: Number(row.shares),
         averageEntryPrice: Number(row.averageEntryPrice),
         totalGain: Number(row.pnl),
         totalGainPct: Number(row.pnlPct),
@@ -884,7 +886,7 @@ export default function PortfolioPage() {
                         <th>{renderSortButton("earnings", "Earnings")}</th>
                         <th>Shares Held</th>
                         <th>Shares Short</th>
-                        <th className="market-header-single">Quick Actions</th>
+                        <th className="market-header-single">Quick Action</th>
                         <th className="market-header-single">Action</th>
                         <th className="market-header-single">Qty</th>
                         <th className="market-header-single">Quote</th>
@@ -897,6 +899,7 @@ export default function PortfolioPage() {
                           row={row.market}
                           hidePerformanceColumns
                           extraColumnsBeforeEarnings
+                          closeOnlyShares={row.positionShares}
                           averageEntryPrice={row.averageEntryPrice}
                           userTotalGain={row.totalGain}
                           userTotalGainPct={row.totalGainPct}

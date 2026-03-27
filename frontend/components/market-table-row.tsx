@@ -38,6 +38,7 @@ type MarketTableRowProps = {
   isTradingHalted: boolean;
   hidePerformanceColumns?: boolean;
   extraColumnsBeforeEarnings?: boolean;
+  closeOnlyShares?: number | null;
   averageEntryPrice?: number | null;
   userTotalGain?: number | null;
   userTotalGainPct?: number | null;
@@ -72,6 +73,7 @@ function MarketTableRow({
   isTradingHalted,
   hidePerformanceColumns = false,
   extraColumnsBeforeEarnings = false,
+  closeOnlyShares = null,
   averageEntryPrice,
   userTotalGain,
   userTotalGainPct,
@@ -142,7 +144,7 @@ function MarketTableRow({
   }, [isTradingHalted, onExecuteTrade, onSetError, quote, row.player.id, side]);
 
   const handleExecuteMaxTrade = useCallback(
-    async (nextSide: "BUY" | "SHORT", maxSize: number) => {
+    async (nextSide: MarketTradeSide, maxSize: number) => {
       if (isTradingHalted || maxSize <= 0) return;
       setSide(nextSide);
       setQty(String(maxSize));
@@ -167,6 +169,11 @@ function MarketTableRow({
   const rowHighlighted = Boolean(quote) || isPreviewing || isPlacing;
   const hasAverageEntry = averageEntryPrice != null && Number.isFinite(averageEntryPrice);
   const hasUserTotalGain = userTotalGain != null && Number.isFinite(userTotalGain);
+  const closeOnlyEnabled = closeOnlyShares != null;
+  const closeQuickSide: MarketTradeSide | null =
+    closeOnlyShares == null ? null : closeOnlyShares > 0 ? "SELL" : closeOnlyShares < 0 ? "COVER" : null;
+  const closeQuickSize =
+    closeOnlyShares == null ? 0 : Math.max(0, Math.abs(Math.trunc(Number(closeOnlyShares))));
 
   return (
     <tr
@@ -221,20 +228,38 @@ function MarketTableRow({
       <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
       <td className="market-cell-control">
         <div className="market-row-actions">
-          <button
-            className="chip market-mini-btn market-quick-buy-btn"
-            onClick={() => void handleExecuteMaxTrade("BUY", row.buyRemaining)}
-            disabled={isTradingHalted || row.buyRemaining <= 0 || isPreviewing || isPlacing}
-          >
-            Buy Max
-          </button>
-          <button
-            className="chip market-mini-btn market-quick-short-btn"
-            onClick={() => void handleExecuteMaxTrade("SHORT", row.shortRemaining)}
-            disabled={isTradingHalted || row.shortRemaining <= 0 || isPreviewing || isPlacing}
-          >
-            Short Max
-          </button>
+          {closeOnlyEnabled ? (
+            <button
+              className={`chip market-mini-btn ${
+                closeQuickSide === "SELL" ? "market-quick-short-btn" : "market-quick-buy-btn"
+              }`}
+              onClick={() => {
+                if (closeQuickSide) {
+                  void handleExecuteMaxTrade(closeQuickSide, closeQuickSize);
+                }
+              }}
+              disabled={isTradingHalted || !closeQuickSide || closeQuickSize <= 0 || isPreviewing || isPlacing}
+            >
+              {closeQuickSide === "SELL" ? "Sell Max" : "Cover Max"}
+            </button>
+          ) : (
+            <>
+              <button
+                className="chip market-mini-btn market-quick-buy-btn"
+                onClick={() => void handleExecuteMaxTrade("BUY", row.buyRemaining)}
+                disabled={isTradingHalted || row.buyRemaining <= 0 || isPreviewing || isPlacing}
+              >
+                Buy Max
+              </button>
+              <button
+                className="chip market-mini-btn market-quick-short-btn"
+                onClick={() => void handleExecuteMaxTrade("SHORT", row.shortRemaining)}
+                disabled={isTradingHalted || row.shortRemaining <= 0 || isPreviewing || isPlacing}
+              >
+                Short Max
+              </button>
+            </>
+          )}
         </div>
       </td>
       <td className="market-cell-control">
