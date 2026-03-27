@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, getAuthToken } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
-import type { ForumPostSummary, LeaderboardResponse, Player } from "@/lib/types";
+import type { ForumPostSummary, LeaderboardResponse, MarketMovers, Player } from "@/lib/types";
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -29,6 +29,7 @@ function getSignedPercent(base: number, spot: number): number {
 
 export default function HomePage() {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [weeklyMovers, setWeeklyMovers] = useState<MarketMovers | null>(null);
   const [posts, setPosts] = useState<ForumPostSummary[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +43,7 @@ export default function HomePage() {
     setError("");
     try {
       let locked = false;
-      const [nextPlayers, nextPosts, nextLeaderboard] = await Promise.all([
+      const [nextPlayers, nextPosts, nextLeaderboard, nextWeeklyMovers] = await Promise.all([
         apiGet<Player[]>("/players"),
         apiGet<ForumPostSummary[]>("/forum/posts?limit=4").catch((err: unknown) => {
           const message = toMessage(err);
@@ -53,10 +54,12 @@ export default function HomePage() {
           throw err;
         }),
         apiGet<LeaderboardResponse>("/leaderboard?scope=global&sport=ALL&limit=5").catch(() => null),
+        apiGet<MarketMovers>("/market/movers?limit=100&window_hours=168").catch(() => null),
       ]);
       setPlayers(nextPlayers);
       setPosts(nextPosts);
       setLeaderboard(nextLeaderboard);
+      setWeeklyMovers(nextWeeklyMovers);
       setCommunityLocked(locked);
     } catch (err: unknown) {
       setError(toMessage(err));
@@ -72,10 +75,42 @@ export default function HomePage() {
     setAuthResolved(true);
   }, []);
 
-  const marketLeaders = useMemo(
-    () => [...players].sort((a, b) => b.spot_price - a.spot_price).slice(0, 6),
-    [players],
-  );
+  const marketLeaders = useMemo(() => {
+    const weekGainByPlayerId = new Map<number, number>();
+    for (const row of [...(weeklyMovers?.gainers ?? []), ...(weeklyMovers?.losers ?? [])]) {
+      const existing = weekGainByPlayerId.get(row.player_id);
+      if (existing === undefined || Math.abs(row.change_percent) > Math.abs(existing)) {
+        weekGainByPlayerId.set(row.player_id, row.change_percent);
+      }
+    }
+
+    const topWeekly = players
+      .filter((player) => weekGainByPlayerId.has(player.id))
+      .map((player) => ({
+        player,
+        weekGainPct: Number(weekGainByPlayerId.get(player.id) ?? 0),
+        overallGainPct: getSignedPercent(player.base_price, player.spot_price),
+      }))
+      .sort((a, b) => {
+        const byMagnitude = Math.abs(b.weekGainPct) - Math.abs(a.weekGainPct);
+        if (byMagnitude !== 0) return byMagnitude;
+        const bySigned = b.weekGainPct - a.weekGainPct;
+        if (bySigned !== 0) return bySigned;
+        return a.player.name.localeCompare(b.player.name);
+      })
+      .slice(0, 10);
+
+    if (topWeekly.length > 0) return topWeekly;
+
+    return [...players]
+      .map((player) => ({
+        player,
+        weekGainPct: 0,
+        overallGainPct: getSignedPercent(player.base_price, player.spot_price),
+      }))
+      .sort((a, b) => Math.abs(b.overallGainPct) - Math.abs(a.overallGainPct))
+      .slice(0, 10);
+  }, [players, weeklyMovers]);
 
   const totalComments = useMemo(
     () => posts.reduce((sum, post) => sum + Number(post.comment_count || 0), 0),
@@ -125,7 +160,7 @@ export default function HomePage() {
       <section className="home-snapshot-grid">
         <article className="table-panel">
           <div className="home-snapshot-head">
-            <h3>Market Snapshot</h3>
+            <h3>This Week&apos;s Top 10 Movers</h3>
             <Link href="/market" className="ghost-link">
               Open Market
             </Link>
@@ -141,14 +176,14 @@ export default function HomePage() {
                   <thead>
                     <tr>
                       <th>Player</th>
-                      <th>Sport</th>
                       <th>Current Price</th>
-                      <th>Move vs Purchase Price</th>
+                      <th>1 Week Gain</th>
+                      <th>Overall Gain</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {marketLeaders.map((player) => {
-                      const changePct = getSignedPercent(player.base_price, player.spot_price);
+                    {marketLeaders.map((row) => {
+                      const { player, weekGainPct, overallGainPct } = row;
                       return (
                         <tr key={player.id}>
                           <td>
@@ -157,9 +192,9 @@ export default function HomePage() {
                             </Link>
                             <div className="subtle">{player.team} {player.position}</div>
                           </td>
-                          <td>{player.sport}</td>
                           <td>{formatCurrency(player.spot_price)}</td>
-                          <td className={changePct >= 0 ? "up" : "down"}>{formatSignedPercent(changePct)}</td>
+                          <td className={weekGainPct >= 0 ? "up" : "down"}>{formatSignedPercent(weekGainPct)}</td>
+                          <td className={overallGainPct >= 0 ? "up" : "down"}>{formatSignedPercent(overallGainPct)}</td>
                         </tr>
                       );
                     })}
@@ -167,8 +202,8 @@ export default function HomePage() {
                 </table>
               </div>
               <div className="home-market-mobile-list">
-                {marketLeaders.map((player) => {
-                  const changePct = getSignedPercent(player.base_price, player.spot_price);
+                {marketLeaders.map((row) => {
+                  const { player, weekGainPct, overallGainPct } = row;
                   return (
                     <article className="home-market-mobile-card" key={player.id}>
                       <div className="home-market-mobile-top">
@@ -176,15 +211,17 @@ export default function HomePage() {
                           <Link href={`/player/${player.id}`} className="community-user-link">
                             {player.name}
                           </Link>
-                          <p className="subtle">
-                            {player.team} {player.position} | {player.sport}
-                          </p>
+                          <p className="subtle">{player.team} {player.position}</p>
                         </div>
                         <strong>{formatCurrency(player.spot_price)}</strong>
                       </div>
                       <div className="home-market-mobile-bottom">
-                        <span className="subtle">Move vs purchase price</span>
-                        <span className={changePct >= 0 ? "up" : "down"}>{formatSignedPercent(changePct)}</span>
+                        <span className="subtle">1 week gain</span>
+                        <span className={weekGainPct >= 0 ? "up" : "down"}>{formatSignedPercent(weekGainPct)}</span>
+                      </div>
+                      <div className="home-market-mobile-bottom">
+                        <span className="subtle">Overall gain</span>
+                        <span className={overallGainPct >= 0 ? "up" : "down"}>{formatSignedPercent(overallGainPct)}</span>
                       </div>
                     </article>
                   );
