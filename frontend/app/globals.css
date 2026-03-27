@@ -3646,6 +3646,10 @@ button.segment.danger-segment.danger-active {
   margin-top: 3px;
 }
 
+.market-row-actions.market-row-actions-close-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .market-row-actions button {
   width: 100%;
   min-height: 26px;
@@ -3653,6 +3657,13 @@ button.segment.danger-segment.danger-active {
   border-radius: 9px;
   padding: 0 5px;
   font-size: 10px;
+}
+
+.market-row-actions.market-row-actions-close-only button {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .market-row-actions .market-quick-buy-btn,

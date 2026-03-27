@@ -227,7 +227,7 @@ function MarketTableRow({
       <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
       <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
       <td className="market-cell-control">
-        <div className="market-row-actions">
+        <div className={`market-row-actions${closeOnlyEnabled ? " market-row-actions-close-only" : ""}`}>
           {closeOnlyEnabled ? (
             <button
               className={`chip market-mini-btn ${
