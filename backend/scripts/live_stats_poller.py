@@ -166,7 +166,7 @@ def parse_live_flag(value: Any) -> bool | None:
     return None
 
 
-def parse_optional_non_negative_float(value: Any) -> float | None:
+def parse_optional_float(value: Any) -> float | None:
     if value is None:
         return None
     raw = str(value).strip()
@@ -175,8 +175,6 @@ def parse_optional_non_negative_float(value: Any) -> float | None:
     try:
         parsed = float(raw)
     except ValueError:
-        return None
-    if parsed < 0:
         return None
     return parsed
 
@@ -520,14 +518,14 @@ def fetch_mlb_statsapi_rows(
                     name=name,
                     team=normalize_team_code(team_abbr),
                     week=row_week,
-                    fantasy_points=round(max(0.0, season_points), 6),
+                    fantasy_points=round(season_points, 6),
                     live_now=live_now,
                     live_week=row_week,
                     live_game_id=str(game_pk),
                     live_game_label=game_label,
                     live_game_status=detailed,
                     live_game_stat_line=live_stat_line,
-                    live_game_fantasy_points=round(max(0.0, game_points), 6),
+                    live_game_fantasy_points=round(game_points, 6),
                 )
 
                 dedupe_key = (normalize(name), normalize_team_code(team_abbr))
@@ -601,9 +599,6 @@ def parse_csv_rows(
         except ValueError:
             invalid_rows += 1
             continue
-        if points < 0:
-            invalid_rows += 1
-            continue
 
         live_now = parse_live_flag(row.get(col_live)) if col_live else None
         live_game_id = normalize_optional_text(row.get(col_live_game_id)) if col_live_game_id else None
@@ -611,7 +606,7 @@ def parse_csv_rows(
         live_game_status = normalize_optional_text(row.get(col_live_status)) if col_live_status else None
         live_game_stat_line = normalize_optional_text(row.get(col_live_stat_line)) if col_live_stat_line else None
         live_game_fantasy_points = (
-            parse_optional_non_negative_float(row.get(col_live_points))
+            parse_optional_float(row.get(col_live_points))
             if col_live_points
             else None
         )
@@ -705,9 +700,6 @@ def parse_json_rows(
         except (TypeError, ValueError):
             invalid_rows += 1
             continue
-        if points < 0:
-            invalid_rows += 1
-            continue
 
         live_now = parse_live_flag(row.get(col_live)) if col_live else None
         live_game_id = normalize_optional_text(row.get(col_live_game_id)) if col_live_game_id else None
@@ -715,7 +707,7 @@ def parse_json_rows(
         live_game_status = normalize_optional_text(row.get(col_live_status)) if col_live_status else None
         live_game_stat_line = normalize_optional_text(row.get(col_live_stat_line)) if col_live_stat_line else None
         live_game_fantasy_points = (
-            parse_optional_non_negative_float(row.get(col_live_points))
+            parse_optional_float(row.get(col_live_points))
             if col_live_points
             else None
         )

@@ -605,14 +605,14 @@ class TradeOut(BaseModel):
 class StatIn(BaseModel):
     player_id: int
     week: int = Field(ge=1)
-    fantasy_points: float = Field(ge=0)
+    fantasy_points: float
     live_now: bool | None = None
     live_week: int | None = Field(default=None, ge=1)
     live_game_id: str | None = Field(default=None, max_length=64)
     live_game_label: str | None = Field(default=None, max_length=96)
     live_game_status: str | None = Field(default=None, max_length=64)
     live_game_stat_line: str | None = Field(default=None, max_length=512)
-    live_game_fantasy_points: float | None = Field(default=None, ge=0)
+    live_game_fantasy_points: float | None = None
 
 
 class LiveGamePlayerOut(BaseModel):

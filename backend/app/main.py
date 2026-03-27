@@ -1374,7 +1374,7 @@ def detect_column(sample_row: dict[str, str], candidates: tuple[str, ...]) -> st
     return ""
 
 
-def parse_non_negative_float(value: object) -> float | None:
+def parse_optional_float(value: object) -> float | None:
     if value is None:
         return None
     text = str(value).strip()
@@ -1383,8 +1383,6 @@ def parse_non_negative_float(value: object) -> float | None:
     try:
         parsed = float(text)
     except ValueError:
-        return None
-    if parsed < 0:
         return None
     return parsed
 
@@ -1516,8 +1514,6 @@ def parse_stats_csv(
 
         try:
             fantasy_points = float(points_raw)
-            if fantasy_points < 0:
-                raise ValueError
         except ValueError:
             parsed.append(
                 ParsedStatRow(
@@ -1540,8 +1536,8 @@ def parse_stats_csv(
             )
             continue
 
-        game_fantasy_points = parse_non_negative_float(row.get(col_game_points)) if col_game_points else None
-        season_fantasy_points = parse_non_negative_float(row.get(col_season_points)) if col_season_points else None
+        game_fantasy_points = parse_optional_float(row.get(col_game_points)) if col_game_points else None
+        season_fantasy_points = parse_optional_float(row.get(col_season_points)) if col_season_points else None
         if col_game_points and row.get(col_game_points) not in (None, "") and game_fantasy_points is None:
             parsed.append(
                 ParsedStatRow(
