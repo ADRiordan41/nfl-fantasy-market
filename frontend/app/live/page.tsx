@@ -254,13 +254,12 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
   const toPath = (coords: Array<{ x: number; y: number }>) =>
     coords.map((coord, index) => `${index === 0 ? "M" : "L"} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`).join(" ");
 
-  const awayCoords = points.map((point, index) => ({ x: xAt(index), y: yAt(point.awayProbability) }));
   const homeCoords = points.map((point, index) => ({ x: xAt(index), y: yAt(point.homeProbability) }));
 
   return (
     <section className="live-winprob-card" aria-label={`Win probability for ${latest.awayTeam} and ${latest.homeTeam}`}>
       <div className="live-winprob-head">
-        <span className="subtle">Win Probability (game-state weighted)</span>
+        <span className="subtle">Win Probability (single-line view)</span>
         <span className="subtle">{points.length} snapshots</span>
       </div>
       <p className="subtle live-winprob-score">{latest.scoreLabel}</p>
@@ -275,25 +274,27 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
           <span>{formatNumber(latest.homeProbability, 1)}%</span>
         </span>
       </div>
-      <div className="live-winprob-chart-wrap">
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="live-winprob-chart"
-          role="img"
-          aria-label={`${latest.awayTeam} ${formatNumber(latest.awayProbability, 1)} percent, ${latest.homeTeam} ${formatNumber(
-            latest.homeProbability,
-            1,
-          )} percent`}
-        >
-          <line x1={left} x2={width - right} y1={midpointY} y2={midpointY} className="live-winprob-midline" />
-          <path d={toPath(awayCoords)} className="live-winprob-line-a" />
-          <path d={toPath(homeCoords)} className="live-winprob-line-b" />
-          <circle cx={awayCoords[awayCoords.length - 1].x} cy={awayCoords[awayCoords.length - 1].y} r={3} className="live-winprob-dot-a" />
-          <circle cx={homeCoords[homeCoords.length - 1].x} cy={homeCoords[homeCoords.length - 1].y} r={3} className="live-winprob-dot-b" />
-        </svg>
+      <div className="live-winprob-chart-layout">
+        <span className="live-winprob-pole live-winprob-pole-top">{latest.awayTeam} road (top)</span>
+        <div className="live-winprob-chart-wrap">
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            className="live-winprob-chart"
+            role="img"
+            aria-label={`Home win probability line. ${latest.homeTeam} ${formatNumber(
+              latest.homeProbability,
+              1,
+            )} percent, ${latest.awayTeam} ${formatNumber(latest.awayProbability, 1)} percent`}
+          >
+            <line x1={left} x2={width - right} y1={midpointY} y2={midpointY} className="live-winprob-midline" />
+            <path d={toPath(homeCoords)} className="live-winprob-line-home" />
+            <circle cx={homeCoords[homeCoords.length - 1].x} cy={homeCoords[homeCoords.length - 1].y} r={3} className="live-winprob-dot-home" />
+          </svg>
+        </div>
+        <span className="live-winprob-pole live-winprob-pole-bottom">{latest.homeTeam} home (bottom)</span>
       </div>
       <div className="live-winprob-axis">
-        <span>50% midline</span>
+        <span>50% midline (47% home plots slightly below)</span>
         <span>Updated {formatStamp(latest.capturedAt)}</span>
       </div>
     </section>
