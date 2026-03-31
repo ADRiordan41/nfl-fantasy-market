@@ -627,6 +627,23 @@ class LiveGamePlayerOut(BaseModel):
     fundamental_price: float
 
 
+class LiveGameStateOut(BaseModel):
+    home_team: str | None = None
+    away_team: str | None = None
+    home_score: int | None = None
+    away_score: int | None = None
+    inning: int | None = Field(default=None, ge=1)
+    inning_half: str | None = None
+    outs: int | None = Field(default=None, ge=0, le=3)
+    balls: int | None = Field(default=None, ge=0, le=4)
+    strikes: int | None = Field(default=None, ge=0, le=3)
+    runner_on_first: bool | None = None
+    runner_on_second: bool | None = None
+    runner_on_third: bool | None = None
+    offense_team: str | None = None
+    defense_team: str | None = None
+
+
 class LiveGameOut(BaseModel):
     game_id: str
     sport: str
@@ -635,6 +652,7 @@ class LiveGameOut(BaseModel):
     week: int | None = None
     live_player_count: int
     game_fantasy_points_total: float
+    state: LiveGameStateOut | None = None
     updated_at: datetime | None = None
     players: list[LiveGamePlayerOut]
 

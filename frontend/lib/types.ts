@@ -39,6 +39,23 @@ export type LiveGamePlayer = {
   fundamental_price: number;
 };
 
+export type LiveGameState = {
+  home_team: string | null;
+  away_team: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  inning: number | null;
+  inning_half: string | null;
+  outs: number | null;
+  balls: number | null;
+  strikes: number | null;
+  runner_on_first: boolean | null;
+  runner_on_second: boolean | null;
+  runner_on_third: boolean | null;
+  offense_team: string | null;
+  defense_team: string | null;
+};
+
 export type LiveGame = {
   game_id: string;
   sport: string;
@@ -47,6 +64,7 @@ export type LiveGame = {
   week: number | null;
   live_player_count: number;
   game_fantasy_points_total: number;
+  state: LiveGameState | null;
   updated_at: string | null;
   players: LiveGamePlayer[];
 };

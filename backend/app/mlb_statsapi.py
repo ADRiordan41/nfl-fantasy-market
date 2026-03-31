@@ -36,6 +36,25 @@ class MlbIncomingStat:
     live_game_fantasy_points: float | None = None
 
 
+@dataclass
+class MlbGameState:
+    game_pk: str
+    home_team: str | None = None
+    away_team: str | None = None
+    home_score: int | None = None
+    away_score: int | None = None
+    inning: int | None = None
+    inning_half: str | None = None
+    outs: int | None = None
+    balls: int | None = None
+    strikes: int | None = None
+    runner_on_first: bool | None = None
+    runner_on_second: bool | None = None
+    runner_on_third: bool | None = None
+    offense_team: str | None = None
+    defense_team: str | None = None
+
+
 def normalize_lookup_text(value: str | None) -> str:
     raw = unicodedata.normalize("NFKD", str(value or ""))
     folded = "".join(ch for ch in raw if not unicodedata.combining(ch))
@@ -81,6 +100,18 @@ def _parse_float(value: Any) -> float:
         return float(raw)
     except ValueError:
         return 0.0
+
+
+def _parse_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def _parse_innings_pitched(value: Any) -> float:
@@ -318,3 +349,90 @@ def fetch_mlb_statsapi_rows(
                     out_rows[dedupe_key] = row
 
     return list(out_rows.values()), len(game_rows)
+
+
+def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[str, MlbGameState]:
+    states: dict[str, MlbGameState] = {}
+    for raw_game_pk in game_pks:
+        game_pk = str(raw_game_pk or "").strip()
+        if not game_pk or not game_pk.isdigit():
+            continue
+        feed_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_LIVE_FEED_PATH.format(game_pk=game_pk)}"
+        try:
+            feed_payload = _http_get_json(url=feed_url, timeout=timeout)
+        except Exception:
+            continue
+        if not isinstance(feed_payload, dict):
+            continue
+
+        game_data = feed_payload.get("gameData", {}) if isinstance(feed_payload.get("gameData"), dict) else {}
+        live_data = feed_payload.get("liveData", {}) if isinstance(feed_payload.get("liveData"), dict) else {}
+        linescore = live_data.get("linescore", {}) if isinstance(live_data.get("linescore"), dict) else {}
+        teams_meta = game_data.get("teams", {}) if isinstance(game_data.get("teams"), dict) else {}
+        home_meta = teams_meta.get("home", {}) if isinstance(teams_meta.get("home"), dict) else {}
+        away_meta = teams_meta.get("away", {}) if isinstance(teams_meta.get("away"), dict) else {}
+
+        home_team = normalize_team_code(str(home_meta.get("abbreviation") or ""))
+        away_team = normalize_team_code(str(away_meta.get("abbreviation") or ""))
+        home_team_id = _parse_int(home_meta.get("id"))
+        away_team_id = _parse_int(away_meta.get("id"))
+
+        teams_score = linescore.get("teams", {}) if isinstance(linescore.get("teams"), dict) else {}
+        home_score_payload = teams_score.get("home", {}) if isinstance(teams_score.get("home"), dict) else {}
+        away_score_payload = teams_score.get("away", {}) if isinstance(teams_score.get("away"), dict) else {}
+
+        inning_half = str(linescore.get("inningState") or "").strip().upper() or None
+        if inning_half:
+            if inning_half.startswith("TOP"):
+                inning_half = "TOP"
+            elif inning_half.startswith("BOTTOM"):
+                inning_half = "BOTTOM"
+            elif inning_half.startswith("MIDDLE"):
+                inning_half = "MIDDLE"
+            elif inning_half.startswith("END"):
+                inning_half = "END"
+
+        offense_payload = linescore.get("offense", {}) if isinstance(linescore.get("offense"), dict) else {}
+        defense_payload = linescore.get("defense", {}) if isinstance(linescore.get("defense"), dict) else {}
+        offense_team_payload = offense_payload.get("team", {}) if isinstance(offense_payload.get("team"), dict) else {}
+        defense_team_payload = defense_payload.get("team", {}) if isinstance(defense_payload.get("team"), dict) else {}
+        offense_team_id = _parse_int(offense_team_payload.get("id"))
+        defense_team_id = _parse_int(defense_team_payload.get("id"))
+
+        offense_team: str | None = None
+        defense_team: str | None = None
+        if offense_team_id is not None:
+            if home_team_id is not None and offense_team_id == home_team_id:
+                offense_team = home_team or None
+            elif away_team_id is not None and offense_team_id == away_team_id:
+                offense_team = away_team or None
+        if defense_team_id is not None:
+            if home_team_id is not None and defense_team_id == home_team_id:
+                defense_team = home_team or None
+            elif away_team_id is not None and defense_team_id == away_team_id:
+                defense_team = away_team or None
+
+        if offense_team is None and inning_half in {"TOP", "BOTTOM"}:
+            offense_team = away_team if inning_half == "TOP" else home_team
+        if defense_team is None and inning_half in {"TOP", "BOTTOM"}:
+            defense_team = home_team if inning_half == "TOP" else away_team
+
+        states[game_pk] = MlbGameState(
+            game_pk=game_pk,
+            home_team=home_team or None,
+            away_team=away_team or None,
+            home_score=_parse_int(home_score_payload.get("runs")),
+            away_score=_parse_int(away_score_payload.get("runs")),
+            inning=_parse_int(linescore.get("currentInning")),
+            inning_half=inning_half,
+            outs=_parse_int(linescore.get("outs")),
+            balls=_parse_int(linescore.get("balls")),
+            strikes=_parse_int(linescore.get("strikes")),
+            runner_on_first=isinstance(offense_payload.get("first"), dict),
+            runner_on_second=isinstance(offense_payload.get("second"), dict),
+            runner_on_third=isinstance(offense_payload.get("third"), dict),
+            offense_team=offense_team,
+            defense_team=defense_team,
+        )
+
+    return states

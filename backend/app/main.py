@@ -33,7 +33,9 @@ from .db import SessionLocal, get_db
 from .infra import CACHE, RATE_LIMITER
 from .mailer import SmtpSettings, build_password_reset_email, send_smtp_message
 from .mlb_statsapi import (
+    MlbGameState,
     MlbIncomingStat,
+    fetch_mlb_game_states,
     fetch_mlb_statsapi_rows,
     normalize_lookup_text as normalize_mlb_lookup_text,
     normalize_team_code as normalize_mlb_team_code,
@@ -160,6 +162,7 @@ from .schemas import (
     FriendshipStatusOut,
     LiveGameOut,
     LiveGamePlayerOut,
+    LiveGameStateOut,
     LiveGamesOut,
     MarketMoverOut,
     MarketMoversOut,
@@ -2577,6 +2580,7 @@ def list_live_games(
         if bucket is None:
             bucket = {
                 "game_id": resolved_game_id,
+                "raw_game_id": live_game_id or None,
                 "sport": sport_code,
                 "game_label": resolved_label,
                 "game_status": live_status or None,
@@ -2586,6 +2590,8 @@ def list_live_games(
             }
             grouped[group_key] = bucket
         else:
+            if not bucket["raw_game_id"] and live_game_id:
+                bucket["raw_game_id"] = live_game_id
             if not bucket["game_status"] and live_status:
                 bucket["game_status"] = live_status
             incoming_week = int(player.live_week) if player.live_week is not None else None
@@ -2621,6 +2627,17 @@ def list_live_games(
             )
         )
 
+    mlb_game_ids = sorted(
+        {
+            str(group["raw_game_id"]).strip()
+            for group in grouped.values()
+            if str(group["sport"]).upper() == "MLB" and group.get("raw_game_id")
+        }
+    )
+    mlb_states_by_game_id: dict[str, MlbGameState] = {}
+    if mlb_game_ids:
+        mlb_states_by_game_id = fetch_mlb_game_states(game_pks=mlb_game_ids, timeout=3.5)
+
     games: list[LiveGameOut] = []
     for group in grouped.values():
         group_players = group["players"]
@@ -2631,6 +2648,28 @@ def list_live_games(
             reverse=True,
         )
         total_game_points = float(sum(float(player.game_fantasy_points) for player in sorted_players))
+        game_state_out: LiveGameStateOut | None = None
+        if str(group["sport"]).upper() == "MLB":
+            raw_game_id = (str(group["raw_game_id"]).strip() if group.get("raw_game_id") else "") or ""
+            if raw_game_id:
+                mlb_state = mlb_states_by_game_id.get(raw_game_id)
+                if mlb_state is not None:
+                    game_state_out = LiveGameStateOut(
+                        home_team=mlb_state.home_team,
+                        away_team=mlb_state.away_team,
+                        home_score=mlb_state.home_score,
+                        away_score=mlb_state.away_score,
+                        inning=mlb_state.inning,
+                        inning_half=mlb_state.inning_half,
+                        outs=mlb_state.outs,
+                        balls=mlb_state.balls,
+                        strikes=mlb_state.strikes,
+                        runner_on_first=mlb_state.runner_on_first,
+                        runner_on_second=mlb_state.runner_on_second,
+                        runner_on_third=mlb_state.runner_on_third,
+                        offense_team=mlb_state.offense_team,
+                        defense_team=mlb_state.defense_team,
+                    )
         games.append(
             LiveGameOut(
                 game_id=str(group["game_id"]),
@@ -2640,6 +2679,7 @@ def list_live_games(
                 week=int(group["week"]) if group["week"] is not None else None,
                 live_player_count=len(sorted_players),
                 game_fantasy_points_total=total_game_points,
+                state=game_state_out,
                 updated_at=group["updated_at"],
                 players=sorted_players,
             )

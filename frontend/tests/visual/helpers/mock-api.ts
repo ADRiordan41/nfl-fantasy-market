@@ -170,6 +170,22 @@ const LIVE_GAMES = {
       week: 12,
       live_player_count: 2,
       game_fantasy_points_total: 31.2,
+      state: {
+        home_team: "BOS",
+        away_team: "NYY",
+        home_score: 3,
+        away_score: 5,
+        inning: 7,
+        inning_half: "TOP",
+        outs: 1,
+        balls: 2,
+        strikes: 1,
+        runner_on_first: true,
+        runner_on_second: false,
+        runner_on_third: true,
+        offense_team: "NYY",
+        defense_team: "BOS",
+      },
       updated_at: "2026-02-25T01:29:00Z",
       players: [
         {
@@ -204,6 +220,7 @@ const LIVE_GAMES = {
       week: 12,
       live_player_count: 2,
       game_fantasy_points_total: 40.5,
+      state: null,
       updated_at: "2026-02-25T01:29:00Z",
       players: [
         {
