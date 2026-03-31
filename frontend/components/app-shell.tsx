@@ -13,7 +13,15 @@ import {
   type ReactElement,
   type SVGProps,
 } from "react";
-import { apiGet, apiPost, clearAuthToken, getAuthToken, isUnauthorizedError } from "@/lib/api";
+import {
+  AUTH_TOKEN_STORAGE_KEY,
+  apiGet,
+  apiPost,
+  clearAuthToken,
+  getAuthToken,
+  getAuthTokenChangedEventName,
+  isUnauthorizedError,
+} from "@/lib/api";
 import { formatCurrency, formatSignedPercent } from "@/lib/format";
 import { getToastEventName, type ToastEventDetail } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
@@ -352,6 +360,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void loadCurrentUser();
+  }, [loadCurrentUser]);
+
+  useEffect(() => {
+    const eventName = getAuthTokenChangedEventName();
+    function handleAuthTokenChange() {
+      void loadCurrentUser();
+    }
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== AUTH_TOKEN_STORAGE_KEY) return;
+      void loadCurrentUser();
+    }
+    window.addEventListener(eventName, handleAuthTokenChange);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(eventName, handleAuthTokenChange);
+      window.removeEventListener("storage", handleStorage);
+    };
   }, [loadCurrentUser]);
 
   useEffect(() => {
