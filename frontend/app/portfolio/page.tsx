@@ -656,7 +656,7 @@ export default function PortfolioPage() {
             </article>
             <article className="kpi-card">
               <span>Unrealized P/L</span>
-              <strong className={pnl >= 0 ? "up" : "down"}>
+              <strong className={`portfolio-kpi-pnl ${pnl >= 0 ? "up" : "down"}`}>
                 {formatSignedCurrency(pnl)} ({formatPercent(pnlPct)})
               </strong>
             </article>

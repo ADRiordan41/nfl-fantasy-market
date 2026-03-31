@@ -1439,6 +1439,11 @@ h1 {
   white-space: nowrap;
 }
 
+.portfolio-kpi-grid .kpi-card strong.portfolio-kpi-pnl {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .up {
   color: var(--up);
 }
