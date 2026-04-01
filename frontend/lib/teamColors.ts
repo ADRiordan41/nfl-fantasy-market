@@ -1,4 +1,36 @@
 const SPORT_TEAM_PRIMARY_COLORS: Record<string, Record<string, string>> = {
+  MLB: {
+    ARI: "#A71930",
+    ATH: "#003831",
+    ATL: "#CE1141",
+    BAL: "#DF4601",
+    BOS: "#BD3039",
+    CHC: "#0E3386",
+    CWS: "#27251F",
+    CIN: "#C6011F",
+    CLE: "#E31937",
+    COL: "#33006F",
+    DET: "#0C2340",
+    HOU: "#002D62",
+    KC: "#004687",
+    LAA: "#BA0021",
+    LAD: "#005A9C",
+    MIA: "#00A3E0",
+    MIL: "#12284B",
+    MIN: "#002B5C",
+    NYM: "#002D72",
+    NYY: "#0C2340",
+    PHI: "#E81828",
+    PIT: "#FDB827",
+    SD: "#2F241D",
+    SEA: "#0C2C56",
+    SF: "#FD5A1E",
+    STL: "#C41E3A",
+    TB: "#092C5C",
+    TEX: "#003278",
+    TOR: "#134A8E",
+    WSH: "#AB0003",
+  },
   NFL: {
     ARI: "#97233F",
     ATL: "#A71930",
@@ -35,17 +67,70 @@ const SPORT_TEAM_PRIMARY_COLORS: Record<string, Record<string, string>> = {
   },
 };
 
+const TEAM_CODE_ALIASES: Record<string, Record<string, string>> = {
+  MLB: {
+    CHI: "CHC",
+    CHW: "CWS",
+    CWS: "CWS",
+    KCR: "KC",
+    SFG: "SF",
+    SFN: "SF",
+    TBR: "TB",
+    WAS: "WSH",
+    WSN: "WSH",
+  },
+  NFL: {
+    JAC: "JAX",
+  },
+};
+
+const TEAM_FALLBACK_PALETTE = [
+  "#1f77b4",
+  "#ff7f0e",
+  "#2ca02c",
+  "#d62728",
+  "#9467bd",
+  "#8c564b",
+  "#e377c2",
+  "#17becf",
+  "#bcbd22",
+  "#7f7f7f",
+];
+
+function normalizeTeamCode(team: string, sportKey: string): string {
+  const raw = team.trim().toUpperCase();
+  const alnum = raw.replace(/[^A-Z0-9]/g, "");
+  if (!alnum) return "";
+  const aliases = TEAM_CODE_ALIASES[sportKey];
+  if (aliases?.[alnum]) return aliases[alnum];
+  return alnum;
+}
+
+function paletteFallbackColor(seed: string): string {
+  if (!seed) return "#117c63";
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+  return TEAM_FALLBACK_PALETTE[hash % TEAM_FALLBACK_PALETTE.length];
+}
+
 export function teamPrimaryColor(team: string, sport = ""): string {
-  const teamKey = team.toUpperCase();
   const sportKey = sport.trim().toUpperCase();
+  const teamKey = normalizeTeamCode(team, sportKey);
+  if (!teamKey) return "#117c63";
+
   const sportMap = SPORT_TEAM_PRIMARY_COLORS[sportKey];
   if (sportMap?.[teamKey]) return sportMap[teamKey];
 
-  for (const candidate of Object.values(SPORT_TEAM_PRIMARY_COLORS)) {
+  for (const [candidateSport, candidate] of Object.entries(SPORT_TEAM_PRIMARY_COLORS)) {
+    const candidateTeamKey = normalizeTeamCode(team, candidateSport);
+    if (!candidateTeamKey) continue;
+    if (candidate[candidateTeamKey]) return candidate[candidateTeamKey];
     if (candidate[teamKey]) return candidate[teamKey];
   }
 
-  return "#117c63";
+  return paletteFallbackColor(`${sportKey}:${teamKey}`);
 }
 
 function hexToRgb(hex: string): [number, number, number] {

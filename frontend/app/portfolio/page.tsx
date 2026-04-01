@@ -69,7 +69,6 @@ type AccountMixSegment = AccountMixSlice & {
 };
 
 const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
-const MAX_ACCOUNT_MIX_HOLDINGS = 8;
 const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
 const STARTING_ACCOUNT_BASELINE = 100000;
 const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
@@ -391,13 +390,8 @@ export default function PortfolioPage() {
       .filter((slice) => slice.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    const topHoldings = holdingSlices.slice(0, MAX_ACCOUNT_MIX_HOLDINGS);
-    const otherValue = holdingSlices
-      .slice(MAX_ACCOUNT_MIX_HOLDINGS)
-      .reduce((sum, slice) => sum + slice.value, 0);
-
     const slices: AccountMixSlice[] = [];
-    if (cashValue > 0 || (topHoldings.length === 0 && otherValue <= 0)) {
+    if (cashValue > 0 || holdingSlices.length === 0) {
       slices.push({
         key: "cash",
         label: "Cash",
@@ -406,16 +400,7 @@ export default function PortfolioPage() {
         gainLossPct: null,
       });
     }
-    slices.push(...topHoldings);
-    if (otherValue > 0) {
-      slices.push({
-        key: "other",
-        label: "Other Holdings",
-        color: "#8ea5bf",
-        value: otherValue,
-        gainLossPct: null,
-      });
-    }
+    slices.push(...holdingSlices);
     return slices;
   }, [cash, rowsWithAllocation]);
 
@@ -449,7 +434,7 @@ export default function PortfolioPage() {
           endAngle,
         };
       })
-      .filter((slice) => slice.endAngle - slice.startAngle > 0.05);
+      .filter((slice) => slice.endAngle > slice.startAngle);
   }, [pieSlices, pieTotal]);
   const activeAccountMixSlice = useMemo(() => {
     if (!pieSegments.length) return null;
@@ -725,7 +710,7 @@ export default function PortfolioPage() {
                 onMouseLeave={() => setActiveAccountMixSliceKey(null)}
               >
                 <p className="subtle account-mix-caption">
-                  Top {MAX_ACCOUNT_MIX_HOLDINGS} holdings, cash, and grouped remainder.
+                  Cash and all open holdings.
                 </p>
                 {pieSegments.map((slice) => {
                   const isActive = activeAccountMixSlice?.key === slice.key;
