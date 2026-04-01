@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 from urllib import parse, request
@@ -37,6 +38,25 @@ class MlbIncomingStat:
 
 
 @dataclass
+class MlbGameAtBat:
+    at_bat_index: int
+    inning: int | None = None
+    inning_half: str | None = None
+    outs_after_play: int | None = None
+    balls: int | None = None
+    strikes: int | None = None
+    runner_on_first: bool | None = None
+    runner_on_second: bool | None = None
+    runner_on_third: bool | None = None
+    away_score: int | None = None
+    home_score: int | None = None
+    event: str | None = None
+    event_type: str | None = None
+    description: str | None = None
+    occurred_at: str | None = None
+
+
+@dataclass
 class MlbGameState:
     game_pk: str
     home_team: str | None = None
@@ -53,6 +73,7 @@ class MlbGameState:
     runner_on_third: bool | None = None
     offense_team: str | None = None
     defense_team: str | None = None
+    at_bats: list[MlbGameAtBat] = field(default_factory=list)
 
 
 def normalize_lookup_text(value: str | None) -> str:
@@ -67,6 +88,18 @@ def normalize_team_code(value: str | None) -> str:
     if not token:
         return ""
     return MLB_TEAM_ALIASES.get(token, token)
+
+
+def normalize_game_pk(value: str | None) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return ""
+    if token.isdigit():
+        return token
+    match = re.search(r"\d{5,}", token)
+    if not match:
+        return ""
+    return match.group(0)
 
 
 def parse_mlb_allowed_game_types(raw_value: str | None) -> set[str]:
@@ -127,6 +160,17 @@ def _parse_innings_pitched(value: Any) -> float:
         outs = int(frac_raw[0])
     outs = max(0, min(2, outs))
     return whole + (outs / 3.0)
+
+
+def _normalize_base_token(value: Any) -> str | None:
+    raw = str(value or "").strip().upper()
+    if raw in {"1", "1B"}:
+        return "1B"
+    if raw in {"2", "2B"}:
+        return "2B"
+    if raw in {"3", "3B"}:
+        return "3B"
+    return None
 
 
 def _mlb_hitter_points(stats: dict[str, Any]) -> float:
@@ -353,10 +397,18 @@ def fetch_mlb_statsapi_rows(
 
 def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[str, MlbGameState]:
     states: dict[str, MlbGameState] = {}
+    canonical_to_aliases: dict[str, set[str]] = {}
     for raw_game_pk in game_pks:
-        game_pk = str(raw_game_pk or "").strip()
-        if not game_pk or not game_pk.isdigit():
+        raw_token = str(raw_game_pk or "").strip()
+        if not raw_token:
             continue
+        game_pk = normalize_game_pk(raw_token)
+        if not game_pk:
+            continue
+        aliases = canonical_to_aliases.setdefault(game_pk, set())
+        aliases.add(raw_token)
+
+    for game_pk, aliases in canonical_to_aliases.items():
         feed_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_LIVE_FEED_PATH.format(game_pk=game_pk)}"
         try:
             feed_payload = _http_get_json(url=feed_url, timeout=timeout)
@@ -417,7 +469,101 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
         if defense_team is None and inning_half in {"TOP", "BOTTOM"}:
             defense_team = home_team if inning_half == "TOP" else away_team
 
-        states[game_pk] = MlbGameState(
+        at_bats: list[MlbGameAtBat] = []
+        seen_at_bat_indexes: set[int] = set()
+        active_inning: int | None = None
+        active_half: str | None = None
+        runner_on_first = False
+        runner_on_second = False
+        runner_on_third = False
+        plays_payload = (live_data.get("plays") or {}).get("allPlays")
+        if isinstance(plays_payload, list):
+            for raw_play in plays_payload:
+                if not isinstance(raw_play, dict):
+                    continue
+                at_bat_index = _parse_int(raw_play.get("atBatIndex"))
+                if at_bat_index is None or at_bat_index in seen_at_bat_indexes:
+                    continue
+                about = raw_play.get("about", {}) if isinstance(raw_play.get("about"), dict) else {}
+                if about.get("isComplete") is False:
+                    continue
+                seen_at_bat_indexes.add(at_bat_index)
+                result = raw_play.get("result", {}) if isinstance(raw_play.get("result"), dict) else {}
+                count = raw_play.get("count", {}) if isinstance(raw_play.get("count"), dict) else {}
+                half = str(about.get("halfInning") or "").strip().upper() or None
+                if half:
+                    if half.startswith("TOP"):
+                        half = "TOP"
+                    elif half.startswith("BOTTOM"):
+                        half = "BOTTOM"
+
+                inning = _parse_int(about.get("inning"))
+                if inning != active_inning or half != active_half:
+                    runner_on_first = False
+                    runner_on_second = False
+                    runner_on_third = False
+                    active_inning = inning
+                    active_half = half
+
+                runners_payload = raw_play.get("runners")
+                if isinstance(runners_payload, list):
+                    for raw_runner in runners_payload:
+                        if not isinstance(raw_runner, dict):
+                            continue
+                        movement = raw_runner.get("movement")
+                        if not isinstance(movement, dict):
+                            continue
+                        start_base = _normalize_base_token(movement.get("start"))
+                        if start_base == "1B":
+                            runner_on_first = False
+                        elif start_base == "2B":
+                            runner_on_second = False
+                        elif start_base == "3B":
+                            runner_on_third = False
+                    for raw_runner in runners_payload:
+                        if not isinstance(raw_runner, dict):
+                            continue
+                        movement = raw_runner.get("movement")
+                        if not isinstance(movement, dict):
+                            continue
+                        end_base = _normalize_base_token(movement.get("end"))
+                        if end_base == "1B":
+                            runner_on_first = True
+                        elif end_base == "2B":
+                            runner_on_second = True
+                        elif end_base == "3B":
+                            runner_on_third = True
+
+                outs_after_play = _parse_int(count.get("outs"))
+                ends_half_inning = outs_after_play is not None and outs_after_play >= 3
+
+                at_bats.append(
+                    MlbGameAtBat(
+                        at_bat_index=at_bat_index,
+                        inning=inning,
+                        inning_half=half,
+                        outs_after_play=outs_after_play,
+                        balls=_parse_int(count.get("balls")),
+                        strikes=_parse_int(count.get("strikes")),
+                        runner_on_first=False if ends_half_inning else runner_on_first,
+                        runner_on_second=False if ends_half_inning else runner_on_second,
+                        runner_on_third=False if ends_half_inning else runner_on_third,
+                        away_score=_parse_int(result.get("awayScore")),
+                        home_score=_parse_int(result.get("homeScore")),
+                        event=(str(result.get("event")).strip() if result.get("event") else None) or None,
+                        event_type=(str(result.get("eventType")).strip() if result.get("eventType") else None) or None,
+                        description=(str(result.get("description")).strip() if result.get("description") else None) or None,
+                        occurred_at=(str(about.get("endTime")).strip() if about.get("endTime") else None) or None,
+                    )
+                )
+                if ends_half_inning:
+                    runner_on_first = False
+                    runner_on_second = False
+                    runner_on_third = False
+
+        at_bats.sort(key=lambda row: row.at_bat_index)
+
+        state = MlbGameState(
             game_pk=game_pk,
             home_team=home_team or None,
             away_team=away_team or None,
@@ -433,6 +579,11 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
             runner_on_third=isinstance(offense_payload.get("third"), dict),
             offense_team=offense_team,
             defense_team=defense_team,
+            at_bats=at_bats[-180:],
         )
+        states[game_pk] = state
+        for alias in aliases:
+            states[alias] = state
+            states[alias.upper()] = state
 
     return states

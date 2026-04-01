@@ -644,6 +644,24 @@ class LiveGameStateOut(BaseModel):
     defense_team: str | None = None
 
 
+class LiveGameAtBatOut(BaseModel):
+    at_bat_index: int
+    inning: int | None = Field(default=None, ge=1)
+    inning_half: str | None = None
+    outs_after_play: int | None = Field(default=None, ge=0, le=3)
+    balls: int | None = Field(default=None, ge=0, le=4)
+    strikes: int | None = Field(default=None, ge=0, le=3)
+    runner_on_first: bool | None = None
+    runner_on_second: bool | None = None
+    runner_on_third: bool | None = None
+    away_score: int | None = Field(default=None, ge=0)
+    home_score: int | None = Field(default=None, ge=0)
+    event: str | None = None
+    event_type: str | None = None
+    description: str | None = None
+    occurred_at: datetime | None = None
+
+
 class LiveGameOut(BaseModel):
     game_id: str
     sport: str
@@ -653,6 +671,7 @@ class LiveGameOut(BaseModel):
     live_player_count: int
     game_fantasy_points_total: float
     state: LiveGameStateOut | None = None
+    at_bats: list[LiveGameAtBatOut] = Field(default_factory=list)
     updated_at: datetime | None = None
     players: list[LiveGamePlayerOut]
 

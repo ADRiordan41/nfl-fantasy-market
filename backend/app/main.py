@@ -37,6 +37,7 @@ from .mlb_statsapi import (
     MlbIncomingStat,
     fetch_mlb_game_states,
     fetch_mlb_statsapi_rows,
+    normalize_game_pk as normalize_mlb_game_pk,
     normalize_lookup_text as normalize_mlb_lookup_text,
     normalize_team_code as normalize_mlb_team_code,
     parse_mlb_allowed_game_types,
@@ -160,6 +161,7 @@ from .schemas import (
     FriendSummaryOut,
     FriendshipRequestCreateIn,
     FriendshipStatusOut,
+    LiveGameAtBatOut,
     LiveGameOut,
     LiveGamePlayerOut,
     LiveGameStateOut,
@@ -2527,9 +2529,20 @@ def list_live_games(
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
+    start_of_day_utc = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     stmt = select(Player).where(
         Player.ipo_open.is_(True),
-        Player.live_now.is_(True),
+        or_(
+            Player.live_now.is_(True),
+            and_(
+                Player.live_updated_at.is_not(None),
+                Player.live_updated_at >= start_of_day_utc,
+                or_(
+                    Player.live_game_id.is_not(None),
+                    Player.live_game_label.is_not(None),
+                ),
+            ),
+        ),
     )
     if sport and sport.strip().upper() != "ALL":
         stmt = stmt.where(Player.sport == normalize_sport_code(sport))
@@ -2627,13 +2640,22 @@ def list_live_games(
             )
         )
 
-    mlb_game_ids = sorted(
-        {
-            str(group["raw_game_id"]).strip()
-            for group in grouped.values()
-            if str(group["sport"]).upper() == "MLB" and group.get("raw_game_id")
-        }
-    )
+    mlb_game_id_tokens: set[str] = set()
+    for group in grouped.values():
+        if str(group["sport"]).upper() != "MLB":
+            continue
+        raw_game_id = (str(group["raw_game_id"]).strip() if group.get("raw_game_id") else "") or ""
+        if raw_game_id:
+            mlb_game_id_tokens.add(raw_game_id)
+            normalized_raw = normalize_mlb_game_pk(raw_game_id)
+            if normalized_raw:
+                mlb_game_id_tokens.add(normalized_raw)
+        group_game_id = (str(group["game_id"]).strip() if group.get("game_id") else "") or ""
+        game_id_suffix = group_game_id.split(":", 1)[1] if ":" in group_game_id else group_game_id
+        normalized_suffix = normalize_mlb_game_pk(game_id_suffix)
+        if normalized_suffix:
+            mlb_game_id_tokens.add(normalized_suffix)
+    mlb_game_ids = sorted(mlb_game_id_tokens)
     mlb_states_by_game_id: dict[str, MlbGameState] = {}
     if mlb_game_ids:
         mlb_states_by_game_id = fetch_mlb_game_states(game_pks=mlb_game_ids, timeout=3.5)
@@ -2649,27 +2671,69 @@ def list_live_games(
         )
         total_game_points = float(sum(float(player.game_fantasy_points) for player in sorted_players))
         game_state_out: LiveGameStateOut | None = None
+        at_bats_out: list[LiveGameAtBatOut] = []
         if str(group["sport"]).upper() == "MLB":
             raw_game_id = (str(group["raw_game_id"]).strip() if group.get("raw_game_id") else "") or ""
-            if raw_game_id:
-                mlb_state = mlb_states_by_game_id.get(raw_game_id)
-                if mlb_state is not None:
-                    game_state_out = LiveGameStateOut(
-                        home_team=mlb_state.home_team,
-                        away_team=mlb_state.away_team,
-                        home_score=mlb_state.home_score,
-                        away_score=mlb_state.away_score,
-                        inning=mlb_state.inning,
-                        inning_half=mlb_state.inning_half,
-                        outs=mlb_state.outs,
-                        balls=mlb_state.balls,
-                        strikes=mlb_state.strikes,
-                        runner_on_first=mlb_state.runner_on_first,
-                        runner_on_second=mlb_state.runner_on_second,
-                        runner_on_third=mlb_state.runner_on_third,
-                        offense_team=mlb_state.offense_team,
-                        defense_team=mlb_state.defense_team,
+            group_game_id = (str(group["game_id"]).strip() if group.get("game_id") else "") or ""
+            game_id_suffix = group_game_id.split(":", 1)[1] if ":" in group_game_id else group_game_id
+            candidates = [
+                raw_game_id,
+                raw_game_id.upper(),
+                normalize_mlb_game_pk(raw_game_id),
+                game_id_suffix,
+                game_id_suffix.upper(),
+                normalize_mlb_game_pk(game_id_suffix),
+            ]
+            mlb_state: MlbGameState | None = None
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                found = mlb_states_by_game_id.get(candidate)
+                if found is not None:
+                    mlb_state = found
+                    break
+
+            if mlb_state is not None:
+                game_state_out = LiveGameStateOut(
+                    home_team=mlb_state.home_team,
+                    away_team=mlb_state.away_team,
+                    home_score=mlb_state.home_score,
+                    away_score=mlb_state.away_score,
+                    inning=mlb_state.inning,
+                    inning_half=mlb_state.inning_half,
+                    outs=mlb_state.outs,
+                    balls=mlb_state.balls,
+                    strikes=mlb_state.strikes,
+                    runner_on_first=mlb_state.runner_on_first,
+                    runner_on_second=mlb_state.runner_on_second,
+                    runner_on_third=mlb_state.runner_on_third,
+                    offense_team=mlb_state.offense_team,
+                    defense_team=mlb_state.defense_team,
+                )
+                at_bats_out = [
+                    LiveGameAtBatOut(
+                        at_bat_index=int(at_bat.at_bat_index),
+                        inning=int(at_bat.inning) if at_bat.inning is not None else None,
+                        inning_half=at_bat.inning_half,
+                        outs_after_play=(
+                            int(at_bat.outs_after_play)
+                            if at_bat.outs_after_play is not None
+                            else None
+                        ),
+                        balls=int(at_bat.balls) if at_bat.balls is not None else None,
+                        strikes=int(at_bat.strikes) if at_bat.strikes is not None else None,
+                        runner_on_first=at_bat.runner_on_first,
+                        runner_on_second=at_bat.runner_on_second,
+                        runner_on_third=at_bat.runner_on_third,
+                        away_score=int(at_bat.away_score) if at_bat.away_score is not None else None,
+                        home_score=int(at_bat.home_score) if at_bat.home_score is not None else None,
+                        event=at_bat.event,
+                        event_type=at_bat.event_type,
+                        description=at_bat.description,
+                        occurred_at=at_bat.occurred_at,
                     )
+                    for at_bat in mlb_state.at_bats
+                ]
         games.append(
             LiveGameOut(
                 game_id=str(group["game_id"]),
@@ -2680,16 +2744,18 @@ def list_live_games(
                 live_player_count=len(sorted_players),
                 game_fantasy_points_total=total_game_points,
                 state=game_state_out,
+                at_bats=at_bats_out,
                 updated_at=group["updated_at"],
                 players=sorted_players,
             )
         )
 
     games.sort(key=lambda game: (game.sport, game.game_label.lower(), game.game_id.lower()))
+    live_players_count = sum(1 for player in players if bool(player.live_now))
     result = LiveGamesOut(
         generated_at=generated_at,
         live_games_count=len(games),
-        live_players_count=len(players),
+        live_players_count=live_players_count,
         games=games,
     )
     return set_cached_json(cache_key, result, ttl_seconds=15)

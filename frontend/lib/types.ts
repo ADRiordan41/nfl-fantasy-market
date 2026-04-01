@@ -56,6 +56,24 @@ export type LiveGameState = {
   defense_team: string | null;
 };
 
+export type LiveGameAtBat = {
+  at_bat_index: number;
+  inning: number | null;
+  inning_half: string | null;
+  outs_after_play: number | null;
+  balls: number | null;
+  strikes: number | null;
+  runner_on_first: boolean | null;
+  runner_on_second: boolean | null;
+  runner_on_third: boolean | null;
+  away_score: number | null;
+  home_score: number | null;
+  event: string | null;
+  event_type: string | null;
+  description: string | null;
+  occurred_at: string | null;
+};
+
 export type LiveGame = {
   game_id: string;
   sport: string;
@@ -65,6 +83,7 @@ export type LiveGame = {
   live_player_count: number;
   game_fantasy_points_total: number;
   state: LiveGameState | null;
+  at_bats: LiveGameAtBat[];
   updated_at: string | null;
   players: LiveGamePlayer[];
 };

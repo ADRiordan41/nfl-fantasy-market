@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type PointerEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -24,6 +24,22 @@ type WinProbabilityPoint = {
   homeProbability: number;
   scoreLabel: string;
   situationLabel: string;
+  markerLabel: string;
+  atBatIndex: number | null;
+};
+
+type WinProbabilityContext = {
+  awayScore: number | null;
+  homeScore: number | null;
+  inning: number | null;
+  inningHalf: string | null;
+  outs: number | null;
+  balls: number | null;
+  strikes: number | null;
+  runnerOnFirst: boolean | null;
+  runnerOnSecond: boolean | null;
+  runnerOnThird: boolean | null;
+  offenseTeam: string | null;
 };
 
 function toMessage(err: unknown): string {
@@ -145,22 +161,19 @@ function totalPointsForTeam(teams: TeamGroup[], teamCode: string): number {
   return found?.gameFantasyPointsTotal ?? 0;
 }
 
-function formatBaseState(game: LiveGame): string {
-  const state = game.state;
-  if (!state) return "Bases unavailable";
+function formatBaseState(context: WinProbabilityContext): string {
   const runners: string[] = [];
-  if (state.runner_on_first) runners.push("1st");
-  if (state.runner_on_second) runners.push("2nd");
-  if (state.runner_on_third) runners.push("3rd");
+  if (context.runnerOnFirst) runners.push("1st");
+  if (context.runnerOnSecond) runners.push("2nd");
+  if (context.runnerOnThird) runners.push("3rd");
   if (runners.length === 0) return "Bases empty";
   return `Runners: ${runners.join(", ")}`;
 }
 
-function formatInningState(game: LiveGame): string {
-  const state = game.state;
-  if (!state || (!state.inning_half && state.inning == null)) return "State pending";
-  const inning = state.inning ?? "--";
-  const half = (state.inning_half ?? "").trim().toUpperCase();
+function formatInningState(context: WinProbabilityContext): string {
+  if (!context.inningHalf && context.inning == null) return "State pending";
+  const inning = context.inning ?? "--";
+  const half = (context.inningHalf ?? "").trim().toUpperCase();
   if (half === "TOP") return `Top ${inning}`;
   if (half === "BOTTOM") return `Bottom ${inning}`;
   if (half === "MIDDLE") return `Mid ${inning}`;
@@ -168,20 +181,26 @@ function formatInningState(game: LiveGame): string {
   return half ? `${half} ${inning}` : `Inning ${inning}`;
 }
 
-function estimateAwayWinProbability(game: LiveGame, teams: TeamGroup[], awayTeam: string, homeTeam: string): number {
-  const state = game.state;
-  const awayScore = state?.away_score;
-  const homeScore = state?.home_score;
+function estimateAwayWinProbability(
+  context: WinProbabilityContext,
+  args: {
+    awayTeam: string;
+    homeTeam: string;
+    fallbackAwayPoints: number;
+    fallbackHomePoints: number;
+  },
+): number {
+  const { awayTeam, homeTeam, fallbackAwayPoints, fallbackHomePoints } = args;
+  const awayScore = context.awayScore;
+  const homeScore = context.homeScore;
   const hasScore = awayScore != null && homeScore != null;
   if (!hasScore) {
-    const awayPoints = totalPointsForTeam(teams, awayTeam);
-    const homePoints = totalPointsForTeam(teams, homeTeam);
-    return estimateWinProbabilityFromPoints(awayPoints, homePoints);
+    return estimateWinProbabilityFromPoints(fallbackAwayPoints, fallbackHomePoints);
   }
 
-  const inning = state?.inning ?? 1;
-  const outs = state?.outs == null ? 0 : clamp(state.outs, 0, 3);
-  const inningHalf = (state?.inning_half ?? "").trim().toUpperCase();
+  const inning = context.inning ?? 1;
+  const outs = context.outs == null ? 0 : clamp(context.outs, 0, 3);
+  const inningHalf = (context.inningHalf ?? "").trim().toUpperCase();
   const baseOuts = Math.max(0, inning - 1) * 6;
   let outsElapsed = baseOuts + outs;
   if (inningHalf === "BOTTOM") outsElapsed = baseOuts + 3 + outs;
@@ -190,26 +209,118 @@ function estimateAwayWinProbability(game: LiveGame, teams: TeamGroup[], awayTeam
 
   const progress = clamp(outsElapsed / 54, 0, 1.3);
   const runDiff = awayScore - homeScore;
-  let scoreEdge = runDiff * (0.9 + progress * 2.8);
+  const runInfluencePerRun = 4 + progress * 8.5;
+  let awayProbability = 50 + runDiff * runInfluencePerRun;
 
   const runnerPressure =
-    (state?.runner_on_first ? 0.45 : 0) +
-    (state?.runner_on_second ? 0.75 : 0) +
-    (state?.runner_on_third ? 1.05 : 0);
-  const outsLeverage = state?.outs == null ? 0.65 : clamp((3 - state.outs) / 3, 0, 1);
-  const countLeverage = clamp(1 + ((state?.balls ?? 0) - (state?.strikes ?? 0)) * 0.08, 0.82, 1.2);
-  const pressure = runnerPressure * outsLeverage * countLeverage;
-  if (sameTeam(state?.offense_team, awayTeam)) scoreEdge += pressure;
-  if (sameTeam(state?.offense_team, homeTeam)) scoreEdge -= pressure;
+    (context.runnerOnFirst ? 1.0 : 0) +
+    (context.runnerOnSecond ? 1.6 : 0) +
+    (context.runnerOnThird ? 2.2 : 0);
+  const outsLeverage = context.outs == null ? 0.7 : clamp((3 - context.outs) / 3, 0, 1);
+  const pressurePhase = 0.5 + 0.5 * (1 - clamp(progress, 0, 1));
+  const countEdge = ((context.balls ?? 0) - (context.strikes ?? 0)) * 0.9;
+  const situationEdge = runnerPressure * outsLeverage * pressurePhase + countEdge;
+  if (sameTeam(context.offenseTeam, awayTeam)) awayProbability += situationEdge;
+  if (sameTeam(context.offenseTeam, homeTeam)) awayProbability -= situationEdge;
 
   if (inning >= 9 && inningHalf === "BOTTOM" && homeScore >= awayScore) {
-    scoreEdge -= 1 + (homeScore - awayScore) * 0.35;
+    awayProbability -= 6 + (homeScore - awayScore) * 3;
   }
   if (inning >= 9 && inningHalf === "TOP" && awayScore > homeScore) {
-    scoreEdge += 0.25 + (awayScore - homeScore) * 0.1;
+    awayProbability += 2.5 + (awayScore - homeScore) * 0.7;
   }
 
-  return clamp(100 / (1 + Math.exp(-scoreEdge)), 1, 99);
+  return clamp(awayProbability, 1, 99);
+}
+
+function contextFromLiveState(game: LiveGame): WinProbabilityContext {
+  const state = game.state;
+  return {
+    awayScore: state?.away_score ?? null,
+    homeScore: state?.home_score ?? null,
+    inning: state?.inning ?? null,
+    inningHalf: state?.inning_half ?? null,
+    outs: state?.outs ?? null,
+    balls: state?.balls ?? null,
+    strikes: state?.strikes ?? null,
+    runnerOnFirst: state?.runner_on_first ?? null,
+    runnerOnSecond: state?.runner_on_second ?? null,
+    runnerOnThird: state?.runner_on_third ?? null,
+    offenseTeam: state?.offense_team ?? null,
+  };
+}
+
+function contextFromAtBat(
+  atBat: LiveGame["at_bats"][number],
+  awayTeam: string,
+  homeTeam: string,
+): WinProbabilityContext {
+  const half = (atBat.inning_half ?? "").trim().toUpperCase();
+  const offenseTeam = half === "TOP" ? awayTeam : half === "BOTTOM" ? homeTeam : null;
+  return {
+    awayScore: atBat.away_score,
+    homeScore: atBat.home_score,
+    inning: atBat.inning,
+    inningHalf: atBat.inning_half,
+    outs: atBat.outs_after_play,
+    balls: atBat.balls,
+    strikes: atBat.strikes,
+    runnerOnFirst: atBat.runner_on_first,
+    runnerOnSecond: atBat.runner_on_second,
+    runnerOnThird: atBat.runner_on_third,
+    offenseTeam,
+  };
+}
+
+function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint[] {
+  const teamsForGame = resolveAwayHomeTeams(game, teams);
+  const atBats = game.at_bats ?? [];
+  if (!teamsForGame || atBats.length === 0) return [];
+  const awayTeam = teamsForGame.awayTeam;
+  const homeTeam = teamsForGame.homeTeam;
+  const fallbackAwayPoints = totalPointsForTeam(teams, awayTeam);
+  const fallbackHomePoints = totalPointsForTeam(teams, homeTeam);
+  const rows = [...atBats].sort((a, b) => a.at_bat_index - b.at_bat_index);
+
+  return rows.map((atBat) => {
+    const context = contextFromAtBat(atBat, awayTeam, homeTeam);
+    const awayProbability = roundTo(
+      estimateAwayWinProbability(context, {
+        awayTeam,
+        homeTeam,
+        fallbackAwayPoints,
+        fallbackHomePoints,
+      }),
+      1,
+    );
+    const homeProbability = roundTo(100 - awayProbability, 1);
+    const scoreLabel =
+      atBat.away_score != null && atBat.home_score != null
+        ? `${awayTeam} ${formatNumber(atBat.away_score, 0)} - ${formatNumber(atBat.home_score, 0)} ${homeTeam}`
+        : `${awayTeam} vs ${homeTeam}`;
+    const outsLabel =
+      atBat.outs_after_play == null ? "Outs --" : `${atBat.outs_after_play} out${atBat.outs_after_play === 1 ? "" : "s"}`;
+    const countLabel =
+      atBat.balls != null && atBat.strikes != null
+        ? `${atBat.balls}-${atBat.strikes} count`
+        : atBat.balls != null
+          ? `${atBat.balls} balls`
+          : atBat.strikes != null
+            ? `${atBat.strikes} strikes`
+            : "Count --";
+    const eventLabel = atBat.event ?? "At-bat result";
+    return {
+      capturedAt: atBat.occurred_at ?? game.updated_at ?? generatedAt,
+      awayTeam,
+      homeTeam,
+      awayProbability,
+      homeProbability,
+      scoreLabel,
+      situationLabel: `${formatInningState(context)} | ${outsLabel} | ${formatBaseState(context)} | ${countLabel} | ${eventLabel}`,
+      markerLabel: eventLabel,
+      atBatIndex: atBat.at_bat_index,
+    };
+  });
 }
 
 function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint | null {
@@ -217,15 +328,23 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
   if (!teamsForGame) return null;
   const awayTeam = teamsForGame.awayTeam;
   const homeTeam = teamsForGame.homeTeam;
-  const awayProbability = roundTo(estimateAwayWinProbability(game, teams, awayTeam, homeTeam), 1);
+  const context = contextFromLiveState(game);
+  const awayProbability = roundTo(
+    estimateAwayWinProbability(context, {
+      awayTeam,
+      homeTeam,
+      fallbackAwayPoints: totalPointsForTeam(teams, awayTeam),
+      fallbackHomePoints: totalPointsForTeam(teams, homeTeam),
+    }),
+    1,
+  );
   const homeProbability = roundTo(100 - awayProbability, 1);
-  const hasScore = game.state?.away_score != null && game.state?.home_score != null;
+  const hasScore = context.awayScore != null && context.homeScore != null;
   const scoreLabel = hasScore
-    ? `${awayTeam} ${formatNumber(game.state?.away_score ?? 0, 0)} - ${formatNumber(game.state?.home_score ?? 0, 0)} ${homeTeam}`
+    ? `${awayTeam} ${formatNumber(context.awayScore ?? 0, 0)} - ${formatNumber(context.homeScore ?? 0, 0)} ${homeTeam}`
     : `${awayTeam} vs ${homeTeam}`;
-  const outsLabel =
-    game.state?.outs == null ? "Outs --" : `${game.state.outs} out${game.state.outs === 1 ? "" : "s"}`;
-  const battingLabel = game.state?.offense_team ? ` | Batting ${game.state.offense_team}` : "";
+  const outsLabel = context.outs == null ? "Outs --" : `${context.outs} out${context.outs === 1 ? "" : "s"}`;
+  const battingLabel = context.offenseTeam ? ` | Batting ${context.offenseTeam}` : "";
   return {
     capturedAt: game.updated_at ?? generatedAt,
     awayTeam,
@@ -233,13 +352,24 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     awayProbability,
     homeProbability,
     scoreLabel,
-    situationLabel: `${formatInningState(game)} | ${outsLabel} | ${formatBaseState(game)}${battingLabel}`,
+    situationLabel: `${formatInningState(context)} | ${outsLabel} | ${formatBaseState(context)}${battingLabel}`,
+    markerLabel: "Live snapshot",
+    atBatIndex: null,
   };
 }
 
 function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (points.length === 0) return null;
   const latest = points[points.length - 1];
+  const activeIndex = hoveredIndex == null ? points.length - 1 : clamp(hoveredIndex, 0, points.length - 1);
+  const activePoint = points[activeIndex];
+  const previousPoint = activeIndex > 0 ? points[activeIndex - 1] : null;
+  const activeDelta = previousPoint ? roundTo(activePoint.homeProbability - previousPoint.homeProbability, 1) : null;
+  const activeDeltaLabel = previousPoint
+    ? `${activeDelta != null && activeDelta >= 0 ? "+" : ""}${formatNumber(activeDelta ?? 0, 1)}%`
+    : "start";
+  const activeIndexLabel = activePoint.atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(activePoint.atBatIndex, 0)}`;
   const width = 340;
   const height = 124;
   const left = 10;
@@ -255,47 +385,98 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
     coords.map((coord, index) => `${index === 0 ? "M" : "L"} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`).join(" ");
 
   const homeCoords = points.map((point, index) => ({ x: xAt(index), y: yAt(point.homeProbability) }));
+  const activeCoord = homeCoords[activeIndex];
+  const atBatPointsCount = points.reduce((sum, point) => (point.atBatIndex == null ? sum : sum + 1), 0);
+  const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (points.length === 1) {
+      setHoveredIndex(0);
+      return;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width <= 0) return;
+    const rawX = ((event.clientX - bounds.left) / bounds.width) * width;
+    const clampedX = clamp(rawX, left, width - right);
+    const progress = clamp((clampedX - left) / plotWidth, 0, 1);
+    const nextIndex = Math.round(progress * (points.length - 1));
+    setHoveredIndex((current) => (current === nextIndex ? current : nextIndex));
+  };
+  const handlePointerLeave = () => setHoveredIndex(null);
 
   return (
-    <section className="live-winprob-card" aria-label={`Win probability for ${latest.awayTeam} and ${latest.homeTeam}`}>
+    <section className="live-winprob-card" aria-label={`Win probability for ${activePoint.awayTeam} and ${activePoint.homeTeam}`}>
       <div className="live-winprob-head">
         <span className="subtle">Win Probability (single-line view)</span>
-        <span className="subtle">{points.length} snapshots</span>
+        <span className="subtle">
+          {atBatPointsCount > 0 ? `${atBatPointsCount} at-bat points` : `${points.length} snapshots`}
+        </span>
       </div>
-      <p className="subtle live-winprob-score">{latest.scoreLabel}</p>
-      <p className="subtle live-winprob-state">{latest.situationLabel}</p>
+      <p className="subtle live-winprob-score">{activePoint.scoreLabel}</p>
+      <p className="subtle live-winprob-state">{activePoint.situationLabel}</p>
       <div className="live-winprob-legend">
         <span className="live-winprob-team">
-          <strong className="live-winprob-team-name live-winprob-team-a">{latest.awayTeam}</strong>
-          <span>{formatNumber(latest.awayProbability, 1)}%</span>
+          <strong className="live-winprob-team-name live-winprob-team-a">{activePoint.awayTeam}</strong>
+          <span>{formatNumber(activePoint.awayProbability, 1)}%</span>
         </span>
         <span className="live-winprob-team">
-          <strong className="live-winprob-team-name live-winprob-team-b">{latest.homeTeam}</strong>
-          <span>{formatNumber(latest.homeProbability, 1)}%</span>
+          <strong className="live-winprob-team-name live-winprob-team-b">{activePoint.homeTeam}</strong>
+          <span>{formatNumber(activePoint.homeProbability, 1)}%</span>
         </span>
       </div>
       <div className="live-winprob-chart-layout">
-        <span className="live-winprob-pole live-winprob-pole-top">{latest.awayTeam} road (top)</span>
+        <span className="live-winprob-pole live-winprob-pole-top">{activePoint.awayTeam} road (top)</span>
         <div className="live-winprob-chart-wrap">
           <svg
             viewBox={`0 0 ${width} ${height}`}
             className="live-winprob-chart"
             role="img"
-            aria-label={`Home win probability line. ${latest.homeTeam} ${formatNumber(
-              latest.homeProbability,
+            onPointerMove={handlePointerMove}
+            onPointerDown={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
+            aria-label={`Home win probability line. ${activePoint.homeTeam} ${formatNumber(
+              activePoint.homeProbability,
               1,
-            )} percent, ${latest.awayTeam} ${formatNumber(latest.awayProbability, 1)} percent`}
+            )} percent, ${activePoint.awayTeam} ${formatNumber(activePoint.awayProbability, 1)} percent`}
           >
             <line x1={left} x2={width - right} y1={midpointY} y2={midpointY} className="live-winprob-midline" />
+            {hoveredIndex != null && (
+              <line
+                x1={activeCoord.x}
+                x2={activeCoord.x}
+                y1={top}
+                y2={height - bottom}
+                className="live-winprob-hover-line"
+              />
+            )}
             <path d={toPath(homeCoords)} className="live-winprob-line-home" />
-            <circle cx={homeCoords[homeCoords.length - 1].x} cy={homeCoords[homeCoords.length - 1].y} r={3} className="live-winprob-dot-home" />
+            {homeCoords.map((coord, index) => (
+              <circle
+                key={`home-point-${index}`}
+                cx={coord.x}
+                cy={coord.y}
+                r={index === activeIndex ? 3.35 : index === homeCoords.length - 1 ? 3 : 1.85}
+                className={
+                  index === activeIndex
+                    ? "live-winprob-dot-home-active"
+                    : index === homeCoords.length - 1
+                      ? "live-winprob-dot-home"
+                      : "live-winprob-dot-home-point"
+                }
+              >
+                <title>
+                  {`${points[index].atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(points[index].atBatIndex, 0)}`}: ${
+                    points[index].markerLabel
+                  } | Home ${formatNumber(points[index].homeProbability, 1)}% | ${points[index].scoreLabel}`}
+                </title>
+              </circle>
+            ))}
           </svg>
         </div>
-        <span className="live-winprob-pole live-winprob-pole-bottom">{latest.homeTeam} home (bottom)</span>
+        <span className="live-winprob-pole live-winprob-pole-bottom">{activePoint.homeTeam} home (bottom)</span>
       </div>
       <div className="live-winprob-axis">
-        <span>50% midline (47% home plots slightly below)</span>
-        <span>Updated {formatStamp(latest.capturedAt)}</span>
+        <span>{`${activeIndexLabel}: ${activePoint.markerLabel}`}</span>
+        <span>{`Home ${formatNumber(activePoint.homeProbability, 1)}% (${activeDeltaLabel})`}</span>
+        <span>{hoveredIndex == null ? `Updated ${formatStamp(latest.capturedAt)}` : `Occurred ${formatStamp(activePoint.capturedAt)}`}</span>
       </div>
     </section>
   );
@@ -357,6 +538,12 @@ export default function LivePage() {
 
       for (const game of payload.games) {
         const teams = groupTeams(game);
+        const atBatSeries = buildAtBatWinProbabilityPoints(game, teams, generatedAt);
+        if (atBatSeries.length > 0) {
+          next[game.game_id] = atBatSeries.slice(-180);
+          continue;
+        }
+
         const point = nextWinProbabilityPoint(game, teams, generatedAt);
         if (!point) continue;
 
@@ -392,12 +579,12 @@ export default function LivePage() {
           <p className="eyebrow">Live</p>
           <h1>Live Game Center</h1>
           <p className="subtle">
-            Active games. Live stats. Place your orders.
+            Today&apos;s slate with live and final game snapshots.
           </p>
         </div>
         <div className="hero-metrics">
           <article className="kpi-card">
-            <span>Live Games</span>
+            <span>Today&apos;s Games</span>
             <strong>{formatNumber(payload?.live_games_count ?? 0)}</strong>
           </article>
           <article className="kpi-card">
@@ -447,7 +634,7 @@ export default function LivePage() {
         <>
           <section className="table-panel">
             <p className="subtle">
-              Showing {formatNumber(visibleGames.length)} games and {formatNumber(visiblePlayers)} live players.
+              Showing {formatNumber(visibleGames.length)} games and {formatNumber(visiblePlayers)} tracked players.
             </p>
           </section>
           <section className="live-games-grid">
