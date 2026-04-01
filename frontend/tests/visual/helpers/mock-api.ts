@@ -168,6 +168,7 @@ const LIVE_GAMES = {
       game_label: "NYY @ BOS",
       game_status: "Top 7th",
       week: 12,
+      is_live: true,
       live_player_count: 2,
       game_fantasy_points_total: 31.2,
       state: {
@@ -288,6 +289,7 @@ const LIVE_GAMES = {
       game_label: "PHI vs DAL",
       game_status: "Q3 08:12",
       week: 12,
+      is_live: true,
       live_player_count: 2,
       game_fantasy_points_total: 40.5,
       state: null,

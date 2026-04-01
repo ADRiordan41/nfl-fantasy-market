@@ -2286,6 +2286,12 @@ h1 {
   letter-spacing: 0.04em;
 }
 
+.live-indicator-muted {
+  border-color: rgba(160, 173, 191, 0.7);
+  background: rgba(240, 244, 250, 0.95);
+  color: #526279;
+}
+
 .live-dot {
   width: 9px;
   height: 9px;
@@ -2293,6 +2299,12 @@ h1 {
   background: #ff8a2a;
   box-shadow: 0 0 0 0 rgba(255, 138, 42, 0.56);
   animation: live-dot-pulse 1.7s ease-out infinite;
+}
+
+.live-dot-muted {
+  background: #8ba1be;
+  box-shadow: none;
+  animation: none;
 }
 
 .live-status {

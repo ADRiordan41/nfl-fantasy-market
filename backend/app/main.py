@@ -2598,6 +2598,7 @@ def list_live_games(
                 "game_label": resolved_label,
                 "game_status": live_status or None,
                 "week": int(player.live_week) if player.live_week is not None else None,
+                "is_live": bool(player.live_now),
                 "updated_at": player.live_updated_at,
                 "players": [],
             }
@@ -2615,6 +2616,8 @@ def list_live_games(
             prior_updated_at = bucket["updated_at"]
             if incoming_updated_at and (prior_updated_at is None or incoming_updated_at > prior_updated_at):
                 bucket["updated_at"] = incoming_updated_at
+            if bool(player.live_now):
+                bucket["is_live"] = True
 
         fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
         _ = latest_week
@@ -2741,6 +2744,7 @@ def list_live_games(
                 game_label=str(group["game_label"]),
                 game_status=(str(group["game_status"]) if group["game_status"] else None),
                 week=int(group["week"]) if group["week"] is not None else None,
+                is_live=bool(group["is_live"]),
                 live_player_count=len(sorted_players),
                 game_fantasy_points_total=total_game_points,
                 state=game_state_out,

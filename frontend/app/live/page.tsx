@@ -142,18 +142,26 @@ function sameTeam(left: string | null | undefined, right: string | null | undefi
   return left.trim().toUpperCase() === right.trim().toUpperCase();
 }
 
-function resolveAwayHomeTeams(game: LiveGame, teams: TeamGroup[]): { awayTeam: string; homeTeam: string } | null {
-  if (game.state?.away_team && game.state?.home_team) {
-    return { awayTeam: game.state.away_team, homeTeam: game.state.home_team };
+function resolveAwayHomeTeams(game: LiveGame, teams: TeamGroup[]): { awayTeam: string; homeTeam: string } {
+  const stateAway = (game.state?.away_team ?? "").trim();
+  const stateHome = (game.state?.home_team ?? "").trim();
+  if (stateAway && stateHome) {
+    return { awayTeam: stateAway, homeTeam: stateHome };
   }
   const fromLabel = parseTeamsFromLabel(game.game_label);
-  if (fromLabel) return fromLabel;
   const selected = pickWinProbabilityTeams(teams);
-  if (!selected) return null;
-  return {
-    awayTeam: selected[0].team,
-    homeTeam: selected[1].team,
-  };
+  let awayTeam = stateAway || fromLabel?.awayTeam || selected?.[0]?.team || "";
+  let homeTeam = stateHome || fromLabel?.homeTeam || selected?.[1]?.team || "";
+
+  if (!awayTeam && teams.length > 0) awayTeam = teams[0].team;
+  if (!homeTeam && teams.length > 1) homeTeam = teams[1].team;
+  if (!awayTeam) awayTeam = "AWAY";
+  if (!homeTeam) homeTeam = "HOME";
+  if (sameTeam(awayTeam, homeTeam)) {
+    homeTeam = sameTeam(awayTeam, "HOME") ? "AWAY" : "HOME";
+  }
+
+  return { awayTeam, homeTeam };
 }
 
 function totalPointsForTeam(teams: TeamGroup[], teamCode: string): number {
@@ -275,7 +283,7 @@ function contextFromAtBat(
 function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint[] {
   const teamsForGame = resolveAwayHomeTeams(game, teams);
   const atBats = game.at_bats ?? [];
-  if (!teamsForGame || atBats.length === 0) return [];
+  if (atBats.length === 0) return [];
   const awayTeam = teamsForGame.awayTeam;
   const homeTeam = teamsForGame.homeTeam;
   const fallbackAwayPoints = totalPointsForTeam(teams, awayTeam);
@@ -323,9 +331,8 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
   });
 }
 
-function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint | null {
+function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint {
   const teamsForGame = resolveAwayHomeTeams(game, teams);
-  if (!teamsForGame) return null;
   const awayTeam = teamsForGame.awayTeam;
   const homeTeam = teamsForGame.homeTeam;
   const context = contextFromLiveState(game);
@@ -545,8 +552,6 @@ export default function LivePage() {
         }
 
         const point = nextWinProbabilityPoint(game, teams, generatedAt);
-        if (!point) continue;
-
         const previousSeries = previous[game.game_id] ?? [];
         const lastPoint = previousSeries[previousSeries.length - 1];
         const sameTeams = !lastPoint || (lastPoint.awayTeam === point.awayTeam && lastPoint.homeTeam === point.homeTeam);
@@ -644,6 +649,8 @@ export default function LivePage() {
                   const teams = groupTeams(game);
                   const expanded = expandedGameId === game.game_id;
                   const winProbabilityPoints = winProbabilityByGameId[game.game_id] ?? [];
+                  const liveBadgeLabel = game.is_live ? "LIVE NOW" : "TODAY";
+                  const liveStatusLabel = game.game_status ?? (game.is_live ? "In progress" : "Final");
                   return (
                     <>
                       <button
@@ -653,11 +660,11 @@ export default function LivePage() {
                         aria-expanded={expanded}
                       >
                         <div className="live-now-head">
-                          <span className="live-indicator">
-                            <span className="live-dot" />
-                            LIVE NOW
+                          <span className={`live-indicator${game.is_live ? "" : " live-indicator-muted"}`}>
+                            <span className={`live-dot${game.is_live ? "" : " live-dot-muted"}`} />
+                            {liveBadgeLabel}
                           </span>
-                          <span className="live-status">{game.game_status ?? "In progress"}</span>
+                          <span className="live-status">{liveStatusLabel}</span>
                         </div>
                         <h3 className="live-game-title">
                           {game.sport} {game.game_label}

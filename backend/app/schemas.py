@@ -668,6 +668,7 @@ class LiveGameOut(BaseModel):
     game_label: str
     game_status: str | None = None
     week: int | None = None
+    is_live: bool = False
     live_player_count: int
     game_fantasy_points_total: float
     state: LiveGameStateOut | None = None

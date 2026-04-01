@@ -80,6 +80,7 @@ export type LiveGame = {
   game_label: string;
   game_status: string | null;
   week: number | null;
+  is_live: boolean;
   live_player_count: number;
   game_fantasy_points_total: number;
   state: LiveGameState | null;
