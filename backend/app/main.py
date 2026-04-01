@@ -84,6 +84,7 @@ from .pricing import (
     spread_percentage,
 )
 from .site_reset import execute_site_reset
+from .time_utils import chicago_now, chicago_start_of_day
 from .schemas import (
     AdminActivityAuditOut,
     AdminBotPersonaOut,
@@ -325,7 +326,7 @@ class BotSimulationRunState:
         if next_exit_code is None:
             return
         self.exit_code = int(next_exit_code)
-        self.completed_at = self.completed_at or datetime.utcnow()
+        self.completed_at = self.completed_at or chicago_now()
         self.process = None
         if self._log_handle is not None:
             try:
@@ -555,11 +556,11 @@ def current_market_bias(player: Player, *, now: datetime | None = None) -> Decim
 def set_market_bias(player: Player, *, bias: Decimal, now: datetime | None = None) -> None:
     normalized_bias = Decimal("0") if abs(bias) < Decimal("0.000001") else bias
     player.market_bias = float(normalized_bias)
-    player.market_bias_updated_at = now or datetime.utcnow()
+    player.market_bias_updated_at = now or chicago_now()
 
 
 def apply_market_bias_delta(player: Player, *, delta: Decimal, now: datetime | None = None) -> Decimal:
-    as_of = now or datetime.utcnow()
+    as_of = now or chicago_now()
     next_bias = current_market_bias(player, now=as_of) + delta
     set_market_bias(player, bias=next_bias, now=as_of)
     return next_bias
@@ -1102,14 +1103,14 @@ def validate_registration_request(payload: AuthRegisterIn) -> None:
     if started_at_ms is None:
         raise HTTPException(400, "Invalid registration request.")
 
-    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    now_ms = int(chicago_now().timestamp() * 1000)
     elapsed_ms = now_ms - int(started_at_ms)
     if elapsed_ms < REGISTER_MIN_SUBMIT_MS or elapsed_ms > 86_400_000:
         raise HTTPException(400, "Invalid registration request.")
 
 
 def revoke_password_reset_tokens_for_user(db: Session, user_id: int, *, used_at: datetime | None = None) -> None:
-    timestamp = used_at or datetime.utcnow()
+    timestamp = used_at or chicago_now()
     tokens = db.execute(
         select(PasswordResetToken).where(
             PasswordResetToken.user_id == int(user_id),
@@ -1121,7 +1122,7 @@ def revoke_password_reset_tokens_for_user(db: Session, user_id: int, *, used_at:
 
 
 def revoke_active_sessions_for_user(db: Session, user_id: int, *, revoked_at: datetime | None = None) -> None:
-    timestamp = revoked_at or datetime.utcnow()
+    timestamp = revoked_at or chicago_now()
     sessions = db.execute(
         select(UserSession).where(
             UserSession.user_id == int(user_id),
@@ -1184,7 +1185,7 @@ def ensure_trading_control_row(
     if row:
         return row
 
-    now = datetime.utcnow()
+    now = chicago_now()
     row = TradingControl(
         sport=sport,
         halted=False,
@@ -1201,7 +1202,7 @@ def trading_halt_state_to_out(row: TradingControl) -> TradingHaltStateOut:
         sport=str(row.sport),
         halted=bool(row.halted),
         reason=normalize_optional_profile_field(row.reason),
-        updated_at=row.updated_at or datetime.utcnow(),
+        updated_at=row.updated_at or chicago_now(),
     )
 
 
@@ -1312,7 +1313,7 @@ def get_auth_context(
         select(UserSession).where(
             UserSession.token_hash == hash_session_token(bearer_token),
             UserSession.revoked_at.is_(None),
-            UserSession.expires_at > datetime.utcnow(),
+            UserSession.expires_at > chicago_now(),
         )
     ).scalar_one_or_none()
     if not session:
@@ -2083,7 +2084,7 @@ def build_market_mover_rows(
 
     players_by_id = {int(player.id): player for player in players}
     player_ids = sorted(players_by_id.keys())
-    cutoff = datetime.utcnow() - timedelta(hours=window_hours)
+    cutoff = chicago_now() - timedelta(hours=window_hours)
 
     latest_ranked = (
         select(
@@ -2184,7 +2185,7 @@ def build_market_mover_rows(
     missing_player_ids = [player_id for player_id in player_ids if player_id not in latest_by_player]
     if missing_player_ids:
         stats_snapshot = get_stats_snapshot_by_player(db, missing_player_ids)
-        now = datetime.utcnow()
+        now = chicago_now()
         for player_id in missing_player_ids:
             player = players_by_id[player_id]
             fundamental, _, _ = get_pricing_context(player, stats_snapshot)
@@ -2510,7 +2511,7 @@ def market_movers(
         key=lambda row: (row.change_percent, row.change, row.name.lower()),
     )[:limit]
     result = MarketMoversOut(
-        generated_at=datetime.utcnow(),
+        generated_at=chicago_now(),
         window_hours=window_hours,
         gainers=gainers,
         losers=losers,
@@ -2529,14 +2530,14 @@ def list_live_games(
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
-    start_of_day_utc = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_day_chicago = chicago_start_of_day()
     stmt = select(Player).where(
         Player.ipo_open.is_(True),
         or_(
             Player.live_now.is_(True),
             and_(
                 Player.live_updated_at.is_not(None),
-                Player.live_updated_at >= start_of_day_utc,
+                Player.live_updated_at >= start_of_day_chicago,
                 or_(
                     Player.live_game_id.is_not(None),
                     Player.live_game_label.is_not(None),
@@ -2555,7 +2556,7 @@ def list_live_games(
             Player.name.asc(),
         )
     ).scalars().all()
-    generated_at = datetime.utcnow()
+    generated_at = chicago_now()
     if not players:
         result = LiveGamesOut(
             generated_at=generated_at,
@@ -3745,7 +3746,7 @@ def start_bot_simulation_process(
 
     try:
         BOT_SIMULATION_RUN_DIR.mkdir(parents=True, exist_ok=True)
-        run_stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        run_stamp = chicago_now().strftime("%Y%m%d-%H%M%S")
         config_path, active_bot_count = write_bot_simulation_config(run_stamp, profiles)
         summary_path = BOT_SIMULATION_RUN_DIR / f"bot-summary-{run_stamp}.json"
         log_path = BOT_SIMULATION_RUN_DIR / f"bot-run-{run_stamp}.log"
@@ -3783,13 +3784,13 @@ def start_bot_simulation_process(
         )
     except Exception as exc:
         BOT_SIMULATION_STATE.process = None
-        BOT_SIMULATION_STATE.completed_at = datetime.utcnow()
+        BOT_SIMULATION_STATE.completed_at = chicago_now()
         BOT_SIMULATION_STATE.exit_code = 1
         BOT_SIMULATION_STATE.message = f"Unable to start bot simulation: {exc}"
         raise HTTPException(500, BOT_SIMULATION_STATE.message) from exc
 
     BOT_SIMULATION_STATE.process = process
-    BOT_SIMULATION_STATE.started_at = datetime.utcnow()
+    BOT_SIMULATION_STATE.started_at = chicago_now()
     BOT_SIMULATION_STATE.completed_at = None
     BOT_SIMULATION_STATE.requested_by_username = admin_username
     BOT_SIMULATION_STATE.duration_seconds = int(payload.duration_seconds)
@@ -3819,7 +3820,7 @@ def stop_bot_simulation_process(*, force: bool = False) -> AdminBotSimulationSta
     else:
         process.terminate()
         BOT_SIMULATION_STATE.message = "Bot simulation stop requested."
-    BOT_SIMULATION_STATE.completed_at = datetime.utcnow()
+    BOT_SIMULATION_STATE.completed_at = chicago_now()
     return BOT_SIMULATION_STATE.status_out()
 
 
@@ -3918,7 +3919,7 @@ def logout(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
-    auth.session.revoked_at = datetime.utcnow()
+    auth.session.revoked_at = chicago_now()
     db.commit()
     return AuthLogoutOut(ok=True)
 
@@ -3976,7 +3977,7 @@ def auth_password_reset_request(
     if not user or not user.password_hash:
         return AuthPasswordResetRequestOut(ok=True)
 
-    now = datetime.utcnow()
+    now = chicago_now()
     revoke_password_reset_tokens_for_user(db, user.id, used_at=now)
 
     raw_token = generate_session_token()
@@ -4018,7 +4019,7 @@ def auth_password_reset_confirm(
 
     raw_token = normalize_password_reset_token(payload.token)
     hashed_token = hash_session_token(raw_token)
-    now = datetime.utcnow()
+    now = chicago_now()
     reset_token = db.execute(
         select(PasswordResetToken)
         .where(
@@ -4155,7 +4156,7 @@ def friends_request_create(
         .with_for_update()
     ).scalar_one_or_none()
 
-    now = datetime.utcnow()
+    now = chicago_now()
     if friendship is None:
         friendship = Friendship(
             user_low_id=user_low_id,
@@ -4240,7 +4241,7 @@ def friends_request_accept(
         raise HTTPException(403, "Friend request access denied.")
 
     friendship.status = FRIENDSHIP_ROW_ACCEPTED
-    friendship.responded_at = datetime.utcnow()
+    friendship.responded_at = chicago_now()
     friendship.updated_at = friendship.responded_at
     create_notification(
         db,
@@ -4283,7 +4284,7 @@ def friends_request_decline(
         raise HTTPException(403, "Friend request access denied.")
 
     friendship.status = FRIENDSHIP_ROW_DECLINED
-    friendship.responded_at = datetime.utcnow()
+    friendship.responded_at = chicago_now()
     friendship.updated_at = friendship.responded_at
     db.commit()
     counterpart_id = (
@@ -4386,7 +4387,7 @@ def inbox_open_thread(
             window_seconds=RATE_LIMIT_DIRECT_MESSAGE_CREATE_WINDOW_SECONDS,
             label="direct message creation",
         )
-        created_at = datetime.utcnow()
+        created_at = chicago_now()
         db.add(
             DirectMessage(
                 thread_id=int(thread.id),
@@ -4424,7 +4425,7 @@ def inbox_thread_detail(
         user_id=current_user_id,
         for_update=True,
     )
-    now = datetime.utcnow()
+    now = chicago_now()
     mark_direct_thread_read(thread, current_user_id, now)
     db.flush()
 
@@ -4493,7 +4494,7 @@ def inbox_send_message(
     )
     counterpart_user_id = direct_thread_counterpart_user_id(thread, int(auth.user.id))
     require_friendship_between_users(db, int(auth.user.id), counterpart_user_id)
-    created_at = datetime.utcnow()
+    created_at = chicago_now()
     message = DirectMessage(
         thread_id=int(thread.id),
         sender_user_id=int(auth.user.id),
@@ -4630,7 +4631,7 @@ def leaderboard(
     return LeaderboardOut(
         scope=normalized_scope,
         sport=normalized_sport,
-        generated_at=datetime.utcnow(),
+        generated_at=chicago_now(),
         entries=entries,
     )
 
@@ -4753,7 +4754,7 @@ def notifications_mark_read(
                 Notification.id.in_(notification_ids),
             )
         ).scalars().all()
-        timestamp = datetime.utcnow()
+        timestamp = chicago_now()
         for row in rows:
             if row.read_at is None:
                 row.read_at = timestamp
@@ -4773,7 +4774,7 @@ def notifications_mark_all_read(
         )
     ).scalars().all()
     if rows:
-        timestamp = datetime.utcnow()
+        timestamp = chicago_now()
         for row in rows:
             row.read_at = timestamp
         db.commit()
@@ -4839,7 +4840,7 @@ def admin_update_global_trading_halt(
     global_row.halted = bool(payload.halted)
     global_row.reason = normalize_optional_profile_field(payload.reason) if payload.halted else None
     global_row.updated_by_user_id = int(admin.user.id)
-    global_row.updated_at = datetime.utcnow()
+    global_row.updated_at = chicago_now()
     db.flush()
     status_out = build_trading_status_out(db)
     db.commit()
@@ -4861,7 +4862,7 @@ def admin_update_sport_trading_halt(
     row.halted = bool(payload.halted)
     row.reason = normalize_optional_profile_field(payload.reason) if payload.halted else None
     row.updated_by_user_id = int(admin.user.id)
-    row.updated_at = datetime.utcnow()
+    row.updated_at = chicago_now()
     db.flush()
     status_out = build_trading_status_out(db)
     db.commit()
@@ -4998,7 +4999,7 @@ def admin_bot_update(
     profile.name = normalize_bot_name(payload.name)
     profile.persona = normalize_bot_persona(payload.persona)
     profile.is_active = bool(payload.is_active)
-    profile.updated_at = datetime.utcnow()
+    profile.updated_at = chicago_now()
     db.commit()
     db.refresh(profile)
     return bot_profile_to_out(db, profile)
@@ -5041,7 +5042,7 @@ def admin_activity_audit(
     _admin: AuthContext = Depends(get_admin_context),
     db: Session = Depends(get_db),
 ):
-    now = datetime.utcnow()
+    now = chicago_now()
 
     active_sessions_count = int(
         db.execute(
@@ -5343,14 +5344,14 @@ def admin_resolve_moderation_report(
         moderation_row.reason = normalize_optional_profile_field(payload.moderator_note) or str(report.reason)
         moderation_row.source_report_id = int(report.id)
         moderation_row.moderator_user_id = int(admin.user.id)
-        moderation_row.updated_at = datetime.utcnow()
+        moderation_row.updated_at = chicago_now()
 
     report.status = status_value
     report.action_taken = action_value
     report.moderator_note = normalize_optional_profile_field(payload.moderator_note)
     report.reviewed_by_user_id = int(admin.user.id)
-    report.reviewed_at = datetime.utcnow()
-    report.updated_at = datetime.utcnow()
+    report.reviewed_at = chicago_now()
+    report.updated_at = chicago_now()
     db.flush()
 
     reporter_user = db.get(User, int(report.reporter_user_id))
@@ -5403,7 +5404,7 @@ def admin_unhide_moderated_content(
 
     moderation_row.action = "VISIBLE"
     moderation_row.moderator_user_id = int(admin.user.id)
-    moderation_row.updated_at = datetime.utcnow()
+    moderation_row.updated_at = chicago_now()
     db.commit()
     return AdminModerationUnhideOut(ok=True)
 
@@ -5426,7 +5427,7 @@ def forum_list_posts(
 
     posts_stmt = select(ForumPost)
     if sort_mode == "popular":
-        now = datetime.utcnow()
+        now = chicago_now()
         if popular_window_mode == "hour":
             cutoff = now - timedelta(hours=1)
         elif popular_window_mode == "day":
@@ -5645,7 +5646,7 @@ def forum_create_comment(
         user_id=int(auth.user.id),
         body=body,
     )
-    post.updated_at = datetime.utcnow()
+    post.updated_at = chicago_now()
     db.add(comment)
     if int(post.user_id) != int(auth.user.id):
         create_notification(
@@ -6614,7 +6615,7 @@ def apply_live_snapshot_from_stat(
             assign_if_changed("live_game_fantasy_points", 0.0)
 
     if changed:
-        player.live_updated_at = datetime.utcnow()
+        player.live_updated_at = chicago_now()
 
     return changed
 
@@ -6637,7 +6638,7 @@ def upsert_player_game_point_from_stat(
         game_status=normalize_optional_profile_field(stat.live_game_status),
         game_fantasy_points=float(stat.live_game_fantasy_points or 0.0),
         season_fantasy_points=float(stat.fantasy_points),
-        recorded_at=datetime.utcnow(),
+        recorded_at=chicago_now(),
     )
 
 
@@ -6989,7 +6990,7 @@ def admin_ipo_launch(
     if not players:
         raise HTTPException(404, f"No players found for sport '{sport_code}'.")
 
-    opened_at = datetime.utcnow()
+    opened_at = chicago_now()
     updated_count = 0
     for player in players:
         was_listed = player_is_listed(player)
@@ -7833,7 +7834,7 @@ def admin_stats_publish(
                     game_status=row.game_status,
                     game_fantasy_points=game_points,
                     season_fantasy_points=season_points,
-                    recorded_at=datetime.utcnow(),
+                    recorded_at=chicago_now(),
                 )
                 if game_changed:
                     touched_player_ids.add(player_id)
@@ -8091,3 +8092,4 @@ def reset_season(season: int, db: Session = Depends(get_db)):
         players_reset=players_reset,
         already_reset=False,
     )
+

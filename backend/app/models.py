@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
+from .time_utils import chicago_now
 
 NUM = Numeric(18, 6)
 
@@ -53,7 +54,7 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
     user: Mapped["User"] = relationship(back_populates="sessions")
 
@@ -68,11 +69,11 @@ class DirectThread(Base):
     user_one_last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     user_two_last_read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -94,7 +95,7 @@ class DirectMessage(Base):
     thread_id: Mapped[int] = mapped_column(ForeignKey("direct_threads.id"), index=True)
     sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     body: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
     thread: Mapped["DirectThread"] = relationship(back_populates="messages")
     sender: Mapped["User"] = relationship(back_populates="sent_direct_messages")
@@ -112,11 +113,11 @@ class Friendship(Base):
     requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     status: Mapped[str] = mapped_column(String(16), default="PENDING", index=True)
     responded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -131,7 +132,7 @@ class PlayerWatchlist(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
 
 class Notification(Base):
@@ -149,7 +150,7 @@ class Notification(Base):
     entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     message: Mapped[str] = mapped_column(String(280))
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
 
 class PasswordResetToken(Base):
@@ -160,7 +161,7 @@ class PasswordResetToken(Base):
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
 
 class ForumPost(Base):
@@ -171,11 +172,11 @@ class ForumPost(Base):
     title: Mapped[str] = mapped_column(String(160))
     body: Mapped[str] = mapped_column(Text)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -190,11 +191,11 @@ class ForumComment(Base):
     post_id: Mapped[int] = mapped_column(ForeignKey("forum_posts.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     body: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -208,7 +209,7 @@ class ForumPostView(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     post_id: Mapped[int] = mapped_column(ForeignKey("forum_posts.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
 
 class TradingControl(Base):
@@ -220,7 +221,7 @@ class TradingControl(Base):
     halted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     reason: Mapped[str | None] = mapped_column(String(280), nullable=True)
     updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
 
 class SystemSetting(Base):
@@ -230,8 +231,8 @@ class SystemSetting(Base):
     value: Mapped[str] = mapped_column(Text, default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -244,7 +245,7 @@ class FeedbackMessage(Base):
     page_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
     message: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16), default="NEW", index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
     user: Mapped["User"] = relationship(back_populates="feedback_messages")
 
@@ -258,11 +259,11 @@ class BotProfile(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     persona: Mapped[str] = mapped_column(String(48), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -282,11 +283,11 @@ class ContentReport(Base):
     moderator_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -311,11 +312,11 @@ class ContentModeration(Base):
     reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
     source_report_id: Mapped[int | None] = mapped_column(ForeignKey("content_reports.id"), nullable=True, index=True)
     moderator_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=chicago_now,
+        onupdate=chicago_now,
         index=True,
     )
 
@@ -359,7 +360,7 @@ class Player(Base):
     market_bias: Mapped[float] = mapped_column(NUM, default=0)
     market_bias_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now)
 
 class Holding(Base):
     __tablename__ = "holdings"
@@ -394,7 +395,7 @@ class Transaction(Base):
     unit_price: Mapped[float] = mapped_column(NUM, default=0)
     amount: Mapped[float] = mapped_column(NUM, default=0)  # cash delta (+ credit, - debit)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now)
 
 class WeeklyStat(Base):
     __tablename__ = "weekly_stats"
@@ -420,7 +421,7 @@ class PricePoint(Base):
     total_shares: Mapped[float] = mapped_column(NUM, default=0)
     points_to_date: Mapped[float] = mapped_column(NUM, default=0)
     latest_week: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
 
 class PlayerGamePoint(Base):
@@ -437,7 +438,7 @@ class PlayerGamePoint(Base):
     game_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
     game_fantasy_points: Mapped[float] = mapped_column(NUM, default=0)
     season_fantasy_points: Mapped[float] = mapped_column(NUM, default=0)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now, index=True)
 
 
 class SettledWeek(Base):
@@ -446,7 +447,7 @@ class SettledWeek(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     week: Mapped[int] = mapped_column(Integer, index=True)
-    settled_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    settled_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now)
 
 
 class SeasonClose(Base):
@@ -455,7 +456,7 @@ class SeasonClose(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     season: Mapped[int] = mapped_column(Integer, index=True)
-    closed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    closed_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now)
 
 
 class ArchivedWeeklyStat(Base):
@@ -467,7 +468,7 @@ class ArchivedWeeklyStat(Base):
     player_id: Mapped[int] = mapped_column(Integer, index=True)
     week: Mapped[int] = mapped_column(Integer, index=True)
     fantasy_points: Mapped[float] = mapped_column(NUM, default=0)
-    archived_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    archived_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now)
 
 
 class ArchivedHolding(Base):
@@ -479,7 +480,7 @@ class ArchivedHolding(Base):
     player_id: Mapped[int] = mapped_column(Integer, index=True)
     shares_owned: Mapped[float] = mapped_column(NUM, default=0)
     user_cash_balance: Mapped[float] = mapped_column(NUM, default=0)
-    archived_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    archived_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now)
 
 
 class SeasonReset(Base):
@@ -490,4 +491,5 @@ class SeasonReset(Base):
     season: Mapped[int] = mapped_column(Integer, index=True)
     archived_stats_count: Mapped[int] = mapped_column(Integer, default=0)
     archived_holdings_count: Mapped[int] = mapped_column(Integer, default=0)
-    reset_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    reset_at: Mapped[datetime] = mapped_column(DateTime, default=chicago_now)
+

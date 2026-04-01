@@ -1,6 +1,6 @@
 import os
 import unittest
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 TEST_DB_PATH = Path(__file__).resolve().with_name("test_dynamic_pricing.sqlite3")
@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 try:
     from backend.app.db import Base, SessionLocal, engine
+    from backend.app.time_utils import chicago_now
     from backend.app.main import (
         AuthContext,
         admin_stats_publish,
@@ -25,6 +26,7 @@ try:
     from backend.app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
 except ModuleNotFoundError:
     from app.db import Base, SessionLocal, engine
+    from app.time_utils import chicago_now
     from app.main import (
         AuthContext,
         admin_stats_publish,
@@ -90,7 +92,7 @@ class DynamicPricingTests(unittest.TestCase):
             position=position,
             ipo_open=True,
             ipo_season=2026,
-            ipo_opened_at=datetime.utcnow() - timedelta(days=1),
+            ipo_opened_at=chicago_now() - timedelta(days=1),
             live_now=False,
             base_price=base_price,
             k=k,
@@ -446,3 +448,4 @@ class DynamicPricingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

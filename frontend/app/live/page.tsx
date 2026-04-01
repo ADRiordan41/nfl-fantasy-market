@@ -6,6 +6,7 @@ import { type PointerEvent, useCallback, useEffect, useMemo, useState } from "re
 import { apiGet, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { LiveGame, LiveGamePlayer, LiveGames } from "@/lib/types";
 
@@ -46,11 +47,19 @@ function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function parseTimestamp(value: string): Date {
+  const raw = value.trim();
+  if (!raw) return new Date(Number.NaN);
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  return new Date(normalized);
+}
+
 function formatStamp(value: string | null): string {
   if (!value) return "--";
-  const parsed = new Date(value);
+  const parsed = parseTimestamp(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString([], {
+    timeZone: CHICAGO_TIME_ZONE,
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -189,6 +198,22 @@ function formatInningState(context: WinProbabilityContext): string {
   return half ? `${half} ${inning}` : `Inning ${inning}`;
 }
 
+function isCompletedGameStatus(status: string | null | undefined): boolean {
+  const normalized = (status ?? "").trim().toUpperCase();
+  if (!normalized) return false;
+  return normalized.includes("FINAL") || normalized.includes("COMPLETE");
+}
+
+function finalProbabilityFromScores(
+  awayScore: number | null | undefined,
+  homeScore: number | null | undefined,
+): { awayProbability: number; homeProbability: number } | null {
+  if (awayScore == null || homeScore == null) return null;
+  if (awayScore > homeScore) return { awayProbability: 100, homeProbability: 0 };
+  if (homeScore > awayScore) return { awayProbability: 0, homeProbability: 100 };
+  return null;
+}
+
 function estimateAwayWinProbability(
   context: WinProbabilityContext,
   args: {
@@ -290,7 +315,7 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
   const fallbackHomePoints = totalPointsForTeam(teams, homeTeam);
   const rows = [...atBats].sort((a, b) => a.at_bat_index - b.at_bat_index);
 
-  return rows.map((atBat) => {
+  const series = rows.map((atBat) => {
     const context = contextFromAtBat(atBat, awayTeam, homeTeam);
     const awayProbability = roundTo(
       estimateAwayWinProbability(context, {
@@ -329,6 +354,23 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       atBatIndex: atBat.at_bat_index,
     };
   });
+  const gameSettled = !game.is_live;
+  if (gameSettled && series.length > 0) {
+    const lastAtBat = rows[rows.length - 1];
+    const finalProbabilities =
+      finalProbabilityFromScores(lastAtBat.away_score, lastAtBat.home_score) ??
+      finalProbabilityFromScores(game.state?.away_score, game.state?.home_score);
+    if (finalProbabilities) {
+      const lastIndex = series.length - 1;
+      const lastPoint = series[lastIndex];
+      series[lastIndex] = {
+        ...lastPoint,
+        awayProbability: finalProbabilities.awayProbability,
+        homeProbability: finalProbabilities.homeProbability,
+      };
+    }
+  }
+  return series;
 }
 
 function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint {
@@ -336,7 +378,7 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
   const awayTeam = teamsForGame.awayTeam;
   const homeTeam = teamsForGame.homeTeam;
   const context = contextFromLiveState(game);
-  const awayProbability = roundTo(
+  let awayProbability = roundTo(
     estimateAwayWinProbability(context, {
       awayTeam,
       homeTeam,
@@ -345,7 +387,14 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     }),
     1,
   );
-  const homeProbability = roundTo(100 - awayProbability, 1);
+  let homeProbability = roundTo(100 - awayProbability, 1);
+  if (!game.is_live) {
+    const finalProbabilities = finalProbabilityFromScores(context.awayScore, context.homeScore);
+    if (finalProbabilities) {
+      awayProbability = finalProbabilities.awayProbability;
+      homeProbability = finalProbabilities.homeProbability;
+    }
+  }
   const hasScore = context.awayScore != null && context.homeScore != null;
   const scoreLabel = hasScore
     ? `${awayTeam} ${formatNumber(context.awayScore ?? 0, 0)} - ${formatNumber(context.homeScore ?? 0, 0)} ${homeTeam}`
@@ -504,7 +553,7 @@ export default function LivePage() {
     try {
       const next = await apiGet<LiveGames>("/live/games");
       setPayload(next);
-      setLastUpdated(new Date().toISOString());
+      setLastUpdated(chicagoNowStamp());
       setError("");
     } catch (err: unknown) {
       if (isUnauthorizedError(err)) {
@@ -540,7 +589,7 @@ export default function LivePage() {
   useEffect(() => {
     if (!payload) return;
     setWinProbabilityByGameId((previous) => {
-      const generatedAt = payload.generated_at ?? new Date().toISOString();
+      const generatedAt = payload.generated_at ?? chicagoNowStamp();
       const next: Record<string, WinProbabilityPoint[]> = {};
 
       for (const game of payload.games) {
@@ -649,7 +698,11 @@ export default function LivePage() {
                   const teams = groupTeams(game);
                   const expanded = expandedGameId === game.game_id;
                   const winProbabilityPoints = winProbabilityByGameId[game.game_id] ?? [];
-                  const liveBadgeLabel = game.is_live ? "LIVE NOW" : "TODAY";
+                  const liveBadgeLabel = game.is_live
+                    ? "LIVE NOW"
+                    : isCompletedGameStatus(game.game_status)
+                      ? "FINAL"
+                      : "TODAY";
                   const liveStatusLabel = game.game_status ?? (game.is_live ? "In progress" : "Final");
                   return (
                     <>

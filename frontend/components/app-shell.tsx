@@ -23,6 +23,7 @@ import {
   isUnauthorizedError,
 } from "@/lib/api";
 import { formatCurrency, formatSignedPercent } from "@/lib/format";
+import { chicagoNowStamp } from "@/lib/time";
 import { getToastEventName, type ToastEventDetail } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { MarketMover, MarketMovers, NotificationList, Player, SearchResult, UserAccount } from "@/lib/types";
@@ -473,7 +474,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           reference_price: player.spot_price,
           change: 0,
           change_percent: 0,
-          current_at: new Date().toISOString(),
+          current_at: chicagoNowStamp(),
           reference_at: null,
         }));
       setMovers({

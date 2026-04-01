@@ -21,7 +21,7 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     locale: "en-US",
-    timezoneId: "UTC",
+    timezoneId: "America/Chicago",
     trace: "retain-on-failure",
     video: "off",
   },

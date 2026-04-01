@@ -5,7 +5,7 @@ import json
 import time
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from urllib import error, parse, request
@@ -15,6 +15,7 @@ MLB_STATS_API_BASE = "https://statsapi.mlb.com"
 MLB_STATS_API_SCHEDULE_PATH = "/api/v1/schedule"
 MLB_STATS_API_LIVE_FEED_PATH = "/api/v1.1/game/{game_pk}/feed/live"
 DEFAULT_MLB_ALLOWED_GAME_TYPES = {"R", "F", "D", "L", "W", "S"}
+CHICAGO_TZ = ZoneInfo("America/Chicago")
 MLB_SCHEDULE_TIMEZONE = ZoneInfo("America/New_York")
 STALE_LIVE_CLEAR_MINUTES = 15
 MLB_TEAM_ALIASES = {
@@ -83,7 +84,7 @@ class ApiAuthContext:
     def session_is_expired(self) -> bool:
         if self.session_expires_at is None:
             return False
-        return datetime.now(timezone.utc) >= self.session_expires_at - timedelta(seconds=60)
+        return datetime.now(CHICAGO_TZ) >= self.session_expires_at - timedelta(seconds=60)
 
     def current_token(self) -> str | None:
         if self.can_reauthenticate():
@@ -100,7 +101,7 @@ class ApiAuthContext:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(CHICAGO_TZ).isoformat()
 
 
 def log(message: str) -> None:
@@ -324,8 +325,8 @@ def parse_api_datetime(value: Any) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=CHICAGO_TZ)
+    return parsed.astimezone(CHICAGO_TZ)
 
 
 def login_for_access_token(
@@ -1006,7 +1007,7 @@ def run_cycle(
     # behind. Clear players that are still marked live but no longer belong to an
     # active live game id, using an age window to avoid overreacting to brief feed gaps.
     if source_provider == "mlb-statsapi":
-        now_utc = datetime.now(timezone.utc)
+        now_chicago = datetime.now(CHICAGO_TZ)
         stale_cutoff = timedelta(minutes=STALE_LIVE_CLEAR_MINUTES)
         clear_week = int(week_override) if week_override is not None else 1
         for player in players:
@@ -1021,7 +1022,7 @@ def run_cycle(
                 continue
 
             updated_at = parse_api_datetime(live_payload.get("updated_at"))
-            if updated_at is not None and (now_utc - updated_at) < stale_cutoff:
+            if updated_at is not None and (now_chicago - updated_at) < stale_cutoff:
                 continue
 
             raw_player_id = player.get("id")

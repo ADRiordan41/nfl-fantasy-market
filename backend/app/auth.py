@@ -8,6 +8,8 @@ import os
 import secrets
 from datetime import datetime, timedelta
 
+from .time_utils import chicago_now
+
 
 PASSWORD_HASH_ALGO = "pbkdf2_sha256"
 PASSWORD_PBKDF2_ITERATIONS = int(os.environ.get("PASSWORD_PBKDF2_ITERATIONS", "390000"))
@@ -78,5 +80,5 @@ def hash_session_token(token: str) -> str:
 
 
 def session_expiry_from_now(now: datetime | None = None) -> datetime:
-    current = now or datetime.utcnow()
+    current = now or chicago_now()
     return current + timedelta(hours=SESSION_TTL_HOURS)

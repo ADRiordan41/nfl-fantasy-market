@@ -11,6 +11,7 @@ import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
+import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
 import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { AdminAuditTrade, MarketMovers, Player, Portfolio, Quote, TradingHaltState, TradingStatus, UserAccount } from "@/lib/types";
@@ -89,6 +90,7 @@ function formatStamp(value: string | null): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString([], {
+    timeZone: CHICAGO_TIME_ZONE,
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -201,7 +203,7 @@ export default function PortfolioPage() {
       setChange24hById(next24hById);
       setCurrentUser(me);
       setTradingStatus(statusData);
-      setLastUpdated(new Date().toISOString());
+      setLastUpdated(chicagoNowStamp());
       setError("");
     } catch (err: unknown) {
       handleRequestError(err);

@@ -11,6 +11,7 @@ import MarketTableRow, {
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
+import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
 import { notifySuccess } from "@/lib/toast";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
@@ -92,6 +93,7 @@ function formatStamp(value: string | null): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString([], {
+    timeZone: CHICAGO_TIME_ZONE,
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -265,7 +267,7 @@ export default function MarketPage() {
         setChange24hById(next24hById);
         setChange7dById(next7dById);
         setTradingStatus(statusData);
-        setLastUpdated(new Date().toISOString());
+        setLastUpdated(chicagoNowStamp());
         setError("");
       } catch (err: unknown) {
         handleRequestError(err);
