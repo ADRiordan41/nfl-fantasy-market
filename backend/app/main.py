@@ -2606,14 +2606,22 @@ def list_live_games(
         else:
             if not bucket["raw_game_id"] and live_game_id:
                 bucket["raw_game_id"] = live_game_id
-            if not bucket["game_status"] and live_status:
-                bucket["game_status"] = live_status
             incoming_week = int(player.live_week) if player.live_week is not None else None
             prior_week = bucket["week"]
             if incoming_week is not None and (prior_week is None or incoming_week > prior_week):
                 bucket["week"] = incoming_week
             incoming_updated_at = player.live_updated_at
             prior_updated_at = bucket["updated_at"]
+            if live_status:
+                should_replace_status = (
+                    not bucket["game_status"]
+                    or (
+                        incoming_updated_at is not None
+                        and (prior_updated_at is None or incoming_updated_at >= prior_updated_at)
+                    )
+                )
+                if should_replace_status:
+                    bucket["game_status"] = live_status
             if incoming_updated_at and (prior_updated_at is None or incoming_updated_at > prior_updated_at):
                 bucket["updated_at"] = incoming_updated_at
             if bool(player.live_now):
@@ -2673,6 +2681,8 @@ def list_live_games(
             reverse=True,
         )
         total_game_points = float(sum(float(player.game_fantasy_points) for player in sorted_players))
+        game_status_value = (str(group["game_status"]) if group["game_status"] else None)
+        game_is_live = bool(group["is_live"])
         game_state_out: LiveGameStateOut | None = None
         at_bats_out: list[LiveGameAtBatOut] = []
         if str(group["sport"]).upper() == "MLB":
@@ -2697,6 +2707,8 @@ def list_live_games(
                     break
 
             if mlb_state is not None:
+                if mlb_state.is_live is not None:
+                    game_is_live = bool(mlb_state.is_live)
                 game_state_out = LiveGameStateOut(
                     home_team=mlb_state.home_team,
                     away_team=mlb_state.away_team,
@@ -2737,14 +2749,16 @@ def list_live_games(
                     )
                     for at_bat in mlb_state.at_bats
                 ]
+        if game_status_is_terminal(game_status_value):
+            game_is_live = False
         games.append(
             LiveGameOut(
                 game_id=str(group["game_id"]),
                 sport=str(group["sport"]),
                 game_label=str(group["game_label"]),
-                game_status=(str(group["game_status"]) if group["game_status"] else None),
+                game_status=game_status_value,
                 week=int(group["week"]) if group["week"] is not None else None,
-                is_live=bool(group["is_live"]),
+                is_live=game_is_live,
                 live_player_count=len(sorted_players),
                 game_fantasy_points_total=total_game_points,
                 state=game_state_out,
@@ -2888,6 +2902,22 @@ def user_to_out(user: User) -> UserOut:
 def normalize_optional_profile_field(value: str | None) -> str | None:
     normalized = (value or "").strip()
     return normalized or None
+
+
+TERMINAL_GAME_STATUS_TOKENS = (
+    "FINAL",
+    "POSTPONED",
+    "CANCELLED",
+    "SUSPENDED",
+    "COMPLETE",
+)
+
+
+def game_status_is_terminal(status_value: str | None) -> bool:
+    status = str(status_value or "").strip().upper()
+    if not status:
+        return False
+    return any(token in status for token in TERMINAL_GAME_STATUS_TOKENS)
 
 
 FRIENDSHIP_STATUS_SELF = "SELF"

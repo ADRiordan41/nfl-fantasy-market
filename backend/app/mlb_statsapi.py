@@ -59,6 +59,7 @@ class MlbGameAtBat:
 @dataclass
 class MlbGameState:
     game_pk: str
+    is_live: bool | None = None
     home_team: str | None = None
     away_team: str | None = None
     home_score: int | None = None
@@ -419,6 +420,8 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
 
         game_data = feed_payload.get("gameData", {}) if isinstance(feed_payload.get("gameData"), dict) else {}
         live_data = feed_payload.get("liveData", {}) if isinstance(feed_payload.get("liveData"), dict) else {}
+        game_status_payload = game_data.get("status", {}) if isinstance(game_data.get("status"), dict) else {}
+        abstract_state = str(game_status_payload.get("abstractGameState") or "").strip().upper()
         linescore = live_data.get("linescore", {}) if isinstance(live_data.get("linescore"), dict) else {}
         teams_meta = game_data.get("teams", {}) if isinstance(game_data.get("teams"), dict) else {}
         home_meta = teams_meta.get("home", {}) if isinstance(teams_meta.get("home"), dict) else {}
@@ -565,6 +568,7 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
 
         state = MlbGameState(
             game_pk=game_pk,
+            is_live=(abstract_state == "LIVE") if abstract_state else None,
             home_team=home_team or None,
             away_team=away_team or None,
             home_score=_parse_int(home_score_payload.get("runs")),
