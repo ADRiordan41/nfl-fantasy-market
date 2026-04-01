@@ -71,6 +71,7 @@ type AccountMixSegment = AccountMixSlice & {
 const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
 const MAX_ACCOUNT_MIX_HOLDINGS = 8;
 const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
+const STARTING_ACCOUNT_BASELINE = 100000;
 const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   name: "asc",
   spot_price: "desc",
@@ -373,6 +374,8 @@ export default function PortfolioPage() {
   const cash = portfolio?.cash_balance ?? 0;
   const holdings = portfolio?.net_exposure ?? computedNetExposure;
   const totalAccount = portfolio?.equity ?? cash + holdings;
+  const totalAccountPnlPct = ((totalAccount - STARTING_ACCOUNT_BASELINE) / STARTING_ACCOUNT_BASELINE) * 100;
+  const totalAccountAboveBaseline = totalAccount >= STARTING_ACCOUNT_BASELINE;
   const pnl = rows.reduce((sum, row) => sum + row.pnl, 0);
   const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
   const pieSlices = useMemo<AccountMixSlice[]>(() => {
@@ -652,7 +655,10 @@ export default function PortfolioPage() {
             </article>
             <article className="kpi-card">
               <span>Total Account</span>
-              <strong>{formatCurrency(totalAccount)}</strong>
+              <strong className="portfolio-kpi-pnl">
+                <b className={totalAccountAboveBaseline ? "up" : "down"}>{formatCurrency(totalAccount)}</b>{" "}
+                <small className="subtle">({formatSignedPercent(totalAccountPnlPct)})</small>
+              </strong>
             </article>
             <article className="kpi-card">
               <span>Unrealized P/L</span>
