@@ -31,6 +31,20 @@ services:
     build: ./backend
     env_file:
       - ./.env
+    command:
+      - sh
+      - -c
+      - >
+        uvicorn app.main:app
+        --host 0.0.0.0
+        --port $${PORT:-8000}
+        --reload
+        --reload-dir /app/app
+        --timeout-keep-alive $${UVICORN_TIMEOUT_KEEP_ALIVE:-10}
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/data:/app/data
+      - ./backend/scripts:/app/scripts
     ports:
       - "8000:8000"
     depends_on:

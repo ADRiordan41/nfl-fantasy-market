@@ -201,7 +201,11 @@ function formatInningState(context: WinProbabilityContext): string {
 function isCompletedGameStatus(status: string | null | undefined): boolean {
   const normalized = (status ?? "").trim().toUpperCase();
   if (!normalized) return false;
-  return normalized.includes("FINAL") || normalized.includes("COMPLETE");
+  return normalized.includes("FINAL") || normalized.includes("COMPLETE") || normalized.includes("GAME OVER");
+}
+
+function isSettledGame(game: Pick<LiveGame, "is_live" | "game_status">): boolean {
+  return !game.is_live || isCompletedGameStatus(game.game_status);
 }
 
 function finalProbabilityFromScores(
@@ -354,7 +358,7 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       atBatIndex: atBat.at_bat_index,
     };
   });
-  const gameSettled = !game.is_live;
+  const gameSettled = isSettledGame(game);
   if (gameSettled && series.length > 0) {
     const lastAtBat = rows[rows.length - 1];
     const finalProbabilities =
@@ -388,7 +392,7 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     1,
   );
   let homeProbability = roundTo(100 - awayProbability, 1);
-  if (!game.is_live) {
+  if (isSettledGame(game)) {
     const finalProbabilities = finalProbabilityFromScores(context.awayScore, context.homeScore);
     if (finalProbabilities) {
       awayProbability = finalProbabilities.awayProbability;
@@ -698,12 +702,10 @@ export default function LivePage() {
                   const teams = groupTeams(game);
                   const expanded = expandedGameId === game.game_id;
                   const winProbabilityPoints = winProbabilityByGameId[game.game_id] ?? [];
-                  const liveBadgeLabel = game.is_live
-                    ? "LIVE NOW"
-                    : isCompletedGameStatus(game.game_status)
-                      ? "FINAL"
-                      : "TODAY";
-                  const liveStatusLabel = game.game_status ?? (game.is_live ? "In progress" : "Final");
+                  const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
+                  const gameSettled = isSettledGame(game);
+                  const liveBadgeLabel = activelyLive ? "LIVE NOW" : gameSettled ? "FINAL" : "TODAY";
+                  const liveStatusLabel = game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Today");
                   return (
                     <>
                       <button
@@ -713,8 +715,8 @@ export default function LivePage() {
                         aria-expanded={expanded}
                       >
                         <div className="live-now-head">
-                          <span className={`live-indicator${game.is_live ? "" : " live-indicator-muted"}`}>
-                            <span className={`live-dot${game.is_live ? "" : " live-dot-muted"}`} />
+                          <span className={`live-indicator${activelyLive ? "" : " live-indicator-muted"}`}>
+                            <span className={`live-dot${activelyLive ? "" : " live-dot-muted"}`} />
                             {liveBadgeLabel}
                           </span>
                           <span className="live-status">{liveStatusLabel}</span>

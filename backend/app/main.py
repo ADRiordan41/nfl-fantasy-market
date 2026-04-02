@@ -2708,8 +2708,17 @@ def list_live_games(
                     break
 
             if mlb_state is not None:
+                if mlb_state.detailed_state:
+                    game_status_value = mlb_state.detailed_state
+                elif mlb_state.abstract_state:
+                    game_status_value = mlb_state.abstract_state.title()
                 if mlb_state.is_live is not None:
                     game_is_live = bool(mlb_state.is_live)
+                if (
+                    (mlb_state.abstract_state or "") in {"FINAL", "COMPLETED"}
+                    or game_status_is_terminal(mlb_state.detailed_state)
+                ):
+                    game_is_live = False
                 game_state_out = LiveGameStateOut(
                     home_team=mlb_state.home_team,
                     away_team=mlb_state.away_team,
@@ -2907,6 +2916,7 @@ def normalize_optional_profile_field(value: str | None) -> str | None:
 
 TERMINAL_GAME_STATUS_TOKENS = (
     "FINAL",
+    "GAME OVER",
     "POSTPONED",
     "CANCELLED",
     "SUSPENDED",
