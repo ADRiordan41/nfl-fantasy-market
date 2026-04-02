@@ -1896,6 +1896,27 @@ def get_stats_snapshot_by_player(
             team_games_played=team_games_played,
         )
 
+    # Ensure players with no direct stat rows still inherit team game progress.
+    # This allows projected value to decay as team games are missed (e.g. injuries/DNPs).
+    for player_id in player_ids:
+        if player_id in snapshots:
+            continue
+        team_key = team_key_by_player_id.get(player_id)
+        team_games_played = (
+            team_games_played_by_key.get(team_key, 0)
+            if team_key is not None
+            else 0
+        )
+        snapshots[player_id] = PlayerStatsSnapshot(
+            points_to_date=Decimal("0"),
+            latest_week=0,
+            recent_points=Decimal("0"),
+            recent_sample_size=0,
+            latest_game_id=None,
+            uses_game_history=False,
+            team_games_played=max(0, int(team_games_played)),
+        )
+
     return snapshots
 
 

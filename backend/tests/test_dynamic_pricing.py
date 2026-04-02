@@ -445,6 +445,40 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertEqual(3, latest_week)
         self.assertGreater(float(fundamental), 0.0)
 
+    def test_player_without_rows_still_decays_with_team_game_progress(self) -> None:
+        admin = self.make_user()
+        injured = self.make_player(name="Injured Player", team="BUF", sport="NFL", base_price=120.0)
+        teammate = self.make_player(name="Healthy Teammate", team="BUF", sport="NFL", base_price=120.0)
+
+        baseline_fundamental, _, _ = get_pricing_context(
+            injured,
+            get_stats_snapshot_by_player(self.db, [int(injured.id)]),
+        )
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(teammate.id),
+                week=1,
+                fantasy_points=8.0,
+                live_game_id="BUF-W1",
+                live_game_label="BUF @ NYJ",
+                live_game_status="Final",
+                live_game_fantasy_points=8.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        injured_snapshot = get_stats_snapshot_by_player(self.db, [int(injured.id)])[int(injured.id)]
+        decayed_fundamental, _, _ = get_pricing_context(
+            injured,
+            {int(injured.id): injured_snapshot},
+        )
+
+        self.assertEqual(0.0, float(injured_snapshot.points_to_date))
+        self.assertEqual(1, int(injured_snapshot.team_games_played))
+        self.assertLess(float(decayed_fundamental), float(baseline_fundamental))
+
 
 if __name__ == "__main__":
     unittest.main()
