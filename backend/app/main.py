@@ -2761,6 +2761,8 @@ def list_live_games(
                         at_bat_index=int(at_bat.at_bat_index),
                         inning=int(at_bat.inning) if at_bat.inning is not None else None,
                         inning_half=at_bat.inning_half,
+                        batter_name=at_bat.batter_name,
+                        pitcher_name=at_bat.pitcher_name,
                         outs_after_play=(
                             int(at_bat.outs_after_play)
                             if at_bat.outs_after_play is not None

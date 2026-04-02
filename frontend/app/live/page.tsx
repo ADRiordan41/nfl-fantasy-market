@@ -23,6 +23,11 @@ type WinProbabilityPoint = {
   homeTeam: string;
   awayProbability: number;
   homeProbability: number;
+  batterName: string | null;
+  pitcherName: string | null;
+  runnerOnFirst: boolean;
+  runnerOnSecond: boolean;
+  runnerOnThird: boolean;
   scoreLabel: string;
   situationLabel: string;
   markerLabel: string;
@@ -185,6 +190,59 @@ function formatBaseState(context: WinProbabilityContext): string {
   if (context.runnerOnThird) runners.push("3rd");
   if (runners.length === 0) return "Bases empty";
   return `Runners: ${runners.join(", ")}`;
+}
+
+function formatPointBaseState(point: Pick<WinProbabilityPoint, "runnerOnFirst" | "runnerOnSecond" | "runnerOnThird">): string {
+  const runners: string[] = [];
+  if (point.runnerOnFirst) runners.push("1st");
+  if (point.runnerOnSecond) runners.push("2nd");
+  if (point.runnerOnThird) runners.push("3rd");
+  if (runners.length === 0) return "Bases empty";
+  return `Runners: ${runners.join(", ")}`;
+}
+
+function BaseDiamond({
+  runnerOnFirst,
+  runnerOnSecond,
+  runnerOnThird,
+}: Pick<WinProbabilityPoint, "runnerOnFirst" | "runnerOnSecond" | "runnerOnThird">) {
+  const hasRunner = runnerOnFirst || runnerOnSecond || runnerOnThird;
+  const ariaLabel = hasRunner
+    ? `Base occupancy. ${formatPointBaseState({ runnerOnFirst, runnerOnSecond, runnerOnThird })}.`
+    : "Base occupancy. Bases empty.";
+  return (
+    <figure className="live-winprob-diamond" aria-label={ariaLabel}>
+      <svg viewBox="0 0 56 56" className="live-winprob-diamond-svg" role="img" aria-hidden="true">
+        <path d="M 28 8 L 48 28 L 28 48 L 8 28 Z" className="live-winprob-diamond-track" />
+        <rect x="26" y="40" width="4" height="4" transform="rotate(45 28 42)" className="live-winprob-base-home" />
+        <rect
+          x="38"
+          y="26"
+          width="4"
+          height="4"
+          transform="rotate(45 40 28)"
+          className={runnerOnFirst ? "live-winprob-base occupied" : "live-winprob-base"}
+        />
+        <rect
+          x="26"
+          y="14"
+          width="4"
+          height="4"
+          transform="rotate(45 28 16)"
+          className={runnerOnSecond ? "live-winprob-base occupied" : "live-winprob-base"}
+        />
+        <rect
+          x="14"
+          y="26"
+          width="4"
+          height="4"
+          transform="rotate(45 16 28)"
+          className={runnerOnThird ? "live-winprob-base occupied" : "live-winprob-base"}
+        />
+      </svg>
+      <figcaption className="subtle live-winprob-diamond-caption">{hasRunner ? formatPointBaseState({ runnerOnFirst, runnerOnSecond, runnerOnThird }) : "Bases empty"}</figcaption>
+    </figure>
+  );
 }
 
 function formatInningState(context: WinProbabilityContext): string {
@@ -352,6 +410,11 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       homeTeam,
       awayProbability,
       homeProbability,
+      batterName: atBat.batter_name ?? null,
+      pitcherName: atBat.pitcher_name ?? null,
+      runnerOnFirst: Boolean(context.runnerOnFirst),
+      runnerOnSecond: Boolean(context.runnerOnSecond),
+      runnerOnThird: Boolean(context.runnerOnThird),
       scoreLabel,
       situationLabel: `${formatInningState(context)} | ${outsLabel} | ${formatBaseState(context)} | ${countLabel} | ${eventLabel}`,
       markerLabel: eventLabel,
@@ -411,6 +474,11 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     homeTeam,
     awayProbability,
     homeProbability,
+    batterName: null,
+    pitcherName: null,
+    runnerOnFirst: Boolean(context.runnerOnFirst),
+    runnerOnSecond: Boolean(context.runnerOnSecond),
+    runnerOnThird: Boolean(context.runnerOnThird),
     scoreLabel,
     situationLabel: `${formatInningState(context)} | ${outsLabel} | ${formatBaseState(context)}${battingLabel}`,
     markerLabel: "Live snapshot",
@@ -430,6 +498,10 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
     ? `${activeDelta != null && activeDelta >= 0 ? "+" : ""}${formatNumber(activeDelta ?? 0, 1)}%`
     : "start";
   const activeIndexLabel = activePoint.atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(activePoint.atBatIndex, 0)}`;
+  const activeMatchupLabel =
+    activePoint.batterName || activePoint.pitcherName
+      ? `${activePoint.batterName ?? "Batter"} vs ${activePoint.pitcherName ?? "Pitcher"}`
+      : null;
   const width = 340;
   const height = 124;
   const left = 10;
@@ -473,7 +545,17 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
         </span>
       </div>
       <p className="subtle live-winprob-score">{activePoint.scoreLabel}</p>
-      <p className="subtle live-winprob-state">{activePoint.situationLabel}</p>
+      <div className="live-winprob-situation-row">
+        <div className="live-winprob-situation-copy">
+          <p className="subtle live-winprob-state">{activePoint.situationLabel}</p>
+          {activeMatchupLabel ? <p className="subtle live-winprob-matchup">{activeMatchupLabel}</p> : null}
+        </div>
+        <BaseDiamond
+          runnerOnFirst={activePoint.runnerOnFirst}
+          runnerOnSecond={activePoint.runnerOnSecond}
+          runnerOnThird={activePoint.runnerOnThird}
+        />
+      </div>
       <div className="live-winprob-legend">
         <span className="live-winprob-team">
           <strong className="live-winprob-team-name live-winprob-team-a">{activePoint.awayTeam}</strong>
@@ -527,7 +609,11 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
                 <title>
                   {`${points[index].atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(points[index].atBatIndex, 0)}`}: ${
                     points[index].markerLabel
-                  } | Home ${formatNumber(points[index].homeProbability, 1)}% | ${points[index].scoreLabel}`}
+                  } | Home ${formatNumber(points[index].homeProbability, 1)}% | ${points[index].scoreLabel}${
+                    points[index].batterName || points[index].pitcherName
+                      ? ` | ${points[index].batterName ?? "Batter"} vs ${points[index].pitcherName ?? "Pitcher"}`
+                      : ""
+                  } | ${formatPointBaseState(points[index])}`}
                 </title>
               </circle>
             ))}
@@ -615,6 +701,11 @@ export default function LivePage() {
           sameTeams &&
           lastPoint.awayProbability === point.awayProbability &&
           lastPoint.homeProbability === point.homeProbability &&
+          lastPoint.batterName === point.batterName &&
+          lastPoint.pitcherName === point.pitcherName &&
+          lastPoint.runnerOnFirst === point.runnerOnFirst &&
+          lastPoint.runnerOnSecond === point.runnerOnSecond &&
+          lastPoint.runnerOnThird === point.runnerOnThird &&
           lastPoint.scoreLabel === point.scoreLabel &&
           lastPoint.situationLabel === point.situationLabel &&
           lastPoint.capturedAt === point.capturedAt;

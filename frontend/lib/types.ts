@@ -60,6 +60,8 @@ export type LiveGameAtBat = {
   at_bat_index: number;
   inning: number | null;
   inning_half: string | null;
+  batter_name: string | null;
+  pitcher_name: string | null;
   outs_after_play: number | null;
   balls: number | null;
   strikes: number | null;

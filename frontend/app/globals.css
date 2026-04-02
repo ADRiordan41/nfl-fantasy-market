@@ -2339,9 +2339,73 @@ h1 {
   margin: 0;
 }
 
+.live-winprob-matchup {
+  margin: 0;
+  color: #4c6785;
+  font-weight: 600;
+}
+
 .live-winprob-score {
   color: #2b4f74;
   font-weight: 700;
+}
+
+.live-winprob-situation-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.live-winprob-situation-copy {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.live-winprob-diamond {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.live-winprob-diamond-svg {
+  width: 50px;
+  height: 50px;
+  display: block;
+}
+
+.live-winprob-diamond-track {
+  fill: rgba(213, 231, 255, 0.62);
+  stroke: #8bb1e0;
+  stroke-width: 1.35;
+}
+
+.live-winprob-base-home {
+  fill: #f8fbff;
+  stroke: #8aa3c4;
+  stroke-width: 0.8;
+}
+
+.live-winprob-base {
+  fill: #ffffff;
+  stroke: #7f99b8;
+  stroke-width: 0.85;
+}
+
+.live-winprob-base.occupied {
+  fill: #ff9d3f;
+  stroke: #d07320;
+}
+
+.live-winprob-diamond-caption {
+  margin: 0;
+  font-size: 10px;
+  color: #69819d;
+  text-align: center;
 }
 
 .live-winprob-legend {
@@ -4090,6 +4154,21 @@ td {
 }
 
 @media (max-width: 719px) {
+  .live-winprob-situation-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .live-winprob-diamond {
+    grid-auto-flow: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .live-winprob-diamond-caption {
+    text-align: left;
+  }
+
   .community-hero-controls {
     width: 100%;
     justify-content: flex-start;

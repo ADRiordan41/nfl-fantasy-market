@@ -648,6 +648,8 @@ class LiveGameAtBatOut(BaseModel):
     at_bat_index: int
     inning: int | None = Field(default=None, ge=1)
     inning_half: str | None = None
+    batter_name: str | None = None
+    pitcher_name: str | None = None
     outs_after_play: int | None = Field(default=None, ge=0, le=3)
     balls: int | None = Field(default=None, ge=0, le=4)
     strikes: int | None = Field(default=None, ge=0, le=3)

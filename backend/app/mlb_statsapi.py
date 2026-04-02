@@ -42,6 +42,8 @@ class MlbGameAtBat:
     at_bat_index: int
     inning: int | None = None
     inning_half: str | None = None
+    batter_name: str | None = None
+    pitcher_name: str | None = None
     outs_after_play: int | None = None
     balls: int | None = None
     strikes: int | None = None
@@ -502,6 +504,9 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
                 seen_at_bat_indexes.add(at_bat_index)
                 result = raw_play.get("result", {}) if isinstance(raw_play.get("result"), dict) else {}
                 count = raw_play.get("count", {}) if isinstance(raw_play.get("count"), dict) else {}
+                matchup = raw_play.get("matchup", {}) if isinstance(raw_play.get("matchup"), dict) else {}
+                batter_payload = matchup.get("batter", {}) if isinstance(matchup.get("batter"), dict) else {}
+                pitcher_payload = matchup.get("pitcher", {}) if isinstance(matchup.get("pitcher"), dict) else {}
                 half = str(about.get("halfInning") or "").strip().upper() or None
                 if half:
                     if half.startswith("TOP"):
@@ -554,6 +559,8 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
                         at_bat_index=at_bat_index,
                         inning=inning,
                         inning_half=half,
+                        batter_name=(str(batter_payload.get("fullName") or "").strip() or None),
+                        pitcher_name=(str(pitcher_payload.get("fullName") or "").strip() or None),
                         outs_after_play=outs_after_play,
                         balls=_parse_int(count.get("balls")),
                         strikes=_parse_int(count.get("strikes")),
