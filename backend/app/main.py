@@ -6723,6 +6723,18 @@ def upsert_weekly_stat_for_player(
     week: int,
     fantasy_points: float,
 ) -> tuple[str, bool]:
+    for pending in db.new:
+        if (
+            isinstance(pending, WeeklyStat)
+            and int(pending.player_id) == int(player.id)
+            and int(pending.week) == int(week)
+        ):
+            current_points = float(pending.fantasy_points)
+            if abs(current_points - float(fantasy_points)) <= 0.000001:
+                return "updated", False
+            pending.fantasy_points = fantasy_points
+            return "updated", True
+
     existing = db.execute(
         select(WeeklyStat).where(
             WeeklyStat.player_id == player.id,
