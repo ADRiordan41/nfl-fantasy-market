@@ -444,8 +444,10 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
   const toPath = (coords: Array<{ x: number; y: number }>) =>
     coords.map((coord, index) => `${index === 0 ? "M" : "L"} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`).join(" ");
 
-  const homeCoords = points.map((point, index) => ({ x: xAt(index), y: yAt(point.homeProbability) }));
-  const activeCoord = homeCoords[activeIndex];
+  // Plot the line on a "road top / home bottom" axis by anchoring Y to road win probability.
+  // This is equivalent to vertically mirroring a home-probability plot.
+  const lineCoords = points.map((point, index) => ({ x: xAt(index), y: yAt(point.awayProbability) }));
+  const activeCoord = lineCoords[activeIndex];
   const atBatPointsCount = points.reduce((sum, point) => (point.atBatIndex == null ? sum : sum + 1), 0);
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (points.length === 1) {
@@ -492,7 +494,7 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
             onPointerMove={handlePointerMove}
             onPointerDown={handlePointerMove}
             onPointerLeave={handlePointerLeave}
-            aria-label={`Home win probability line. ${activePoint.homeTeam} ${formatNumber(
+            aria-label={`Win probability line. ${activePoint.homeTeam} ${formatNumber(
               activePoint.homeProbability,
               1,
             )} percent, ${activePoint.awayTeam} ${formatNumber(activePoint.awayProbability, 1)} percent`}
@@ -507,17 +509,17 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
                 className="live-winprob-hover-line"
               />
             )}
-            <path d={toPath(homeCoords)} className="live-winprob-line-home" />
-            {homeCoords.map((coord, index) => (
+            <path d={toPath(lineCoords)} className="live-winprob-line-home" />
+            {lineCoords.map((coord, index) => (
               <circle
-                key={`home-point-${index}`}
+                key={`winprob-point-${index}`}
                 cx={coord.x}
                 cy={coord.y}
-                r={index === activeIndex ? 3.35 : index === homeCoords.length - 1 ? 3 : 1.85}
+                r={index === activeIndex ? 3.35 : index === lineCoords.length - 1 ? 3 : 1.85}
                 className={
                   index === activeIndex
                     ? "live-winprob-dot-home-active"
-                    : index === homeCoords.length - 1
+                    : index === lineCoords.length - 1
                       ? "live-winprob-dot-home"
                       : "live-winprob-dot-home-point"
                 }
