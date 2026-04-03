@@ -17,6 +17,51 @@ import type {
 const HOME_TUTORIAL_VERSION = "v1";
 const HOME_TUTORIAL_STORAGE_PREFIX = "fsm-home-tutorial-dismissed";
 
+type HomeTutorialMode = "full" | "tour";
+
+type HomeTutorialStep = {
+  title: string;
+  body: string;
+};
+
+const HOME_TUTORIAL_FULL_STEPS: HomeTutorialStep[] = [
+  {
+    title: "1. Understand The Price",
+    body: "Each player starts near a preseason projection-based IPO price. Their live price moves as users trade and as fantasy performance updates.",
+  },
+  {
+    title: "2. Trade Long Or Short",
+    body: "Buy shares if you think a player is underpriced. Short shares if you think they are overpriced. Entry price, position size, and timing all matter.",
+  },
+  {
+    title: "3. Track Live Context",
+    body: "Use the Live page and player cards to follow momentum, matchup context, and performance swings that can shift prices quickly during games.",
+  },
+  {
+    title: "4. Manage Risk",
+    body: "Watch portfolio equity, unrealized P/L, and concentration by holding. Diversify if one position is driving too much of your account.",
+  },
+  {
+    title: "5. Season Settlement",
+    body: "At season close, positions settle to final fantasy production. Strong entries and good risk control usually win over one-off spikes.",
+  },
+];
+
+const HOME_TOUR_SHORT_STEPS: HomeTutorialStep[] = [
+  {
+    title: "1. Check The Board",
+    body: "Open Market and scan prices, movers, and player cards to find your setup quickly.",
+  },
+  {
+    title: "2. Place A Trade",
+    body: "Go long if you expect upside, or short if you expect downside. Keep sizing tight and avoid overconcentration.",
+  },
+  {
+    title: "3. Track And Adjust",
+    body: "Use Live Game Center and Portfolio to monitor win probability context, position P/L, and rebalance when needed.",
+  },
+];
+
 function homeTutorialStorageKey(userId: number): string {
   return `${HOME_TUTORIAL_STORAGE_PREFIX}:${HOME_TUTORIAL_VERSION}:${userId}`;
 }
@@ -54,6 +99,7 @@ export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [isNewUser, setIsNewUser] = useState(false);
   const [homeTutorialOpen, setHomeTutorialOpen] = useState(false);
+  const [homeTutorialMode, setHomeTutorialMode] = useState<HomeTutorialMode>("full");
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -138,7 +184,10 @@ export default function HomePage() {
         if (cancelled) return;
         const shouldAutoOpenTutorial = transactions.length === 0;
         setIsNewUser(shouldAutoOpenTutorial);
-        if (shouldAutoOpenTutorial) setHomeTutorialOpen(true);
+        if (shouldAutoOpenTutorial) {
+          setHomeTutorialMode("full");
+          setHomeTutorialOpen(true);
+        }
       } catch {
         if (cancelled) return;
       }
@@ -168,6 +217,11 @@ export default function HomePage() {
     setHomeTutorialOpen(false);
     setIsNewUser(false);
   }, [currentUser]);
+
+  const openHomeTutorial = useCallback((mode: HomeTutorialMode) => {
+    setHomeTutorialMode(mode);
+    setHomeTutorialOpen(true);
+  }, []);
 
   const marketLeaders = useMemo(() => {
     const weekGainByPlayerId = new Map<number, number>();
@@ -210,6 +264,13 @@ export default function HomePage() {
     () => posts.reduce((sum, post) => sum + Number(post.comment_count || 0), 0),
     [posts],
   );
+  const tutorialSteps = homeTutorialMode === "tour" ? HOME_TOUR_SHORT_STEPS : HOME_TUTORIAL_FULL_STEPS;
+  const tutorialTitle = homeTutorialMode === "tour" ? "Take A Tour" : "How MatchupMarket Works";
+  const tutorialEyebrow = homeTutorialMode === "tour" ? "Tour" : "Quick Start";
+  const tutorialSubtitle =
+    homeTutorialMode === "tour"
+      ? "A short refresher to re-run the core workflow."
+      : "A full onboarding walkthrough of how pricing, trading, and settlement work.";
 
   return (
     <main className="page-shell">
@@ -241,51 +302,30 @@ export default function HomePage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="home-tutorial-head">
-              <p className="eyebrow">Quick Start</p>
-              <h3 id="home-tutorial-title">How MatchupMarket Works</h3>
+              <p className="eyebrow">{tutorialEyebrow}</p>
+              <h3 id="home-tutorial-title">{tutorialTitle}</h3>
+              <p className="subtle home-tutorial-subtitle">{tutorialSubtitle}</p>
             </div>
             <div className="home-tutorial-grid">
-              <article className="home-tutorial-step">
-                <h4>1. Understand The Price</h4>
-                <p className="subtle">
-                  Each player starts near a preseason projection-based IPO price. Their live price moves as users trade
-                  and as fantasy performance updates.
-                </p>
-              </article>
-              <article className="home-tutorial-step">
-                <h4>2. Trade Long Or Short</h4>
-                <p className="subtle">
-                  Buy shares if you think a player is underpriced. Short shares if you think they are overpriced.
-                  Entry price, position size, and timing all matter.
-                </p>
-              </article>
-              <article className="home-tutorial-step">
-                <h4>3. Track Live Context</h4>
-                <p className="subtle">
-                  Use the Live page and player cards to follow momentum, matchup context, and performance swings that
-                  can shift prices quickly during games.
-                </p>
-              </article>
-              <article className="home-tutorial-step">
-                <h4>4. Manage Risk</h4>
-                <p className="subtle">
-                  Watch portfolio equity, unrealized P/L, and concentration by holding. Diversify if one position is
-                  driving too much of your account.
-                </p>
-              </article>
-              <article className="home-tutorial-step">
-                <h4>5. Season Settlement</h4>
-                <p className="subtle">
-                  At season close, positions settle to final fantasy production. Strong entries and good risk control
-                  usually win over one-off spikes.
-                </p>
-              </article>
+              {tutorialSteps.map((step) => (
+                <article className="home-tutorial-step" key={step.title}>
+                  <h4>{step.title}</h4>
+                  <p className="subtle">{step.body}</p>
+                </article>
+              ))}
             </div>
             <div className="home-tutorial-actions">
+              <button
+                type="button"
+                className="home-tutorial-switch-btn"
+                onClick={() => setHomeTutorialMode((current) => (current === "tour" ? "full" : "tour"))}
+              >
+                {homeTutorialMode === "tour" ? "Open Full Tutorial" : "Take Short Tour"}
+              </button>
               <Link href={isLoggedIn ? "/market" : "/auth"} className="ghost-link">
                 {isLoggedIn ? "Open Market" : "Sign In To Start"}
               </Link>
-              {isLoggedIn && (
+              {isLoggedIn && homeTutorialMode === "full" && (
                 <button type="button" onClick={dismissHomeTutorial}>
                   Don&apos;t Show Again
                 </button>
@@ -303,9 +343,18 @@ export default function HomePage() {
       <section className="table-panel home-explainer">
         <div className="home-explainer-head">
           <h3>How MatchupMarket Works</h3>
-          <button type="button" className="home-tutorial-open-btn" onClick={() => setHomeTutorialOpen(true)}>
-            {isLoggedIn && isNewUser ? "Continue Tutorial" : "Open Tutorial"}
-          </button>
+          <div className="home-explainer-actions">
+            <button type="button" className="home-tutorial-open-btn" onClick={() => openHomeTutorial("tour")}>
+              Take A Tour
+            </button>
+            <button
+              type="button"
+              className="home-tutorial-open-btn home-tutorial-open-btn-secondary"
+              onClick={() => openHomeTutorial("full")}
+            >
+              {isLoggedIn && isNewUser ? "Continue Full Tutorial" : "Open Full Tutorial"}
+            </button>
+          </div>
         </div>
         <div className="home-steps">
           <article className="home-step">
