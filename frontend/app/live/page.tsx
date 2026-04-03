@@ -24,7 +24,9 @@ type WinProbabilityPoint = {
   awayProbability: number;
   homeProbability: number;
   batterName: string | null;
+  batterTeam: string | null;
   pitcherName: string | null;
+  pitcherTeam: string | null;
   runnerOnFirst: boolean;
   runnerOnSecond: boolean;
   runnerOnThird: boolean;
@@ -46,6 +48,7 @@ type WinProbabilityContext = {
   runnerOnSecond: boolean | null;
   runnerOnThird: boolean | null;
   offenseTeam: string | null;
+  defenseTeam: string | null;
 };
 
 function toMessage(err: unknown): string {
@@ -342,6 +345,7 @@ function contextFromLiveState(game: LiveGame): WinProbabilityContext {
     runnerOnSecond: state?.runner_on_second ?? null,
     runnerOnThird: state?.runner_on_third ?? null,
     offenseTeam: state?.offense_team ?? null,
+    defenseTeam: state?.defense_team ?? null,
   };
 }
 
@@ -352,6 +356,16 @@ function contextFromAtBat(
 ): WinProbabilityContext {
   const half = (atBat.inning_half ?? "").trim().toUpperCase();
   const offenseTeam = half === "TOP" ? awayTeam : half === "BOTTOM" ? homeTeam : null;
+  const defenseTeam =
+    half === "TOP"
+      ? homeTeam
+      : half === "BOTTOM"
+        ? awayTeam
+        : offenseTeam && sameTeam(offenseTeam, awayTeam)
+          ? homeTeam
+          : offenseTeam && sameTeam(offenseTeam, homeTeam)
+            ? awayTeam
+            : null;
   return {
     awayScore: atBat.away_score,
     homeScore: atBat.home_score,
@@ -364,6 +378,7 @@ function contextFromAtBat(
     runnerOnSecond: atBat.runner_on_second,
     runnerOnThird: atBat.runner_on_third,
     offenseTeam,
+    defenseTeam,
   };
 }
 
@@ -411,7 +426,9 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       awayProbability,
       homeProbability,
       batterName: atBat.batter_name ?? null,
+      batterTeam: context.offenseTeam ?? null,
       pitcherName: atBat.pitcher_name ?? null,
+      pitcherTeam: context.defenseTeam ?? null,
       runnerOnFirst: Boolean(context.runnerOnFirst),
       runnerOnSecond: Boolean(context.runnerOnSecond),
       runnerOnThird: Boolean(context.runnerOnThird),
@@ -475,7 +492,9 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     awayProbability,
     homeProbability,
     batterName: null,
+    batterTeam: context.offenseTeam ?? null,
     pitcherName: null,
+    pitcherTeam: context.defenseTeam ?? null,
     runnerOnFirst: Boolean(context.runnerOnFirst),
     runnerOnSecond: Boolean(context.runnerOnSecond),
     runnerOnThird: Boolean(context.runnerOnThird),
@@ -498,10 +517,11 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
     ? `${activeDelta != null && activeDelta >= 0 ? "+" : ""}${formatNumber(activeDelta ?? 0, 1)}%`
     : "start";
   const activeIndexLabel = activePoint.atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(activePoint.atBatIndex, 0)}`;
-  const activeMatchupLabel =
-    activePoint.batterName || activePoint.pitcherName
-      ? `${activePoint.batterName ?? "Batter"} vs ${activePoint.pitcherName ?? "Pitcher"}`
-      : null;
+  const showMatchupRow =
+    activePoint.atBatIndex != null &&
+    Boolean(activePoint.batterName || activePoint.pitcherName || activePoint.batterTeam || activePoint.pitcherTeam);
+  const batterLabel = activePoint.batterName ?? "Unknown hitter";
+  const pitcherLabel = activePoint.pitcherName ?? "Unknown pitcher";
   const width = 340;
   const height = 124;
   const left = 10;
@@ -548,7 +568,20 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
       <div className="live-winprob-situation-row">
         <div className="live-winprob-situation-copy">
           <p className="subtle live-winprob-state">{activePoint.situationLabel}</p>
-          {activeMatchupLabel ? <p className="subtle live-winprob-matchup">{activeMatchupLabel}</p> : null}
+          {showMatchupRow ? (
+            <div className="live-winprob-matchup-grid" aria-label="At-bat matchup">
+              <div className="live-winprob-matchup-chip live-winprob-matchup-chip-batter">
+                <span className="live-winprob-matchup-role">Batter</span>
+                <strong className="live-winprob-matchup-name">{batterLabel}</strong>
+                <span className="live-winprob-matchup-team">{activePoint.batterTeam ?? "--"}</span>
+              </div>
+              <div className="live-winprob-matchup-chip live-winprob-matchup-chip-pitcher">
+                <span className="live-winprob-matchup-role">Pitcher</span>
+                <strong className="live-winprob-matchup-name">{pitcherLabel}</strong>
+                <span className="live-winprob-matchup-team">{activePoint.pitcherTeam ?? "--"}</span>
+              </div>
+            </div>
+          ) : null}
         </div>
         <BaseDiamond
           runnerOnFirst={activePoint.runnerOnFirst}
@@ -611,7 +644,9 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
                     points[index].markerLabel
                   } | Home ${formatNumber(points[index].homeProbability, 1)}% | ${points[index].scoreLabel}${
                     points[index].batterName || points[index].pitcherName
-                      ? ` | ${points[index].batterName ?? "Batter"} vs ${points[index].pitcherName ?? "Pitcher"}`
+                      ? ` | Batter ${points[index].batterName ?? "Unknown"} (${points[index].batterTeam ?? "--"}) vs Pitcher ${
+                          points[index].pitcherName ?? "Unknown"
+                        } (${points[index].pitcherTeam ?? "--"})`
                       : ""
                   } | ${formatPointBaseState(points[index])}`}
                 </title>
@@ -702,7 +737,9 @@ export default function LivePage() {
           lastPoint.awayProbability === point.awayProbability &&
           lastPoint.homeProbability === point.homeProbability &&
           lastPoint.batterName === point.batterName &&
+          lastPoint.batterTeam === point.batterTeam &&
           lastPoint.pitcherName === point.pitcherName &&
+          lastPoint.pitcherTeam === point.pitcherTeam &&
           lastPoint.runnerOnFirst === point.runnerOnFirst &&
           lastPoint.runnerOnSecond === point.runnerOnSecond &&
           lastPoint.runnerOnThird === point.runnerOnThird &&

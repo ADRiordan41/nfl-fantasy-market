@@ -2423,6 +2423,48 @@ h1 {
   font-weight: 600;
 }
 
+.live-winprob-matchup-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.live-winprob-matchup-chip {
+  border: 1px solid rgba(160, 188, 219, 0.8);
+  border-radius: 10px;
+  padding: 6px 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.live-winprob-matchup-chip-batter {
+  background: linear-gradient(160deg, rgba(235, 247, 255, 0.9) 0%, rgba(248, 252, 255, 0.9) 100%);
+}
+
+.live-winprob-matchup-chip-pitcher {
+  background: linear-gradient(160deg, rgba(255, 245, 234, 0.88) 0%, rgba(255, 251, 245, 0.9) 100%);
+}
+
+.live-winprob-matchup-role {
+  font-size: 10px;
+  color: #5f7591;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.live-winprob-matchup-name {
+  font-size: 12px;
+  color: #1c4268;
+  line-height: 1.25;
+}
+
+.live-winprob-matchup-team {
+  font-size: 11px;
+  color: #496887;
+  font-weight: 700;
+}
+
 .live-winprob-score {
   color: #2b4f74;
   font-weight: 700;
@@ -4232,6 +4274,10 @@ td {
 }
 
 @media (max-width: 719px) {
+  .live-winprob-matchup-grid {
+    grid-template-columns: 1fr;
+  }
+
   .live-winprob-situation-row {
     flex-direction: column;
     align-items: flex-start;
