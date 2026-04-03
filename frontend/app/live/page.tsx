@@ -1169,10 +1169,6 @@ export default function LivePage() {
     return games.filter((game) => game.sport === activeSportFilter);
   }, [activeSportFilter, payload]);
 
-  const visiblePlayers = useMemo(
-    () => visibleGames.reduce((sum, game) => sum + game.players.length, 0),
-    [visibleGames],
-  );
   const overviewGames = useMemo(
     () =>
       visibleGames.map((game) => {
@@ -1358,11 +1354,6 @@ export default function LivePage() {
                 </button>
               ))}
             </div>
-          </section>
-          <section className="table-panel">
-            <p className="subtle">
-              Showing {formatNumber(visibleGames.length)} games and {formatNumber(visiblePlayers)} tracked players.
-            </p>
           </section>
           <section className="live-games-grid">
             {visibleGames.map((game) => (
