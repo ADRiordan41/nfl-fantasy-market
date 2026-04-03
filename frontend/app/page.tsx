@@ -5,7 +5,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, getAuthToken } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
-import type { ForumPostSummary, LeaderboardResponse, MarketMovers, Player } from "@/lib/types";
+import type {
+  AdminAuditTrade,
+  ForumPostSummary,
+  LeaderboardResponse,
+  MarketMovers,
+  Player,
+  UserAccount,
+} from "@/lib/types";
+
+const HOME_TUTORIAL_VERSION = "v1";
+const HOME_TUTORIAL_STORAGE_PREFIX = "fsm-home-tutorial-dismissed";
+
+function homeTutorialStorageKey(userId: number): string {
+  return `${HOME_TUTORIAL_STORAGE_PREFIX}:${HOME_TUTORIAL_VERSION}:${userId}`;
+}
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -37,6 +51,9 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [authResolved, setAuthResolved] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [homeTutorialOpen, setHomeTutorialOpen] = useState(false);
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -71,9 +88,86 @@ export default function HomePage() {
   useAdaptivePolling(loadSnapshots, { activeMs: 60_000, hiddenMs: 240_000 });
 
   useEffect(() => {
-    setIsLoggedIn(Boolean(getAuthToken()));
-    setAuthResolved(true);
+    let cancelled = false;
+
+    async function resolveAuth() {
+      const token = getAuthToken();
+      if (!token) {
+        if (cancelled) return;
+        setCurrentUser(null);
+        setIsLoggedIn(false);
+        setAuthResolved(true);
+        return;
+      }
+
+      try {
+        const me = await apiGet<UserAccount>("/auth/me");
+        if (cancelled) return;
+        setCurrentUser(me);
+        setIsLoggedIn(true);
+      } catch {
+        if (cancelled) return;
+        setCurrentUser(null);
+        setIsLoggedIn(false);
+      } finally {
+        if (!cancelled) setAuthResolved(true);
+      }
+    }
+
+    void resolveAuth();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!authResolved || !isLoggedIn || !currentUser) {
+      setIsNewUser(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(homeTutorialStorageKey(currentUser.id)) === "1") {
+      setIsNewUser(false);
+      return;
+    }
+
+    let cancelled = false;
+    async function resolveNewUser() {
+      try {
+        const transactions = await apiGet<AdminAuditTrade[]>("/transactions/me?limit=1");
+        if (cancelled) return;
+        const shouldAutoOpenTutorial = transactions.length === 0;
+        setIsNewUser(shouldAutoOpenTutorial);
+        if (shouldAutoOpenTutorial) setHomeTutorialOpen(true);
+      } catch {
+        if (cancelled) return;
+      }
+    }
+
+    void resolveNewUser();
+    return () => {
+      cancelled = true;
+    };
+  }, [authResolved, currentUser, isLoggedIn]);
+
+  useEffect(() => {
+    if (!homeTutorialOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setHomeTutorialOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [homeTutorialOpen]);
+
+  const dismissHomeTutorial = useCallback(() => {
+    if (typeof window !== "undefined" && currentUser) {
+      window.localStorage.setItem(homeTutorialStorageKey(currentUser.id), "1");
+    }
+    setHomeTutorialOpen(false);
+    setIsNewUser(false);
+  }, [currentUser]);
 
   const marketLeaders = useMemo(() => {
     const weekGainByPlayerId = new Map<number, number>();
@@ -137,10 +231,82 @@ export default function HomePage() {
         )}
       </section>
 
+      {homeTutorialOpen && (
+        <div className="home-tutorial-backdrop" onClick={() => setHomeTutorialOpen(false)}>
+          <section
+            className="home-tutorial-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="home-tutorial-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="home-tutorial-head">
+              <p className="eyebrow">Quick Start</p>
+              <h3 id="home-tutorial-title">How MatchupMarket Works</h3>
+            </div>
+            <div className="home-tutorial-grid">
+              <article className="home-tutorial-step">
+                <h4>1. Understand The Price</h4>
+                <p className="subtle">
+                  Each player starts near a preseason projection-based IPO price. Their live price moves as users trade
+                  and as fantasy performance updates.
+                </p>
+              </article>
+              <article className="home-tutorial-step">
+                <h4>2. Trade Long Or Short</h4>
+                <p className="subtle">
+                  Buy shares if you think a player is underpriced. Short shares if you think they are overpriced.
+                  Entry price, position size, and timing all matter.
+                </p>
+              </article>
+              <article className="home-tutorial-step">
+                <h4>3. Track Live Context</h4>
+                <p className="subtle">
+                  Use the Live page and player cards to follow momentum, matchup context, and performance swings that
+                  can shift prices quickly during games.
+                </p>
+              </article>
+              <article className="home-tutorial-step">
+                <h4>4. Manage Risk</h4>
+                <p className="subtle">
+                  Watch portfolio equity, unrealized P/L, and concentration by holding. Diversify if one position is
+                  driving too much of your account.
+                </p>
+              </article>
+              <article className="home-tutorial-step">
+                <h4>5. Season Settlement</h4>
+                <p className="subtle">
+                  At season close, positions settle to final fantasy production. Strong entries and good risk control
+                  usually win over one-off spikes.
+                </p>
+              </article>
+            </div>
+            <div className="home-tutorial-actions">
+              <Link href={isLoggedIn ? "/market" : "/auth"} className="ghost-link">
+                {isLoggedIn ? "Open Market" : "Sign In To Start"}
+              </Link>
+              {isLoggedIn && (
+                <button type="button" onClick={dismissHomeTutorial}>
+                  Don&apos;t Show Again
+                </button>
+              )}
+              <button type="button" onClick={() => setHomeTutorialOpen(false)}>
+                Close
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {error && <p className="error-box">{error}</p>}
 
       <section className="table-panel home-explainer">
-        <h3>How MatchupMarket Works</h3>
+        <div className="home-explainer-head">
+          <h3>How MatchupMarket Works</h3>
+          <button type="button" className="home-tutorial-open-btn" onClick={() => setHomeTutorialOpen(true)}>
+            {isLoggedIn && isNewUser ? "Continue Tutorial" : "Open Tutorial"}
+          </button>
+        </div>
         <div className="home-steps">
           <article className="home-step">
             <h4>1. IPO Opens Each Sport</h4>

@@ -1331,6 +1331,22 @@ h1 {
   margin: 0;
 }
 
+.home-explainer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.home-tutorial-open-btn {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .home-steps {
   margin-top: 10px;
   display: grid;
@@ -1384,6 +1400,68 @@ h1 {
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(244, 250, 255, 0.9) 100%);
   padding: 12px;
   box-shadow: 0 12px 24px rgba(6, 19, 35, 0.12);
+}
+
+.home-tutorial-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+  background: rgba(5, 16, 34, 0.58);
+  display: grid;
+  place-items: center;
+  padding: 14px;
+}
+
+.home-tutorial-modal {
+  width: min(720px, 96vw);
+  max-height: min(90vh, 820px);
+  overflow: auto;
+  border: 1px solid rgba(170, 198, 227, 0.92);
+  border-radius: 16px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 8% -30%, rgba(90, 165, 255, 0.2) 0%, rgba(90, 165, 255, 0) 42%),
+    radial-gradient(circle at 102% -26%, rgba(255, 161, 92, 0.2) 0%, rgba(255, 161, 92, 0) 44%),
+    linear-gradient(165deg, rgba(248, 252, 255, 0.99) 0%, rgba(238, 247, 255, 0.96) 100%);
+  box-shadow: 0 26px 46px rgba(6, 19, 35, 0.34);
+}
+
+.home-tutorial-head {
+  display: grid;
+  gap: 4px;
+}
+
+.home-tutorial-head h3 {
+  margin: 0;
+}
+
+.home-tutorial-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.home-tutorial-step {
+  border: 1px solid rgba(167, 196, 227, 0.92);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.84);
+  padding: 10px 12px;
+}
+
+.home-tutorial-step h4 {
+  margin: 0 0 5px;
+}
+
+.home-tutorial-step p {
+  margin: 0;
+}
+
+.home-tutorial-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .home-market-mobile-top,
