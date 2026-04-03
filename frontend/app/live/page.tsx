@@ -23,6 +23,13 @@ type WinProbabilityPoint = {
   homeTeam: string;
   awayProbability: number;
   homeProbability: number;
+  inningLabel: string;
+  outsLabel: string;
+  countLabel: string;
+  baseStateLabel: string;
+  eventLabel: string;
+  battingTeam: string | null;
+  fieldingTeam: string | null;
   batterName: string | null;
   batterTeam: string | null;
   pitcherName: string | null;
@@ -408,6 +415,7 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       atBat.away_score != null && atBat.home_score != null
         ? `${awayTeam} ${formatNumber(atBat.away_score, 0)} - ${formatNumber(atBat.home_score, 0)} ${homeTeam}`
         : `${awayTeam} vs ${homeTeam}`;
+    const inningLabel = formatInningState(context);
     const outsLabel =
       atBat.outs_after_play == null ? "Outs --" : `${atBat.outs_after_play} out${atBat.outs_after_play === 1 ? "" : "s"}`;
     const countLabel =
@@ -418,6 +426,7 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
           : atBat.strikes != null
             ? `${atBat.strikes} strikes`
             : "Count --";
+    const baseStateLabel = formatBaseState(context);
     const eventLabel = atBat.event ?? "At-bat result";
     return {
       capturedAt: atBat.occurred_at ?? game.updated_at ?? generatedAt,
@@ -425,6 +434,13 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       homeTeam,
       awayProbability,
       homeProbability,
+      inningLabel,
+      outsLabel,
+      countLabel,
+      baseStateLabel,
+      eventLabel,
+      battingTeam: context.offenseTeam ?? null,
+      fieldingTeam: context.defenseTeam ?? null,
       batterName: atBat.batter_name ?? null,
       batterTeam: context.offenseTeam ?? null,
       pitcherName: atBat.pitcher_name ?? null,
@@ -433,7 +449,7 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       runnerOnSecond: Boolean(context.runnerOnSecond),
       runnerOnThird: Boolean(context.runnerOnThird),
       scoreLabel,
-      situationLabel: `${formatInningState(context)} | ${outsLabel} | ${formatBaseState(context)} | ${countLabel} | ${eventLabel}`,
+      situationLabel: `${inningLabel} | ${outsLabel} | ${baseStateLabel} | ${countLabel} | ${eventLabel}`,
       markerLabel: eventLabel,
       atBatIndex: atBat.at_bat_index,
     };
@@ -483,7 +499,18 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
   const scoreLabel = hasScore
     ? `${awayTeam} ${formatNumber(context.awayScore ?? 0, 0)} - ${formatNumber(context.homeScore ?? 0, 0)} ${homeTeam}`
     : `${awayTeam} vs ${homeTeam}`;
+  const inningLabel = formatInningState(context);
   const outsLabel = context.outs == null ? "Outs --" : `${context.outs} out${context.outs === 1 ? "" : "s"}`;
+  const countLabel =
+    context.balls != null && context.strikes != null
+      ? `${context.balls}-${context.strikes} count`
+      : context.balls != null
+        ? `${context.balls} balls`
+        : context.strikes != null
+          ? `${context.strikes} strikes`
+          : "Count --";
+  const baseStateLabel = formatBaseState(context);
+  const eventLabel = "Live snapshot";
   const battingLabel = context.offenseTeam ? ` | Batting ${context.offenseTeam}` : "";
   return {
     capturedAt: game.updated_at ?? generatedAt,
@@ -491,6 +518,13 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     homeTeam,
     awayProbability,
     homeProbability,
+    inningLabel,
+    outsLabel,
+    countLabel,
+    baseStateLabel,
+    eventLabel,
+    battingTeam: context.offenseTeam ?? null,
+    fieldingTeam: context.defenseTeam ?? null,
     batterName: null,
     batterTeam: context.offenseTeam ?? null,
     pitcherName: null,
@@ -499,8 +533,8 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     runnerOnSecond: Boolean(context.runnerOnSecond),
     runnerOnThird: Boolean(context.runnerOnThird),
     scoreLabel,
-    situationLabel: `${formatInningState(context)} | ${outsLabel} | ${formatBaseState(context)}${battingLabel}`,
-    markerLabel: "Live snapshot",
+    situationLabel: `${inningLabel} | ${outsLabel} | ${baseStateLabel} | ${countLabel}${battingLabel}`,
+    markerLabel: eventLabel,
     atBatIndex: null,
   };
 }
@@ -522,6 +556,14 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
     Boolean(activePoint.batterName || activePoint.pitcherName || activePoint.batterTeam || activePoint.pitcherTeam);
   const batterLabel = activePoint.batterName ?? "Unknown hitter";
   const pitcherLabel = activePoint.pitcherName ?? "Unknown pitcher";
+  const contextTiles = [
+    { label: "Inning", value: activePoint.inningLabel },
+    { label: "Outs", value: activePoint.outsLabel },
+    { label: "Count", value: activePoint.countLabel },
+    { label: "Runners", value: activePoint.baseStateLabel },
+    { label: "Offense", value: activePoint.battingTeam ?? "--" },
+    { label: "Defense", value: activePoint.fieldingTeam ?? "--" },
+  ];
   const width = 340;
   const height = 124;
   const left = 10;
@@ -565,9 +607,16 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
         </span>
       </div>
       <p className="subtle live-winprob-score">{activePoint.scoreLabel}</p>
-      <div className="live-winprob-situation-row">
-        <div className="live-winprob-situation-copy">
-          <p className="subtle live-winprob-state">{activePoint.situationLabel}</p>
+      <div className="live-winprob-focus-row">
+        <div className="live-winprob-diamond-panel">
+          <p className="live-winprob-diamond-title">Basepaths</p>
+          <BaseDiamond
+            runnerOnFirst={activePoint.runnerOnFirst}
+            runnerOnSecond={activePoint.runnerOnSecond}
+            runnerOnThird={activePoint.runnerOnThird}
+          />
+        </div>
+        <div className="live-winprob-focus-info">
           {showMatchupRow ? (
             <div className="live-winprob-matchup-grid" aria-label="At-bat matchup">
               <div className="live-winprob-matchup-chip live-winprob-matchup-chip-batter">
@@ -581,13 +630,19 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
                 <span className="live-winprob-matchup-team">{activePoint.pitcherTeam ?? "--"}</span>
               </div>
             </div>
-          ) : null}
+          ) : (
+            <p className="subtle live-winprob-matchup-empty">Awaiting current batter and pitcher details.</p>
+          )}
+          <div className="live-winprob-context-grid" aria-label="Current game context">
+            {contextTiles.map((tile) => (
+              <div className="live-winprob-context-tile" key={tile.label}>
+                <span className="live-winprob-context-label">{tile.label}</span>
+                <strong className="live-winprob-context-value">{tile.value}</strong>
+              </div>
+            ))}
+          </div>
+          <p className="subtle live-winprob-state">{activePoint.situationLabel}</p>
         </div>
-        <BaseDiamond
-          runnerOnFirst={activePoint.runnerOnFirst}
-          runnerOnSecond={activePoint.runnerOnSecond}
-          runnerOnThird={activePoint.runnerOnThird}
-        />
       </div>
       <div className="live-winprob-legend">
         <span className="live-winprob-team">
@@ -736,6 +791,13 @@ export default function LivePage() {
           sameTeams &&
           lastPoint.awayProbability === point.awayProbability &&
           lastPoint.homeProbability === point.homeProbability &&
+          lastPoint.inningLabel === point.inningLabel &&
+          lastPoint.outsLabel === point.outsLabel &&
+          lastPoint.countLabel === point.countLabel &&
+          lastPoint.baseStateLabel === point.baseStateLabel &&
+          lastPoint.eventLabel === point.eventLabel &&
+          lastPoint.battingTeam === point.battingTeam &&
+          lastPoint.fieldingTeam === point.fieldingTeam &&
           lastPoint.batterName === point.batterName &&
           lastPoint.batterTeam === point.batterTeam &&
           lastPoint.pitcherName === point.pitcherName &&
