@@ -1376,28 +1376,29 @@ export default function LivePage() {
               >
                 {(() => {
                   const teams = groupTeams(game);
+                  const { awayTeam, homeTeam } = resolveAwayHomeTeams(game, teams);
                   const winProbabilityPoints = winProbabilityByGameId[game.game_id] ?? [];
                   const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
                   const gameSettled = isSettledGame(game);
                   const liveBadgeLabel = activelyLive ? "LIVE NOW" : gameSettled ? "FINAL" : "TODAY";
-                  const liveStatusLabel = game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Today");
                   return (
                     <>
                       <div className="live-game-toggle">
                         <div className="live-now-head">
                           <span className={`live-indicator${activelyLive ? "" : " live-indicator-muted"}`}>
-                            <span className={`live-dot${activelyLive ? "" : " live-dot-muted"}`} />
+                          <span className={`live-dot${activelyLive ? "" : " live-dot-muted"}`} />
                             {liveBadgeLabel}
                           </span>
-                          <span className="live-status">{liveStatusLabel}</span>
                         </div>
-                        <h3 className="live-game-title">
-                          {game.sport} {game.game_label}
+                        <h3 className="live-game-title live-game-matchup-title" aria-label={`${awayTeam} at ${homeTeam}`}>
+                          <span className="live-game-matchup-team" style={{ color: teamPrimaryColor(awayTeam, game.sport) }}>
+                            {awayTeam}
+                          </span>
+                          <span className="live-game-matchup-separator">@</span>
+                          <span className="live-game-matchup-team" style={{ color: teamPrimaryColor(homeTeam, game.sport) }}>
+                            {homeTeam}
+                          </span>
                         </h3>
-                        <p className="subtle">
-                          Week {game.week ?? "--"} | Players {formatNumber(game.live_player_count)} | Game points{" "}
-                          {formatNumber(game.game_fantasy_points_total, 2)} | Updated {formatStamp(game.updated_at)}
-                        </p>
                         <WinProbabilityChart points={winProbabilityPoints} players={game.players} />
                         <div className="live-team-grid">
                           {teams.map((team) => (

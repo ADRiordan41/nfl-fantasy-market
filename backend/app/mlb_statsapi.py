@@ -121,6 +121,38 @@ def parse_mlb_allowed_game_types(raw_value: str | None) -> set[str]:
     return allowed or set(DEFAULT_MLB_ALLOWED_GAME_TYPES)
 
 
+def fetch_mlb_schedule_game_pks(
+    *,
+    schedule_date: date,
+    timeout: float = 5.0,
+    allowed_game_types: set[str] | None = None,
+) -> list[str]:
+    allowed = set(allowed_game_types or DEFAULT_MLB_ALLOWED_GAME_TYPES)
+    params = parse.urlencode({"sportId": 1, "date": schedule_date.isoformat()})
+    schedule_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_SCHEDULE_PATH}?{params}"
+    schedule_payload = _http_get_json(url=schedule_url, timeout=timeout)
+    dates = schedule_payload.get("dates", []) if isinstance(schedule_payload, dict) else []
+
+    game_pks: set[str] = set()
+    for date_block in dates:
+        if not isinstance(date_block, dict):
+            continue
+        games = date_block.get("games", [])
+        if not isinstance(games, list):
+            continue
+        for game in games:
+            if not isinstance(game, dict):
+                continue
+            game_type = str(game.get("gameType") or "").strip().upper()
+            if allowed and game_type not in allowed:
+                continue
+            normalized_pk = normalize_game_pk(game.get("gamePk"))
+            if normalized_pk:
+                game_pks.add(normalized_pk)
+
+    return sorted(game_pks)
+
+
 def _http_get_json(url: str, timeout: float) -> Any:
     req = request.Request(url, method="GET")
     with request.urlopen(req, timeout=timeout) as response:

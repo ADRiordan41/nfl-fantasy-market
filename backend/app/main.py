@@ -36,6 +36,7 @@ from .mlb_statsapi import (
     MlbGameState,
     MlbIncomingStat,
     fetch_mlb_game_states,
+    fetch_mlb_schedule_game_pks,
     fetch_mlb_statsapi_rows,
     normalize_game_pk as normalize_mlb_game_pk,
     normalize_lookup_text as normalize_mlb_lookup_text,
@@ -2553,6 +2554,15 @@ def list_live_games(
         return cached
     # Keep completed games from the prior slate visible until 2:00 AM Chicago time.
     start_of_day_chicago = chicago_rollover_start(rollover_hour=2)
+    mlb_schedule_game_ids: list[str] = []
+    if normalized_sport in {"ALL", "MLB"}:
+        try:
+            mlb_schedule_game_ids = fetch_mlb_schedule_game_pks(
+                schedule_date=start_of_day_chicago.date(),
+                timeout=3.5,
+            )
+        except Exception as exc:
+            logger.warning("Failed to fetch MLB schedule for live games: %s", exc)
     stmt = select(Player).where(
         Player.ipo_open.is_(True),
         or_(
@@ -2579,14 +2589,6 @@ def list_live_games(
         )
     ).scalars().all()
     generated_at = chicago_now()
-    if not players:
-        result = LiveGamesOut(
-            generated_at=generated_at,
-            live_games_count=0,
-            live_players_count=0,
-            games=[],
-        )
-        return set_cached_json(cache_key, result, ttl_seconds=15)
 
     stats_snapshot = get_stats_snapshot_by_player(db, [player.id for player in players])
     grouped: dict[str, dict[str, object]] = {}
@@ -2675,6 +2677,7 @@ def list_live_games(
         )
 
     mlb_game_id_tokens: set[str] = set()
+    mlb_existing_game_ids: set[str] = set()
     for group in grouped.values():
         if str(group["sport"]).upper() != "MLB":
             continue
@@ -2684,15 +2687,57 @@ def list_live_games(
             normalized_raw = normalize_mlb_game_pk(raw_game_id)
             if normalized_raw:
                 mlb_game_id_tokens.add(normalized_raw)
+                mlb_existing_game_ids.add(normalized_raw)
         group_game_id = (str(group["game_id"]).strip() if group.get("game_id") else "") or ""
         game_id_suffix = group_game_id.split(":", 1)[1] if ":" in group_game_id else group_game_id
         normalized_suffix = normalize_mlb_game_pk(game_id_suffix)
         if normalized_suffix:
             mlb_game_id_tokens.add(normalized_suffix)
+            mlb_existing_game_ids.add(normalized_suffix)
+    for scheduled_game_id in mlb_schedule_game_ids:
+        normalized_scheduled_id = normalize_mlb_game_pk(scheduled_game_id)
+        if normalized_scheduled_id:
+            mlb_game_id_tokens.add(normalized_scheduled_id)
     mlb_game_ids = sorted(mlb_game_id_tokens)
     mlb_states_by_game_id: dict[str, MlbGameState] = {}
     if mlb_game_ids:
         mlb_states_by_game_id = fetch_mlb_game_states(game_pks=mlb_game_ids, timeout=3.5)
+
+    for scheduled_game_id in mlb_schedule_game_ids:
+        normalized_scheduled_id = normalize_mlb_game_pk(scheduled_game_id)
+        if not normalized_scheduled_id or normalized_scheduled_id in mlb_existing_game_ids:
+            continue
+
+        scheduled_state = mlb_states_by_game_id.get(normalized_scheduled_id)
+        away_team = (scheduled_state.away_team if scheduled_state else None) or "Away"
+        home_team = (scheduled_state.home_team if scheduled_state else None) or "Home"
+        scheduled_status = None
+        scheduled_is_live = False
+        if scheduled_state is not None:
+            if scheduled_state.detailed_state:
+                scheduled_status = scheduled_state.detailed_state
+            elif scheduled_state.abstract_state:
+                scheduled_status = scheduled_state.abstract_state.title()
+            if scheduled_state.is_live is not None:
+                scheduled_is_live = bool(scheduled_state.is_live)
+            if (
+                (scheduled_state.abstract_state or "") in {"FINAL", "COMPLETED"}
+                or game_status_is_terminal(scheduled_state.detailed_state)
+            ):
+                scheduled_is_live = False
+
+        grouped[f"schedule:MLB:{normalized_scheduled_id}"] = {
+            "game_id": f"MLB:{normalized_scheduled_id}",
+            "raw_game_id": normalized_scheduled_id,
+            "sport": "MLB",
+            "game_label": f"{away_team} @ {home_team}",
+            "game_status": scheduled_status,
+            "week": None,
+            "is_live": scheduled_is_live,
+            "updated_at": None,
+            "players": [],
+        }
+        mlb_existing_game_ids.add(normalized_scheduled_id)
 
     games: list[LiveGameOut] = []
     for group in grouped.values():
