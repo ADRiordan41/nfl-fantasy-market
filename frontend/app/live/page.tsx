@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -38,8 +38,10 @@ type WinProbabilityPoint = {
   battingTeam: string | null;
   fieldingTeam: string | null;
   batterName: string | null;
+  batterPlayerId: number | null;
   batterTeam: string | null;
   pitcherName: string | null;
+  pitcherPlayerId: number | null;
   pitcherTeam: string | null;
   runnerOnFirst: boolean;
   runnerOnSecond: boolean;
@@ -120,6 +122,123 @@ function groupTeams(game: LiveGame): TeamGroup[] {
         gameFantasyPointsTotal: sorted.reduce((sum, player) => sum + player.game_fantasy_points, 0),
       };
     });
+}
+
+function normalizePlayerName(value: string | null | undefined): string {
+  const raw = (value ?? "").normalize("NFKD");
+  const stripped = raw.replace(/[\u0300-\u036f]/g, "");
+  return stripped
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function stripPlayerNameDiacritics(value: string): string {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function buildPlayerNameAliases(name: string): string[] {
+  const trimmed = name.trim();
+  if (!trimmed) return [];
+
+  const aliases = new Set<string>();
+  aliases.add(trimmed);
+
+  const withoutSuffix = trimmed.replace(/\s+(?:jr|sr|ii|iii|iv|v)\.?$/i, "").trim();
+  if (withoutSuffix) aliases.add(withoutSuffix);
+
+  const nameParts = withoutSuffix.split(/\s+/).filter((part) => part.length > 0);
+  if (nameParts.length >= 2) {
+    const first = nameParts[0];
+    const remainder = nameParts.slice(1).join(" ");
+    if (remainder) {
+      aliases.add(remainder);
+      aliases.add(`${first.charAt(0)}. ${remainder}`);
+      aliases.add(`${first.charAt(0)} ${remainder}`);
+    }
+  }
+
+  for (const alias of [...aliases]) {
+    const asciiAlias = stripPlayerNameDiacritics(alias);
+    if (asciiAlias) aliases.add(asciiAlias);
+  }
+
+  return [...aliases].map((alias) => alias.trim()).filter((alias) => alias.length > 0);
+}
+
+function buildLivePlayerLookup(players: LiveGamePlayer[]): Map<string, number> {
+  const idsByKey = new Map<string, Set<number>>();
+  const addKey = (key: string, playerId: number) => {
+    const normalized = key.trim().toLowerCase();
+    if (!normalized) return;
+    const existing = idsByKey.get(normalized);
+    if (existing) {
+      existing.add(playerId);
+      return;
+    }
+    idsByKey.set(normalized, new Set([playerId]));
+  };
+
+  for (const player of players) {
+    const raw = player.name.trim();
+    if (!raw) continue;
+    for (const alias of buildPlayerNameAliases(raw)) {
+      addKey(alias, player.player_id);
+      addKey(normalizePlayerName(alias), player.player_id);
+    }
+  }
+
+  const lookup = new Map<string, number>();
+  for (const [key, ids] of idsByKey.entries()) {
+    if (ids.size !== 1) continue;
+    const [playerId] = [...ids];
+    lookup.set(key, playerId);
+  }
+  return lookup;
+}
+
+function buildLivePlayerNameCandidates(players: LiveGamePlayer[]): string[] {
+  const idsByAlias = new Map<string, Set<number>>();
+  const aliasByKey = new Map<string, string>();
+
+  for (const player of players) {
+    for (const alias of buildPlayerNameAliases(player.name)) {
+      const trimmedAlias = alias.trim();
+      if (!trimmedAlias) continue;
+      const aliasKey = trimmedAlias.toLowerCase();
+      const existing = idsByAlias.get(aliasKey);
+      if (existing) {
+        existing.add(player.player_id);
+      } else {
+        idsByAlias.set(aliasKey, new Set([player.player_id]));
+      }
+      const previousAlias = aliasByKey.get(aliasKey);
+      if (!previousAlias || trimmedAlias.length > previousAlias.length) {
+        aliasByKey.set(aliasKey, trimmedAlias);
+      }
+    }
+  }
+
+  const candidates: string[] = [];
+  for (const [aliasKey, ids] of idsByAlias.entries()) {
+    if (ids.size !== 1) continue;
+    const alias = aliasByKey.get(aliasKey) ?? "";
+    if (!alias) continue;
+    if (alias.length < 3) continue;
+    candidates.push(alias);
+  }
+
+  return [...new Set(candidates)].sort((left, right) => right.length - left.length || left.localeCompare(right));
+}
+
+function resolveLivePlayerId(name: string | null | undefined, lookup: Map<string, number>): number | null {
+  if (!name) return null;
+  const rawKey = name.trim().toLowerCase();
+  if (rawKey && lookup.has(rawKey)) return lookup.get(rawKey) ?? null;
+  const normalized = normalizePlayerName(name);
+  if (normalized && lookup.has(normalized)) return lookup.get(normalized) ?? null;
+  return null;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -321,6 +440,79 @@ function formatHighlightedPlay(point: WinProbabilityPoint): string {
   return "At-bat outcome recorded.";
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+type PlaySummarySegment = {
+  text: string;
+  playerId: number | null;
+};
+
+function buildPlaySummarySegments(
+  point: WinProbabilityPoint,
+  text: string,
+  playerLookup: Map<string, number>,
+  playerNameCandidates: string[],
+): PlaySummarySegment[] {
+  const explicitNameToId = new Map<string, number>();
+  const mergedCandidates = [...playerNameCandidates];
+
+  if (point.batterPlayerId != null && point.batterName) {
+    const name = point.batterName.trim();
+    const key = name.toLowerCase();
+    if (key) explicitNameToId.set(key, point.batterPlayerId);
+    if (name) mergedCandidates.push(name);
+  }
+  if (point.pitcherPlayerId != null && point.pitcherName) {
+    const name = point.pitcherName.trim();
+    const key = name.toLowerCase();
+    if (key && !explicitNameToId.has(key)) explicitNameToId.set(key, point.pitcherPlayerId);
+    if (name) mergedCandidates.push(name);
+  }
+
+  const uniqueNames = [...new Set(mergedCandidates.map((name) => name.trim()).filter((name) => name.length > 0))].sort(
+    (left, right) => right.length - left.length,
+  );
+  if (uniqueNames.length === 0) return [{ text, playerId: null }];
+
+  const tokenPattern = uniqueNames.map((name) => escapeRegExp(name)).join("|");
+  if (!tokenPattern) return [{ text, playerId: null }];
+  const parts = text.split(new RegExp(`(${tokenPattern})`, "gi"));
+  return parts
+    .filter((part) => part.length > 0)
+    .map((part) => ({
+      text: part,
+      playerId: explicitNameToId.get(part.toLowerCase()) ?? resolveLivePlayerId(part, playerLookup),
+    }));
+}
+
+function renderPlaySummaryTextWithLinks(
+  point: WinProbabilityPoint,
+  text: string,
+  linkClassName: string,
+  playerLookup: Map<string, number>,
+  playerNameCandidates: string[],
+  options?: { stopPropagation?: boolean },
+): ReactNode {
+  const segments = buildPlaySummarySegments(point, text, playerLookup, playerNameCandidates);
+  return segments.map((segment, index) => {
+    if (segment.playerId == null) {
+      return <Fragment key={`play-segment-${index}`}>{segment.text}</Fragment>;
+    }
+    return (
+      <Link
+        key={`play-segment-link-${index}`}
+        href={`/player/${segment.playerId}`}
+        className={linkClassName}
+        onClick={options?.stopPropagation ? (event) => event.stopPropagation() : undefined}
+      >
+        {segment.text}
+      </Link>
+    );
+  });
+}
+
 function isCompletedGameStatus(status: string | null | undefined): boolean {
   const normalized = (status ?? "").trim().toUpperCase();
   if (!normalized) return false;
@@ -448,6 +640,7 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
   const teamsForGame = resolveAwayHomeTeams(game, teams);
   const atBats = game.at_bats ?? [];
   if (atBats.length === 0) return [];
+  const playerLookup = buildLivePlayerLookup(game.players);
   const awayTeam = teamsForGame.awayTeam;
   const homeTeam = teamsForGame.homeTeam;
   const fallbackAwayPoints = totalPointsForTeam(teams, awayTeam);
@@ -496,6 +689,8 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
     const baseStateLabel = formatBaseState(context);
     const eventLabel = atBat.event ?? "At-bat result";
     const playDescription = atBat.description ?? null;
+    const batterPlayerId = resolveLivePlayerId(atBat.batter_name, playerLookup);
+    const pitcherPlayerId = resolveLivePlayerId(atBat.pitcher_name, playerLookup);
     return {
       capturedAt: atBat.occurred_at ?? game.updated_at ?? generatedAt,
       awayTeam,
@@ -516,8 +711,10 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       battingTeam: context.offenseTeam ?? null,
       fieldingTeam: context.defenseTeam ?? null,
       batterName: atBat.batter_name ?? null,
+      batterPlayerId,
       batterTeam: context.offenseTeam ?? null,
       pitcherName: atBat.pitcher_name ?? null,
+      pitcherPlayerId,
       pitcherTeam: context.defenseTeam ?? null,
       runnerOnFirst: Boolean(context.runnerOnFirst),
       runnerOnSecond: Boolean(context.runnerOnSecond),
@@ -599,8 +796,10 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     battingTeam: context.offenseTeam ?? null,
     fieldingTeam: context.defenseTeam ?? null,
     batterName: null,
+    batterPlayerId: null,
     batterTeam: context.offenseTeam ?? null,
     pitcherName: null,
+    pitcherPlayerId: null,
     pitcherTeam: context.defenseTeam ?? null,
     runnerOnFirst: Boolean(context.runnerOnFirst),
     runnerOnSecond: Boolean(context.runnerOnSecond),
@@ -612,9 +811,11 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
   };
 }
 
-function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
+function WinProbabilityChart({ points, players }: { points: WinProbabilityPoint[]; players: LiveGamePlayer[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (points.length === 0) return null;
+  const playTextPlayerLookup = buildLivePlayerLookup(players);
+  const playTextNameCandidates = buildLivePlayerNameCandidates(players);
   const topSwingPlays: Array<{ index: number; point: WinProbabilityPoint; homeDelta: number; absDelta: number; summary: string }> = [];
   for (let index = 1; index < points.length; index += 1) {
     const point = points[index];
@@ -656,6 +857,8 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
   const pitcherTeamValue = activePoint.pitcherTeam ?? fieldingTeamLabel;
   const batterNameValue = showMatchupRow ? batterLabel : "Current batter pending";
   const pitcherNameValue = showMatchupRow ? pitcherLabel : "Current pitcher pending";
+  const batterPlayerHref = activePoint.batterPlayerId != null ? `/player/${activePoint.batterPlayerId}` : null;
+  const pitcherPlayerHref = activePoint.pitcherPlayerId != null ? `/player/${activePoint.pitcherPlayerId}` : null;
   const awayTeamColor = teamPrimaryColor(activePoint.awayTeam, activePoint.sport);
   const homeTeamColor = teamPrimaryColor(activePoint.homeTeam, activePoint.sport);
   const highlightedPlaySummary = formatHighlightedPlay(activePoint);
@@ -734,12 +937,32 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
             <div className="live-scorebug-details" aria-label="Current matchup">
               <p className="live-scorebug-detail-row">
                 <span className="live-scorebug-detail-tag">P</span>
-                <strong className="live-scorebug-detail-name">{pitcherNameValue}</strong>
+                {pitcherPlayerHref ? (
+                  <Link
+                    href={pitcherPlayerHref}
+                    className="live-scorebug-detail-name live-scorebug-detail-name-link"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {pitcherNameValue}
+                  </Link>
+                ) : (
+                  <strong className="live-scorebug-detail-name">{pitcherNameValue}</strong>
+                )}
                 <span className="live-scorebug-detail-team">{pitcherTeamValue}</span>
               </p>
               <p className="live-scorebug-detail-row">
                 <span className="live-scorebug-detail-tag">B</span>
-                <strong className="live-scorebug-detail-name">{batterNameValue}</strong>
+                {batterPlayerHref ? (
+                  <Link
+                    href={batterPlayerHref}
+                    className="live-scorebug-detail-name live-scorebug-detail-name-link"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {batterNameValue}
+                  </Link>
+                ) : (
+                  <strong className="live-scorebug-detail-name">{batterNameValue}</strong>
+                )}
                 <span className="live-scorebug-detail-team">{batterTeamValue}</span>
               </p>
             </div>
@@ -752,7 +975,15 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
           <span>{formatNumber(activePoint.awayProbability, 1)}%</span>
         </span>
         <span className="live-winprob-play-inline" aria-live="polite" title={highlightedPlaySummary}>
-          <span className="live-winprob-play-inline-text">{highlightedPlaySummary}</span>
+          <span className="live-winprob-play-inline-text">
+            {renderPlaySummaryTextWithLinks(
+              activePoint,
+              highlightedPlaySummary,
+              "live-winprob-play-link",
+              playTextPlayerLookup,
+              playTextNameCandidates,
+            )}
+          </span>
         </span>
         <span className="live-winprob-team">
           <strong className="live-winprob-team-name live-winprob-team-b">{activePoint.homeTeam}</strong>
@@ -848,14 +1079,21 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
                   ? `${entry.point.awayTeam} ${formatNumber(entry.point.awayScore, 0)} - ${formatNumber(entry.point.homeScore, 0)} ${entry.point.homeTeam}`
                   : "--";
               return (
-                <button
+                <div
                   key={`top-play-${entry.index}`}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   className={`live-winprob-top-play${activeTopPlay ? " active" : ""}`}
                   onMouseEnter={() => setHoveredIndex(entry.index)}
                   onFocus={() => setHoveredIndex(entry.index)}
                   onClick={() => setHoveredIndex(entry.index)}
                   onMouseLeave={() => setHoveredIndex(null)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setHoveredIndex(entry.index);
+                    }
+                  }}
                   aria-label={`Top play ${rank + 1}. ${swingLabel}. ${entry.summary}`}
                 >
                   <span className="live-winprob-top-play-rank">{rank + 1}</span>
@@ -864,9 +1102,20 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
                       <span className="live-winprob-top-play-swing">{swingLabel}</span>
                       <span className="live-winprob-top-play-score">{scoreAfterPlay}</span>
                     </span>
-                    <span className="live-winprob-top-play-text">{entry.summary}</span>
+                    <span className="live-winprob-top-play-text">
+                      {renderPlaySummaryTextWithLinks(
+                        entry.point,
+                        entry.summary,
+                        "live-winprob-top-play-link",
+                        playTextPlayerLookup,
+                        playTextNameCandidates,
+                        {
+                          stopPropagation: true,
+                        },
+                      )}
+                    </span>
                   </span>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -883,7 +1132,7 @@ export default function LivePage() {
   const [payload, setPayload] = useState<LiveGames | null>(null);
   const [sportFilter, setSportFilter] = useState("ALL");
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
+  const [focusedGameId, setFocusedGameId] = useState<string | null>(null);
   const [winProbabilityByGameId, setWinProbabilityByGameId] = useState<Record<string, WinProbabilityPoint[]>>({});
   const [error, setError] = useState("");
 
@@ -950,7 +1199,7 @@ export default function LivePage() {
     [visibleGames, winProbabilityByGameId],
   );
   const jumpToGame = useCallback((gameId: string) => {
-    setExpandedGameId(gameId);
+    setFocusedGameId(gameId);
     const node = gameCardRefs.current[gameId];
     if (!node) return;
     node.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
@@ -992,8 +1241,10 @@ export default function LivePage() {
           lastPoint.battingTeam === point.battingTeam &&
           lastPoint.fieldingTeam === point.fieldingTeam &&
           lastPoint.batterName === point.batterName &&
+          lastPoint.batterPlayerId === point.batterPlayerId &&
           lastPoint.batterTeam === point.batterTeam &&
           lastPoint.pitcherName === point.pitcherName &&
+          lastPoint.pitcherPlayerId === point.pitcherPlayerId &&
           lastPoint.pitcherTeam === point.pitcherTeam &&
           lastPoint.runnerOnFirst === point.runnerOnFirst &&
           lastPoint.runnerOnSecond === point.runnerOnSecond &&
@@ -1076,16 +1327,12 @@ export default function LivePage() {
       ) : (
         <>
           <section className="live-game-overview" aria-label="All visible games">
-            <div className="live-game-overview-head">
-              <p className="live-game-overview-title">Games At A Glance</p>
-              <span className="subtle">Tap a mini scorebug to jump to that game.</span>
-            </div>
             <div className="live-mini-scorebug-strip" role="list">
               {overviewGames.map((game) => (
                 <button
                   key={`overview-${game.gameId}`}
                   type="button"
-                  className={`live-mini-scorebug${expandedGameId === game.gameId ? " active" : ""}`}
+                  className={`live-mini-scorebug${focusedGameId === game.gameId ? " active" : ""}`}
                   onClick={() => jumpToGame(game.gameId)}
                   title={`${game.awayTeam} ${game.awayScoreLabel} - ${game.homeScoreLabel} ${game.homeTeam} (${game.statusLabel})`}
                 >
@@ -1125,11 +1372,10 @@ export default function LivePage() {
                 ref={(node) => {
                   gameCardRefs.current[game.game_id] = node;
                 }}
-                className={`live-game-card${expandedGameId === game.game_id ? " expanded" : ""}`}
+                className={`live-game-card${focusedGameId === game.game_id ? " expanded" : ""}`}
               >
                 {(() => {
                   const teams = groupTeams(game);
-                  const expanded = expandedGameId === game.game_id;
                   const winProbabilityPoints = winProbabilityByGameId[game.game_id] ?? [];
                   const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
                   const gameSettled = isSettledGame(game);
@@ -1137,19 +1383,7 @@ export default function LivePage() {
                   const liveStatusLabel = game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Today");
                   return (
                     <>
-                      <div
-                        className="live-game-toggle"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setExpandedGameId(expanded ? null : game.game_id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            setExpandedGameId(expanded ? null : game.game_id);
-                          }
-                        }}
-                        aria-expanded={expanded}
-                      >
+                      <div className="live-game-toggle">
                         <div className="live-now-head">
                           <span className={`live-indicator${activelyLive ? "" : " live-indicator-muted"}`}>
                             <span className={`live-dot${activelyLive ? "" : " live-dot-muted"}`} />
@@ -1164,7 +1398,7 @@ export default function LivePage() {
                           Week {game.week ?? "--"} | Players {formatNumber(game.live_player_count)} | Game points{" "}
                           {formatNumber(game.game_fantasy_points_total, 2)} | Updated {formatStamp(game.updated_at)}
                         </p>
-                        <WinProbabilityChart points={winProbabilityPoints} />
+                        <WinProbabilityChart points={winProbabilityPoints} players={game.players} />
                         <div className="live-team-grid">
                           {teams.map((team) => (
                             <section key={`${game.game_id}-${team.team}`} className="live-team-panel">
@@ -1198,49 +1432,7 @@ export default function LivePage() {
                             </section>
                           ))}
                         </div>
-                        <div className="live-card-footer">
-                          <span className="subtle">{expanded ? "Hide box score" : "Tap to view full box score"}</span>
-                        </div>
                       </div>
-                      {expanded ? (
-                        <div className="table-wrap live-box-score-wrap">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Player</th>
-                                <th>Team</th>
-                                <th>Live Stat Line</th>
-                                <th>Game Pts</th>
-                                <th>Season Pts</th>
-                                <th>Current Price</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {teams.flatMap((team) =>
-                                team.allPlayers.map((player) => (
-                                  <tr key={`${game.game_id}-${player.player_id}`}>
-                                    <td>
-                                      <Link
-                                        href={`/player/${player.player_id}`}
-                                        className="community-user-link"
-                                        onClick={(event) => event.stopPropagation()}
-                                      >
-                                        {player.name}
-                                      </Link>
-                                      <div className="subtle">{player.position}</div>
-                                    </td>
-                                    <td>{player.team}</td>
-                                    <td>{player.game_stat_line ?? "--"}</td>
-                                    <td>{formatNumber(player.game_fantasy_points, 2)}</td>
-                                    <td>{formatNumber(player.points_to_date, 2)}</td>
-                                    <td>{formatCurrency(player.spot_price)}</td>
-                                  </tr>
-                                )),
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : null}
                     </>
                   );
                 })()}

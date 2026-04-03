@@ -2237,13 +2237,6 @@ h1 {
   text-align: left;
   display: grid;
   gap: 12px;
-  cursor: pointer;
-}
-
-.live-game-toggle:hover {
-  transform: none;
-  background: transparent;
-  border-color: transparent;
 }
 
 .market-card,
@@ -2426,23 +2419,6 @@ h1 {
   padding: 10px;
   display: grid;
   gap: 8px;
-}
-
-.live-game-overview-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.live-game-overview-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #4f6f91;
 }
 
 .live-mini-scorebug-strip {
@@ -2771,6 +2747,16 @@ h1 {
   font-weight: 700;
 }
 
+.live-scorebug-detail-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.live-scorebug-detail-name-link:hover,
+.live-scorebug-detail-name-link:focus-visible {
+  text-decoration: underline;
+}
+
 .live-scorebug-detail-team {
   font-size: 10px;
   font-weight: 800;
@@ -3047,6 +3033,16 @@ h1 {
   text-align: center;
 }
 
+.live-winprob-play-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.live-winprob-play-link:hover,
+.live-winprob-play-link:focus-visible {
+  color: #184f82;
+}
+
 .live-winprob-chart-layout {
   display: grid;
   gap: 4px;
@@ -3239,6 +3235,16 @@ h1 {
   white-space: normal;
 }
 
+.live-winprob-top-play-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.live-winprob-top-play-link:hover,
+.live-winprob-top-play-link:focus-visible {
+  color: #184f82;
+}
+
 .live-winprob-top-play-score {
   font-size: 10px;
   font-weight: 800;
@@ -3311,15 +3317,6 @@ h1 {
 
 .live-top-name-clickable:hover {
   text-decoration: underline;
-}
-
-.live-card-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.live-box-score-wrap {
-  margin-top: -2px;
 }
 
 .live-stat-line {
@@ -4898,10 +4895,6 @@ td {
   .live-game-overview {
     padding: 8px;
     gap: 6px;
-  }
-
-  .live-game-overview-title {
-    font-size: 10px;
   }
 
   .live-mini-scorebug-strip {
