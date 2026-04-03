@@ -2725,10 +2725,12 @@ h1 {
   place-items: center;
   min-height: 23px;
   padding: 0 6px;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 17px;
+  font-weight: 900;
   color: #2f557c;
-  letter-spacing: 0.03em;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .live-scorebug-state-top {
@@ -4979,7 +4981,7 @@ td {
 
   .live-scorebug-state-top,
   .live-scorebug-state-bottom {
-    font-size: 9.5px;
+    font-size: 14.5px;
     min-height: 19px;
   }
 

@@ -647,8 +647,8 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
   const fieldingTeamLabel = activePoint.fieldingTeam ?? "TBD";
   const inningBugLabel = activePoint.inningLabel
     .replace(/^Top\s+/i, "TOP ")
-    .replace(/^Bottom\s+/i, "BOT ")
-    .replace(/^Mid\s+/i, "MID ")
+    .replace(/^Bottom\s+/i, "BOTTOM ")
+    .replace(/^Mid\s+/i, "MIDDLE ")
     .replace(/^End\s+/i, "END ");
   const outsBugLabel = activePoint.outsLabel === "Outs --" ? "OUTS --" : activePoint.outsLabel.toUpperCase();
   const countBugLabel = activePoint.countLabel.toUpperCase();
