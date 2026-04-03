@@ -2526,7 +2526,7 @@ h1 {
 .live-winprob-diamond-matchup-row {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(108px, 118px) minmax(0, 1fr);
+  grid-template-columns: minmax(126px, 136px) minmax(0, 1fr);
   align-items: start;
 }
 
@@ -2545,8 +2545,8 @@ h1 {
 }
 
 .live-winprob-diamond-svg {
-  width: 92px;
-  height: 92px;
+  width: 116px;
+  height: 116px;
   display: block;
 }
 
@@ -4373,10 +4373,6 @@ td {
     grid-template-columns: 1fr;
   }
 
-  .live-winprob-diamond-matchup-row {
-    grid-template-columns: 1fr;
-  }
-
   .live-winprob-focus-row {
     grid-template-columns: 1fr;
   }
@@ -4393,8 +4389,8 @@ td {
   }
 
   .live-winprob-diamond-svg {
-    width: 74px;
-    height: 74px;
+    width: 96px;
+    height: 96px;
   }
 
   .live-winprob-diamond-caption {
