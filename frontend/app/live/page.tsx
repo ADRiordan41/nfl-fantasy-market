@@ -609,30 +609,35 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
       <p className="subtle live-winprob-score">{activePoint.scoreLabel}</p>
       <div className="live-winprob-focus-row">
         <div className="live-winprob-diamond-panel">
-          <p className="live-winprob-diamond-title">Basepaths</p>
-          <BaseDiamond
-            runnerOnFirst={activePoint.runnerOnFirst}
-            runnerOnSecond={activePoint.runnerOnSecond}
-            runnerOnThird={activePoint.runnerOnThird}
-          />
+          <p className="live-winprob-diamond-title">Current At-Bat</p>
+          <div className="live-winprob-diamond-matchup-row">
+            <BaseDiamond
+              runnerOnFirst={activePoint.runnerOnFirst}
+              runnerOnSecond={activePoint.runnerOnSecond}
+              runnerOnThird={activePoint.runnerOnThird}
+            />
+            {showMatchupRow ? (
+              <div className="live-winprob-matchup-grid live-winprob-matchup-grid-inline" aria-label="At-bat matchup">
+                <div className="live-winprob-matchup-chip live-winprob-matchup-chip-batter">
+                  <span className="live-winprob-matchup-role">Batter</span>
+                  <strong className="live-winprob-matchup-name">{batterLabel}</strong>
+                  <span className="live-winprob-matchup-team">{activePoint.batterTeam ?? "--"}</span>
+                </div>
+                <div className="live-winprob-matchup-chip live-winprob-matchup-chip-pitcher">
+                  <span className="live-winprob-matchup-role">Pitcher</span>
+                  <strong className="live-winprob-matchup-name">{pitcherLabel}</strong>
+                  <span className="live-winprob-matchup-team">{activePoint.pitcherTeam ?? "--"}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="subtle live-winprob-matchup-empty">Awaiting current batter and pitcher details.</p>
+            )}
+          </div>
         </div>
         <div className="live-winprob-focus-info">
           {showMatchupRow ? (
-            <div className="live-winprob-matchup-grid" aria-label="At-bat matchup">
-              <div className="live-winprob-matchup-chip live-winprob-matchup-chip-batter">
-                <span className="live-winprob-matchup-role">Batter</span>
-                <strong className="live-winprob-matchup-name">{batterLabel}</strong>
-                <span className="live-winprob-matchup-team">{activePoint.batterTeam ?? "--"}</span>
-              </div>
-              <div className="live-winprob-matchup-chip live-winprob-matchup-chip-pitcher">
-                <span className="live-winprob-matchup-role">Pitcher</span>
-                <strong className="live-winprob-matchup-name">{pitcherLabel}</strong>
-                <span className="live-winprob-matchup-team">{activePoint.pitcherTeam ?? "--"}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="subtle live-winprob-matchup-empty">Awaiting current batter and pitcher details.</p>
-          )}
+            <p className="subtle live-winprob-matchup-state">{activePoint.eventLabel}</p>
+          ) : null}
           <div className="live-winprob-context-grid" aria-label="Current game context">
             {contextTiles.map((tile) => (
               <div className="live-winprob-context-tile" key={tile.label}>

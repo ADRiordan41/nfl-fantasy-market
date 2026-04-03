@@ -2452,6 +2452,10 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.live-winprob-matchup-grid-inline {
+  grid-template-columns: 1fr;
+}
+
 .live-winprob-matchup-chip {
   border: 1px solid rgba(160, 188, 219, 0.8);
   border-radius: 10px;
@@ -2496,7 +2500,7 @@ h1 {
 .live-winprob-focus-row {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(145px, 168px) minmax(0, 1fr);
+  grid-template-columns: minmax(250px, 1.2fr) minmax(0, 1fr);
   align-items: stretch;
 }
 
@@ -2506,7 +2510,6 @@ h1 {
   background: linear-gradient(165deg, rgba(233, 246, 255, 0.9) 0%, rgba(248, 252, 255, 0.94) 100%);
   padding: 8px;
   display: grid;
-  justify-items: center;
   align-content: start;
   gap: 6px;
 }
@@ -2518,6 +2521,13 @@ h1 {
   text-transform: uppercase;
   color: #527091;
   font-weight: 700;
+}
+
+.live-winprob-diamond-matchup-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(108px, 118px) minmax(0, 1fr);
+  align-items: start;
 }
 
 .live-winprob-focus-info {
@@ -2576,6 +2586,12 @@ h1 {
   border: 1px dashed rgba(166, 192, 222, 0.85);
   border-radius: 10px;
   background: rgba(246, 251, 255, 0.8);
+}
+
+.live-winprob-matchup-state {
+  margin: 0;
+  color: #4b6887;
+  font-weight: 600;
 }
 
 .live-winprob-context-grid {
@@ -4354,6 +4370,10 @@ td {
 
 @media (max-width: 719px) {
   .live-winprob-matchup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .live-winprob-diamond-matchup-row {
     grid-template-columns: 1fr;
   }
 
