@@ -84,7 +84,7 @@ from .pricing import (
     spread_percentage,
 )
 from .site_reset import execute_site_reset
-from .time_utils import chicago_now, chicago_start_of_day
+from .time_utils import chicago_now, chicago_rollover_start
 from .schemas import (
     AdminActivityAuditOut,
     AdminBotPersonaOut,
@@ -2551,7 +2551,8 @@ def list_live_games(
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
-    start_of_day_chicago = chicago_start_of_day()
+    # Keep completed games from the prior slate visible until 2:00 AM Chicago time.
+    start_of_day_chicago = chicago_rollover_start(rollover_hour=2)
     stmt = select(Player).where(
         Player.ipo_open.is_(True),
         or_(
