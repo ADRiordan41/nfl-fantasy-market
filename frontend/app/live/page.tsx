@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type PointerEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { teamPrimaryColor } from "@/lib/teamColors";
 import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { LiveGame, LiveGamePlayer, LiveGames } from "@/lib/types";
@@ -21,6 +22,9 @@ type WinProbabilityPoint = {
   capturedAt: string;
   awayTeam: string;
   homeTeam: string;
+  sport: string;
+  awayScore: number | null;
+  homeScore: number | null;
   awayProbability: number;
   homeProbability: number;
   inningLabel: string;
@@ -28,6 +32,9 @@ type WinProbabilityPoint = {
   countLabel: string;
   baseStateLabel: string;
   eventLabel: string;
+  playDescription: string | null;
+  scoringPlay: boolean;
+  runsScored: number;
   battingTeam: string | null;
   fieldingTeam: string | null;
   batterName: string | null;
@@ -193,29 +200,31 @@ function totalPointsForTeam(teams: TeamGroup[], teamCode: string): number {
   return found?.gameFantasyPointsTotal ?? 0;
 }
 
+function naturalBaseState(runnerOnFirst: boolean, runnerOnSecond: boolean, runnerOnThird: boolean): string {
+  if (runnerOnFirst && runnerOnSecond && runnerOnThird) return "Bases loaded";
+  if (!runnerOnFirst && !runnerOnSecond && !runnerOnThird) return "Bases empty";
+  if (runnerOnFirst && runnerOnSecond) return "Runners on first and second";
+  if (runnerOnFirst && runnerOnThird) return "Runners on first and third";
+  if (runnerOnSecond && runnerOnThird) return "Runners on second and third";
+  if (runnerOnFirst) return "Runner on first";
+  if (runnerOnSecond) return "Runner on second";
+  return "Runner on third";
+}
+
 function formatBaseState(context: WinProbabilityContext): string {
-  const runners: string[] = [];
-  if (context.runnerOnFirst) runners.push("1st");
-  if (context.runnerOnSecond) runners.push("2nd");
-  if (context.runnerOnThird) runners.push("3rd");
-  if (runners.length === 0) return "Bases empty";
-  return `Runners: ${runners.join(", ")}`;
+  return naturalBaseState(Boolean(context.runnerOnFirst), Boolean(context.runnerOnSecond), Boolean(context.runnerOnThird));
 }
 
 function formatPointBaseState(point: Pick<WinProbabilityPoint, "runnerOnFirst" | "runnerOnSecond" | "runnerOnThird">): string {
-  const runners: string[] = [];
-  if (point.runnerOnFirst) runners.push("1st");
-  if (point.runnerOnSecond) runners.push("2nd");
-  if (point.runnerOnThird) runners.push("3rd");
-  if (runners.length === 0) return "Bases empty";
-  return `Runners: ${runners.join(", ")}`;
+  return naturalBaseState(point.runnerOnFirst, point.runnerOnSecond, point.runnerOnThird);
 }
 
 function BaseDiamond({
   runnerOnFirst,
   runnerOnSecond,
   runnerOnThird,
-}: Pick<WinProbabilityPoint, "runnerOnFirst" | "runnerOnSecond" | "runnerOnThird">) {
+  compact = false,
+}: Pick<WinProbabilityPoint, "runnerOnFirst" | "runnerOnSecond" | "runnerOnThird"> & { compact?: boolean }) {
   const hasRunner = runnerOnFirst || runnerOnSecond || runnerOnThird;
   const ariaLabel = hasRunner
     ? `Base occupancy. ${formatPointBaseState({ runnerOnFirst, runnerOnSecond, runnerOnThird })}.`
@@ -250,7 +259,11 @@ function BaseDiamond({
           className={runnerOnThird ? "live-winprob-base occupied" : "live-winprob-base"}
         />
       </svg>
-      <figcaption className="subtle live-winprob-diamond-caption">{hasRunner ? formatPointBaseState({ runnerOnFirst, runnerOnSecond, runnerOnThird }) : "Bases empty"}</figcaption>
+      {!compact ? (
+        <figcaption className="subtle live-winprob-diamond-caption">
+          {hasRunner ? formatPointBaseState({ runnerOnFirst, runnerOnSecond, runnerOnThird }) : "Bases empty"}
+        </figcaption>
+      ) : null}
     </figure>
   );
 }
@@ -264,6 +277,48 @@ function formatInningState(context: WinProbabilityContext): string {
   if (half === "MIDDLE") return `Mid ${inning}`;
   if (half === "END") return `End ${inning}`;
   return half ? `${half} ${inning}` : `Inning ${inning}`;
+}
+
+function formatCountState(balls: number | null | undefined, strikes: number | null | undefined): string {
+  if (balls == null || strikes == null) return "--";
+  return `${balls}-${strikes}`;
+}
+
+function formatHighlightedPlay(point: WinProbabilityPoint): string {
+  const description = (point.playDescription ?? "").trim();
+  const event = (point.eventLabel ?? "").trim();
+  const batter = (point.batterName ?? "").trim();
+  const pitcher = (point.pitcherName ?? "").trim();
+  const withPeriod = (value: string) => (/[.!?]$/.test(value) ? value : `${value}.`);
+
+  if (description) {
+    return withPeriod(description);
+  }
+
+  if (point.atBatIndex == null) {
+    if (!event || event.toLowerCase() === "live snapshot") {
+      return "Live snapshot of the current game state.";
+    }
+    return withPeriod(event);
+  }
+
+  if (batter && event) {
+    return `${batter}: ${withPeriod(event)}`;
+  }
+
+  if (event) {
+    return withPeriod(event);
+  }
+
+  if (batter && pitcher) {
+    return `${batter} faced ${pitcher}.`;
+  }
+
+  if (batter) {
+    return `${batter} completed the at-bat.`;
+  }
+
+  return "At-bat outcome recorded.";
 }
 
 function isCompletedGameStatus(status: string | null | undefined): boolean {
@@ -399,7 +454,26 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
   const fallbackHomePoints = totalPointsForTeam(teams, homeTeam);
   const rows = [...atBats].sort((a, b) => a.at_bat_index - b.at_bat_index);
 
-  const series = rows.map((atBat) => {
+  const series = rows.map((atBat, index) => {
+    const previousAtBat = index > 0 ? rows[index - 1] : null;
+    let runsScored = 0;
+    if (
+      previousAtBat &&
+      previousAtBat.away_score != null &&
+      previousAtBat.home_score != null &&
+      atBat.away_score != null &&
+      atBat.home_score != null
+    ) {
+      const awayDelta = atBat.away_score - previousAtBat.away_score;
+      const homeDelta = atBat.home_score - previousAtBat.home_score;
+      runsScored = Math.max(0, awayDelta + homeDelta);
+    }
+    const scoringHint = /(?:\bscored\b|\bscores\b|\bhome run\b|\bhomered\b|\bgrand slam\b|\bsacrifice fly\b)/i.test(
+      `${atBat.event ?? ""} ${atBat.description ?? ""}`,
+    );
+    const scoringPlay = runsScored > 0 || scoringHint;
+    if (runsScored === 0 && scoringHint) runsScored = 1;
+
     const context = contextFromAtBat(atBat, awayTeam, homeTeam);
     const awayProbability = roundTo(
       estimateAwayWinProbability(context, {
@@ -418,20 +492,17 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
     const inningLabel = formatInningState(context);
     const outsLabel =
       atBat.outs_after_play == null ? "Outs --" : `${atBat.outs_after_play} out${atBat.outs_after_play === 1 ? "" : "s"}`;
-    const countLabel =
-      atBat.balls != null && atBat.strikes != null
-        ? `${atBat.balls}-${atBat.strikes} count`
-        : atBat.balls != null
-          ? `${atBat.balls} balls`
-          : atBat.strikes != null
-            ? `${atBat.strikes} strikes`
-            : "Count --";
+    const countLabel = formatCountState(atBat.balls, atBat.strikes);
     const baseStateLabel = formatBaseState(context);
     const eventLabel = atBat.event ?? "At-bat result";
+    const playDescription = atBat.description ?? null;
     return {
       capturedAt: atBat.occurred_at ?? game.updated_at ?? generatedAt,
       awayTeam,
       homeTeam,
+      sport: game.sport ?? "",
+      awayScore: atBat.away_score,
+      homeScore: atBat.home_score,
       awayProbability,
       homeProbability,
       inningLabel,
@@ -439,6 +510,9 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       countLabel,
       baseStateLabel,
       eventLabel,
+      playDescription,
+      scoringPlay,
+      runsScored,
       battingTeam: context.offenseTeam ?? null,
       fieldingTeam: context.defenseTeam ?? null,
       batterName: atBat.batter_name ?? null,
@@ -501,14 +575,7 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     : `${awayTeam} vs ${homeTeam}`;
   const inningLabel = formatInningState(context);
   const outsLabel = context.outs == null ? "Outs --" : `${context.outs} out${context.outs === 1 ? "" : "s"}`;
-  const countLabel =
-    context.balls != null && context.strikes != null
-      ? `${context.balls}-${context.strikes} count`
-      : context.balls != null
-        ? `${context.balls} balls`
-        : context.strikes != null
-          ? `${context.strikes} strikes`
-          : "Count --";
+  const countLabel = formatCountState(context.balls, context.strikes);
   const baseStateLabel = formatBaseState(context);
   const eventLabel = "Live snapshot";
   const battingLabel = context.offenseTeam ? ` | Batting ${context.offenseTeam}` : "";
@@ -516,6 +583,9 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     capturedAt: game.updated_at ?? generatedAt,
     awayTeam,
     homeTeam,
+    sport: game.sport ?? "",
+    awayScore: context.awayScore,
+    homeScore: context.homeScore,
     awayProbability,
     homeProbability,
     inningLabel,
@@ -523,6 +593,9 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     countLabel,
     baseStateLabel,
     eventLabel,
+    playDescription: null,
+    scoringPlay: false,
+    runsScored: 0,
     battingTeam: context.offenseTeam ?? null,
     fieldingTeam: context.defenseTeam ?? null,
     batterName: null,
@@ -542,28 +615,50 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
 function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (points.length === 0) return null;
-  const latest = points[points.length - 1];
+  const topSwingPlays: Array<{ index: number; point: WinProbabilityPoint; homeDelta: number; absDelta: number; summary: string }> = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const point = points[index];
+    if (point.atBatIndex == null) continue;
+    const previous = points[index - 1];
+    const homeDelta = roundTo(point.homeProbability - previous.homeProbability, 1);
+    const absDelta = Math.abs(homeDelta);
+    if (absDelta <= 0) continue;
+    topSwingPlays.push({
+      index,
+      point,
+      homeDelta,
+      absDelta,
+      summary: formatHighlightedPlay(point),
+    });
+  }
+  topSwingPlays.sort((left, right) => right.absDelta - left.absDelta || right.index - left.index);
+  const topSwingLeaders = topSwingPlays.slice(0, 3);
+  const topSwingIndexSet = new Set(topSwingLeaders.map((entry) => entry.index));
   const activeIndex = hoveredIndex == null ? points.length - 1 : clamp(hoveredIndex, 0, points.length - 1);
   const activePoint = points[activeIndex];
-  const previousPoint = activeIndex > 0 ? points[activeIndex - 1] : null;
-  const activeDelta = previousPoint ? roundTo(activePoint.homeProbability - previousPoint.homeProbability, 1) : null;
-  const activeDeltaLabel = previousPoint
-    ? `${activeDelta != null && activeDelta >= 0 ? "+" : ""}${formatNumber(activeDelta ?? 0, 1)}%`
-    : "start";
-  const activeIndexLabel = activePoint.atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(activePoint.atBatIndex, 0)}`;
   const showMatchupRow =
     activePoint.atBatIndex != null &&
     Boolean(activePoint.batterName || activePoint.pitcherName || activePoint.batterTeam || activePoint.pitcherTeam);
   const batterLabel = activePoint.batterName ?? "Unknown hitter";
   const pitcherLabel = activePoint.pitcherName ?? "Unknown pitcher";
-  const contextTiles = [
-    { label: "Inning", value: activePoint.inningLabel },
-    { label: "Outs", value: activePoint.outsLabel },
-    { label: "Count", value: activePoint.countLabel },
-    { label: "Runners", value: activePoint.baseStateLabel },
-    { label: "Offense", value: activePoint.battingTeam ?? "--" },
-    { label: "Defense", value: activePoint.fieldingTeam ?? "--" },
-  ];
+  const awayScoreValue = activePoint.awayScore == null ? "--" : formatNumber(activePoint.awayScore, 0);
+  const homeScoreValue = activePoint.homeScore == null ? "--" : formatNumber(activePoint.homeScore, 0);
+  const battingTeamLabel = activePoint.battingTeam ?? "TBD";
+  const fieldingTeamLabel = activePoint.fieldingTeam ?? "TBD";
+  const inningBugLabel = activePoint.inningLabel
+    .replace(/^Top\s+/i, "TOP ")
+    .replace(/^Bottom\s+/i, "BOT ")
+    .replace(/^Mid\s+/i, "MID ")
+    .replace(/^End\s+/i, "END ");
+  const outsBugLabel = activePoint.outsLabel === "Outs --" ? "OUTS --" : activePoint.outsLabel.toUpperCase();
+  const countBugLabel = activePoint.countLabel.toUpperCase();
+  const batterTeamValue = activePoint.batterTeam ?? battingTeamLabel;
+  const pitcherTeamValue = activePoint.pitcherTeam ?? fieldingTeamLabel;
+  const batterNameValue = showMatchupRow ? batterLabel : "Current batter pending";
+  const pitcherNameValue = showMatchupRow ? pitcherLabel : "Current pitcher pending";
+  const awayTeamColor = teamPrimaryColor(activePoint.awayTeam, activePoint.sport);
+  const homeTeamColor = teamPrimaryColor(activePoint.homeTeam, activePoint.sport);
+  const highlightedPlaySummary = formatHighlightedPlay(activePoint);
   const width = 340;
   const height = 124;
   const left = 10;
@@ -606,53 +701,58 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
           {atBatPointsCount > 0 ? `${atBatPointsCount} at-bat points` : `${points.length} snapshots`}
         </span>
       </div>
-      <p className="subtle live-winprob-score">{activePoint.scoreLabel}</p>
-      <div className="live-winprob-focus-row">
-        <div className="live-winprob-diamond-panel">
-          <p className="live-winprob-diamond-title">Current At-Bat</p>
-          <div className="live-winprob-diamond-matchup-row">
+      <section className="live-scorebug" aria-label={`Game state ${activePoint.scoreLabel}`}>
+        <div className="live-scorebug-main">
+          <div className="live-scorebug-scoreboard">
+            <div className="live-scorebug-team-row away">
+              <span className="live-scorebug-team-code" style={{ color: awayTeamColor }}>
+                {activePoint.awayTeam}
+              </span>
+              <strong className="live-scorebug-runs">{awayScoreValue}</strong>
+            </div>
+            <div className="live-scorebug-team-row home">
+              <span className="live-scorebug-team-code" style={{ color: homeTeamColor }}>
+                {activePoint.homeTeam}
+              </span>
+              <strong className="live-scorebug-runs">{homeScoreValue}</strong>
+            </div>
+          </div>
+          <div className="live-scorebug-bases">
             <BaseDiamond
               runnerOnFirst={activePoint.runnerOnFirst}
               runnerOnSecond={activePoint.runnerOnSecond}
               runnerOnThird={activePoint.runnerOnThird}
+              compact
             />
-            {showMatchupRow ? (
-              <div className="live-winprob-matchup-grid live-winprob-matchup-grid-inline" aria-label="At-bat matchup">
-                <div className="live-winprob-matchup-chip live-winprob-matchup-chip-batter">
-                  <span className="live-winprob-matchup-role">Batter</span>
-                  <strong className="live-winprob-matchup-name">{batterLabel}</strong>
-                  <span className="live-winprob-matchup-team">{activePoint.batterTeam ?? "--"}</span>
-                </div>
-                <div className="live-winprob-matchup-chip live-winprob-matchup-chip-pitcher">
-                  <span className="live-winprob-matchup-role">Pitcher</span>
-                  <strong className="live-winprob-matchup-name">{pitcherLabel}</strong>
-                  <span className="live-winprob-matchup-team">{activePoint.pitcherTeam ?? "--"}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="subtle live-winprob-matchup-empty">Awaiting current batter and pitcher details.</p>
-            )}
+            <span className="live-scorebug-count">{countBugLabel}</span>
+          </div>
+          <div className="live-scorebug-info">
+            <div className="live-scorebug-state-box">
+              <span className="live-scorebug-state-top">{inningBugLabel}</span>
+              <span className="live-scorebug-state-bottom">{outsBugLabel}</span>
+            </div>
+            <div className="live-scorebug-details" aria-label="Current matchup">
+              <p className="live-scorebug-detail-row">
+                <span className="live-scorebug-detail-tag">P</span>
+                <strong className="live-scorebug-detail-name">{pitcherNameValue}</strong>
+                <span className="live-scorebug-detail-team">{pitcherTeamValue}</span>
+              </p>
+              <p className="live-scorebug-detail-row">
+                <span className="live-scorebug-detail-tag">B</span>
+                <strong className="live-scorebug-detail-name">{batterNameValue}</strong>
+                <span className="live-scorebug-detail-team">{batterTeamValue}</span>
+              </p>
+            </div>
           </div>
         </div>
-        <div className="live-winprob-focus-info">
-          {showMatchupRow ? (
-            <p className="subtle live-winprob-matchup-state">{activePoint.eventLabel}</p>
-          ) : null}
-          <div className="live-winprob-context-grid" aria-label="Current game context">
-            {contextTiles.map((tile) => (
-              <div className="live-winprob-context-tile" key={tile.label}>
-                <span className="live-winprob-context-label">{tile.label}</span>
-                <strong className="live-winprob-context-value">{tile.value}</strong>
-              </div>
-            ))}
-          </div>
-          <p className="subtle live-winprob-state">{activePoint.situationLabel}</p>
-        </div>
-      </div>
+      </section>
       <div className="live-winprob-legend">
         <span className="live-winprob-team">
           <strong className="live-winprob-team-name live-winprob-team-a">{activePoint.awayTeam}</strong>
           <span>{formatNumber(activePoint.awayProbability, 1)}%</span>
+        </span>
+        <span className="live-winprob-play-inline" aria-live="polite" title={highlightedPlaySummary}>
+          <span className="live-winprob-play-inline-text">{highlightedPlaySummary}</span>
         </span>
         <span className="live-winprob-team">
           <strong className="live-winprob-team-name live-winprob-team-b">{activePoint.homeTeam}</strong>
@@ -660,7 +760,6 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
         </span>
       </div>
       <div className="live-winprob-chart-layout">
-        <span className="live-winprob-pole live-winprob-pole-top">{activePoint.awayTeam} road (top)</span>
         <div className="live-winprob-chart-wrap">
           <svg
             viewBox={`0 0 ${width} ${height}`}
@@ -685,48 +784,101 @@ function WinProbabilityChart({ points }: { points: WinProbabilityPoint[] }) {
               />
             )}
             <path d={toPath(lineCoords)} className="live-winprob-line-home" />
-            {lineCoords.map((coord, index) => (
-              <circle
-                key={`winprob-point-${index}`}
-                cx={coord.x}
-                cy={coord.y}
-                r={index === activeIndex ? 3.35 : index === lineCoords.length - 1 ? 3 : 1.85}
-                className={
-                  index === activeIndex
-                    ? "live-winprob-dot-home-active"
-                    : index === lineCoords.length - 1
-                      ? "live-winprob-dot-home"
-                      : "live-winprob-dot-home-point"
-                }
-              >
-                <title>
-                  {`${points[index].atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(points[index].atBatIndex, 0)}`}: ${
-                    points[index].markerLabel
-                  } | Home ${formatNumber(points[index].homeProbability, 1)}% | ${points[index].scoreLabel}${
-                    points[index].batterName || points[index].pitcherName
-                      ? ` | Batter ${points[index].batterName ?? "Unknown"} (${points[index].batterTeam ?? "--"}) vs Pitcher ${
-                          points[index].pitcherName ?? "Unknown"
-                        } (${points[index].pitcherTeam ?? "--"})`
-                      : ""
-                  } | ${formatPointBaseState(points[index])}`}
-                </title>
-              </circle>
-            ))}
+            {lineCoords.map((coord, index) => {
+              const point = points[index];
+              const active = index === activeIndex;
+              const last = index === lineCoords.length - 1;
+              const topSwing = topSwingIndexSet.has(index);
+              const dotRadius = active ? 3.35 : last ? 3 : 1.85;
+              const topSwingRingRadius = dotRadius + (active ? 4.3 : 3.7);
+              const scoringRingRadius = dotRadius + (active ? 2.9 : 2.35);
+              const scoringLabel = point.scoringPlay
+                ? ` | Scoring play${point.runsScored > 0 ? ` (+${formatNumber(point.runsScored, 0)} run${point.runsScored === 1 ? "" : "s"})` : ""}`
+                : "";
+              return (
+                <g key={`winprob-point-${index}`}>
+                  {topSwing ? (
+                    <circle
+                      cx={coord.x}
+                      cy={coord.y}
+                      r={topSwingRingRadius}
+                      className={active ? "live-winprob-top-play-ring-active" : "live-winprob-top-play-ring"}
+                    />
+                  ) : null}
+                  {point.scoringPlay ? (
+                    <circle
+                      cx={coord.x}
+                      cy={coord.y}
+                      r={scoringRingRadius}
+                      className={active ? "live-winprob-score-ring-active" : "live-winprob-score-ring"}
+                    />
+                  ) : null}
+                  <circle
+                    cx={coord.x}
+                    cy={coord.y}
+                    r={dotRadius}
+                    className={active ? "live-winprob-dot-home-active" : last ? "live-winprob-dot-home" : "live-winprob-dot-home-point"}
+                  >
+                    <title>
+                      {`${point.atBatIndex == null ? "Snapshot" : `At-bat ${formatNumber(point.atBatIndex, 0)}`}: ${point.markerLabel}${scoringLabel} | Home ${formatNumber(point.homeProbability, 1)}% | ${point.scoreLabel}${
+                        point.batterName || point.pitcherName
+                          ? ` | Batter ${point.batterName ?? "Unknown"} (${point.batterTeam ?? "--"}) vs Pitcher ${point.pitcherName ?? "Unknown"} (${point.pitcherTeam ?? "--"})`
+                          : ""
+                      } | ${formatPointBaseState(point)}`}
+                    </title>
+                  </circle>
+                </g>
+              );
+            })}
           </svg>
         </div>
-        <span className="live-winprob-pole live-winprob-pole-bottom">{activePoint.homeTeam} home (bottom)</span>
       </div>
-      <div className="live-winprob-axis">
-        <span>{`${activeIndexLabel}: ${activePoint.markerLabel}`}</span>
-        <span>{`Home ${formatNumber(activePoint.homeProbability, 1)}% (${activeDeltaLabel})`}</span>
-        <span>{hoveredIndex == null ? `Updated ${formatStamp(latest.capturedAt)}` : `Occurred ${formatStamp(activePoint.capturedAt)}`}</span>
-      </div>
+      {topSwingLeaders.length > 0 ? (
+        <section className="live-winprob-top-plays" aria-label="Top 3 win probability swing plays">
+          <p className="live-winprob-top-plays-title">Top 3 plays</p>
+          <div className="live-winprob-top-plays-list">
+            {topSwingLeaders.map((entry, rank) => {
+              const activeTopPlay = entry.index === activeIndex;
+              const swingLabel =
+                entry.homeDelta >= 0
+                  ? `${entry.point.homeTeam} +${formatNumber(entry.homeDelta, 1)}%`
+                  : `${entry.point.awayTeam} +${formatNumber(Math.abs(entry.homeDelta), 1)}%`;
+              const scoreAfterPlay =
+                entry.point.awayScore != null && entry.point.homeScore != null
+                  ? `${entry.point.awayTeam} ${formatNumber(entry.point.awayScore, 0)} - ${formatNumber(entry.point.homeScore, 0)} ${entry.point.homeTeam}`
+                  : "--";
+              return (
+                <button
+                  key={`top-play-${entry.index}`}
+                  type="button"
+                  className={`live-winprob-top-play${activeTopPlay ? " active" : ""}`}
+                  onMouseEnter={() => setHoveredIndex(entry.index)}
+                  onFocus={() => setHoveredIndex(entry.index)}
+                  onClick={() => setHoveredIndex(entry.index)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                  aria-label={`Top play ${rank + 1}. ${swingLabel}. ${entry.summary}`}
+                >
+                  <span className="live-winprob-top-play-rank">{rank + 1}</span>
+                  <span className="live-winprob-top-play-copy">
+                    <span className="live-winprob-top-play-meta">
+                      <span className="live-winprob-top-play-swing">{swingLabel}</span>
+                      <span className="live-winprob-top-play-score">{scoreAfterPlay}</span>
+                    </span>
+                    <span className="live-winprob-top-play-text">{entry.summary}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }
 
 export default function LivePage() {
   const router = useRouter();
+  const gameCardRefs = useRef<Record<string, HTMLElement | null>>({});
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<LiveGames | null>(null);
   const [sportFilter, setSportFilter] = useState("ALL");
@@ -772,6 +924,37 @@ export default function LivePage() {
     () => visibleGames.reduce((sum, game) => sum + game.players.length, 0),
     [visibleGames],
   );
+  const overviewGames = useMemo(
+    () =>
+      visibleGames.map((game) => {
+        const teams = groupTeams(game);
+        const { awayTeam, homeTeam } = resolveAwayHomeTeams(game, teams);
+        const series = winProbabilityByGameId[game.game_id] ?? [];
+        const latestPoint = series.length > 0 ? series[series.length - 1] : null;
+        const awayScoreRaw = latestPoint?.awayScore ?? game.state?.away_score ?? null;
+        const homeScoreRaw = latestPoint?.homeScore ?? game.state?.home_score ?? null;
+        const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
+        const gameSettled = isSettledGame(game);
+        return {
+          gameId: game.game_id,
+          sport: game.sport,
+          awayTeam,
+          homeTeam,
+          awayScoreLabel: awayScoreRaw == null ? "--" : formatNumber(awayScoreRaw, 0),
+          homeScoreLabel: homeScoreRaw == null ? "--" : formatNumber(homeScoreRaw, 0),
+          badgeLabel: activelyLive ? "LIVE" : gameSettled ? "FINAL" : "TODAY",
+          statusLabel: game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Today"),
+          stateLabel: latestPoint?.inningLabel ?? "--",
+        };
+      }),
+    [visibleGames, winProbabilityByGameId],
+  );
+  const jumpToGame = useCallback((gameId: string) => {
+    setExpandedGameId(gameId);
+    const node = gameCardRefs.current[gameId];
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+  }, []);
 
   useEffect(() => {
     if (!payload) return;
@@ -794,6 +977,8 @@ export default function LivePage() {
         const unchanged =
           Boolean(lastPoint) &&
           sameTeams &&
+          lastPoint.awayScore === point.awayScore &&
+          lastPoint.homeScore === point.homeScore &&
           lastPoint.awayProbability === point.awayProbability &&
           lastPoint.homeProbability === point.homeProbability &&
           lastPoint.inningLabel === point.inningLabel &&
@@ -801,6 +986,9 @@ export default function LivePage() {
           lastPoint.countLabel === point.countLabel &&
           lastPoint.baseStateLabel === point.baseStateLabel &&
           lastPoint.eventLabel === point.eventLabel &&
+          lastPoint.playDescription === point.playDescription &&
+          lastPoint.scoringPlay === point.scoringPlay &&
+          lastPoint.runsScored === point.runsScored &&
           lastPoint.battingTeam === point.battingTeam &&
           lastPoint.fieldingTeam === point.fieldingTeam &&
           lastPoint.batterName === point.batterName &&
@@ -887,6 +1075,43 @@ export default function LivePage() {
         />
       ) : (
         <>
+          <section className="live-game-overview" aria-label="All visible games">
+            <div className="live-game-overview-head">
+              <p className="live-game-overview-title">Games At A Glance</p>
+              <span className="subtle">Tap a mini scorebug to jump to that game.</span>
+            </div>
+            <div className="live-mini-scorebug-strip" role="list">
+              {overviewGames.map((game) => (
+                <button
+                  key={`overview-${game.gameId}`}
+                  type="button"
+                  className={`live-mini-scorebug${expandedGameId === game.gameId ? " active" : ""}`}
+                  onClick={() => jumpToGame(game.gameId)}
+                  title={`${game.awayTeam} ${game.awayScoreLabel} - ${game.homeScoreLabel} ${game.homeTeam} (${game.statusLabel})`}
+                >
+                  <div className="live-mini-scorebug-top">
+                    <span className={`live-mini-badge${game.badgeLabel === "LIVE" ? "" : " muted"}`}>{game.badgeLabel}</span>
+                    <span className="live-mini-status">{game.statusLabel}</span>
+                  </div>
+                  <div className="live-mini-score-lines">
+                    <p className="live-mini-score-row">
+                      <span className="live-mini-team" style={{ color: teamPrimaryColor(game.awayTeam, game.sport) }}>
+                        {game.awayTeam}
+                      </span>
+                      <strong className="live-mini-score">{game.awayScoreLabel}</strong>
+                    </p>
+                    <p className="live-mini-score-row">
+                      <span className="live-mini-team" style={{ color: teamPrimaryColor(game.homeTeam, game.sport) }}>
+                        {game.homeTeam}
+                      </span>
+                      <strong className="live-mini-score">{game.homeScoreLabel}</strong>
+                    </p>
+                  </div>
+                  <span className="live-mini-state">{game.stateLabel}</span>
+                </button>
+              ))}
+            </div>
+          </section>
           <section className="table-panel">
             <p className="subtle">
               Showing {formatNumber(visibleGames.length)} games and {formatNumber(visiblePlayers)} tracked players.
@@ -894,7 +1119,14 @@ export default function LivePage() {
           </section>
           <section className="live-games-grid">
             {visibleGames.map((game) => (
-              <article key={game.game_id} className={`live-game-card${expandedGameId === game.game_id ? " expanded" : ""}`}>
+              <article
+                key={game.game_id}
+                id={`live-game-card-${game.game_id}`}
+                ref={(node) => {
+                  gameCardRefs.current[game.game_id] = node;
+                }}
+                className={`live-game-card${expandedGameId === game.game_id ? " expanded" : ""}`}
+              >
                 {(() => {
                   const teams = groupTeams(game);
                   const expanded = expandedGameId === game.game_id;
@@ -905,10 +1137,17 @@ export default function LivePage() {
                   const liveStatusLabel = game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Today");
                   return (
                     <>
-                      <button
-                        type="button"
+                      <div
                         className="live-game-toggle"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setExpandedGameId(expanded ? null : game.game_id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setExpandedGameId(expanded ? null : game.game_id);
+                          }
+                        }}
                         aria-expanded={expanded}
                       >
                         <div className="live-now-head">
@@ -931,7 +1170,7 @@ export default function LivePage() {
                             <section key={`${game.game_id}-${team.team}`} className="live-team-panel">
                               <div className="live-team-head">
                                 <strong>{team.team}</strong>
-                                <span className="subtle">Top 3 performers</span>
+                                <span className="subtle">Top 3 players</span>
                               </div>
                               <div className="live-top-list">
                                 {team.topPlayers.map((player) => (
@@ -962,7 +1201,7 @@ export default function LivePage() {
                         <div className="live-card-footer">
                           <span className="subtle">{expanded ? "Hide box score" : "Tap to view full box score"}</span>
                         </div>
-                      </button>
+                      </div>
                       {expanded ? (
                         <div className="table-wrap live-box-score-wrap">
                           <table>

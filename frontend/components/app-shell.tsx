@@ -251,18 +251,6 @@ function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function readCachedUser(): UserAccount | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.sessionStorage.getItem(USER_CACHE_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as UserAccount;
-  } catch {
-    window.sessionStorage.removeItem(USER_CACHE_STORAGE_KEY);
-    return null;
-  }
-}
-
 function cacheUser(user: UserAccount | null): void {
   if (typeof window === "undefined") return;
   if (!user) {
@@ -295,12 +283,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileHomeMenuRef = useRef<HTMLDivElement | null>(null);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => readCachedUser());
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [busy, setBusy] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return Boolean(getAuthToken());
-  });
+  const [checkingSession, setCheckingSession] = useState(true);
   const [authError, setAuthError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
