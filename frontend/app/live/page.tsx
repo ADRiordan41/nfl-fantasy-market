@@ -880,7 +880,6 @@ function WinProbabilityChart({ points, players }: { points: WinProbabilityPoint[
   // This is equivalent to vertically mirroring a home-probability plot.
   const lineCoords = points.map((point, index) => ({ x: xAt(index), y: yAt(point.awayProbability) }));
   const activeCoord = lineCoords[activeIndex];
-  const atBatPointsCount = points.reduce((sum, point) => (point.atBatIndex == null ? sum : sum + 1), 0);
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (points.length === 1) {
       setHoveredIndex(0);
@@ -898,12 +897,6 @@ function WinProbabilityChart({ points, players }: { points: WinProbabilityPoint[
 
   return (
     <section className="live-winprob-card" aria-label={`Win probability for ${activePoint.awayTeam} and ${activePoint.homeTeam}`}>
-      <div className="live-winprob-head">
-        <span className="subtle">Win Probability (single-line view)</span>
-        <span className="subtle">
-          {atBatPointsCount > 0 ? `${atBatPointsCount} at-bat points` : `${points.length} snapshots`}
-        </span>
-      </div>
       <section className="live-scorebug" aria-label={`Game state ${activePoint.scoreLabel}`}>
         <div className="live-scorebug-main">
           <div className="live-scorebug-scoreboard">
