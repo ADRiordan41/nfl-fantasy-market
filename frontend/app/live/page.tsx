@@ -1239,6 +1239,12 @@ export default function LivePage() {
     },
     [visibleGames, winProbabilityByGameId],
   );
+  const orderedVisibleGames = useMemo(() => {
+    const byId = new Map(visibleGames.map((game) => [game.game_id, game]));
+    return overviewGames
+      .map((game) => byId.get(game.gameId))
+      .filter((game): game is LiveGame => Boolean(game));
+  }, [overviewGames, visibleGames]);
   const jumpToGame = useCallback((gameId: string) => {
     setFocusedGameId(gameId);
     const node = gameCardRefs.current[gameId];
@@ -1401,7 +1407,7 @@ export default function LivePage() {
             </div>
           </section>
           <section className="live-games-grid">
-            {visibleGames.map((game) => (
+            {orderedVisibleGames.map((game) => (
               <article
                 key={game.game_id}
                 id={`live-game-card-${game.game_id}`}
