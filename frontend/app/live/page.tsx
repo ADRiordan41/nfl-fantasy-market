@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, type ReactNode, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type CSSProperties, type ReactNode, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -103,6 +103,23 @@ function formatFirstPitchLabel(value: string | null | undefined): string | null 
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function chicagoDateKey(value: Date): string {
+  if (Number.isNaN(value.getTime())) return "";
+  return value.toLocaleDateString("en-CA", {
+    timeZone: CHICAGO_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function isTodayChicagoFirstPitch(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const parsed = parseTimestamp(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return chicagoDateKey(parsed) === chicagoDateKey(new Date());
 }
 
 function sortPlayersByPerformance(players: LiveGamePlayer[]): LiveGamePlayer[] {
@@ -1282,8 +1299,9 @@ export default function LivePage() {
 
   const visibleGames = useMemo(() => {
     const games = payload?.games ?? [];
-    if (activeSportFilter === "ALL") return games;
-    return games.filter((game) => game.sport === activeSportFilter);
+    const gamesOnToday = games.filter((game) => isTodayChicagoFirstPitch(game.state?.first_pitch_at ?? null));
+    if (activeSportFilter === "ALL") return gamesOnToday;
+    return gamesOnToday.filter((game) => game.sport === activeSportFilter);
   }, [activeSportFilter, payload]);
 
   const overviewGames = useMemo(
@@ -1314,10 +1332,12 @@ export default function LivePage() {
         const stateLabel =
           pregame
             ? firstPitchLabel ?? "--"
+            : gameSettled
+              ? ""
             : !activelyLive && !gameSettled && firstPitchLabel && (pendingState || rawStateLabel === "--")
               ? firstPitchLabel
               : rawStateLabel;
-        const topTextLabel = pregame ? firstPitchLabel ?? "--" : game.game_status ?? "Final";
+        const topTextLabel = pregame ? firstPitchLabel ?? "--" : "";
         return {
           gameId: game.game_id,
           sport: game.sport,
@@ -1484,6 +1504,12 @@ export default function LivePage() {
                 const homeProbValue =
                   game.homeWinProbability == null ? null : clamp(roundTo(game.homeWinProbability, 0), 0, 100);
                 const showLiveProb = game.showLiveWinProbability && awayProbValue != null && homeProbValue != null;
+                const liveWinProbPillStyle = showLiveProb
+                  ? ({
+                      background: `linear-gradient(90deg, ${awayTeamColor} 0%, ${awayTeamColor} ${awayProbValue}%, ${homeTeamColor} ${awayProbValue}%, ${homeTeamColor} 100%)`,
+                      "--mini-winprob-split": `${awayProbValue}%`,
+                    } as CSSProperties)
+                  : undefined;
                 return (
                   <button
                     key={`overview-${game.gameId}`}
@@ -1500,9 +1526,8 @@ export default function LivePage() {
                           <span className="live-mini-status">{game.topTextLabel}</span>
                         </div>
                       ) : game.showFinalBadge ? (
-                        <div className="live-mini-scorebug-top">
+                        <div className="live-mini-scorebug-top final">
                           <span className="live-mini-badge muted">FINAL</span>
-                          <span className="live-mini-status">{game.topTextLabel}</span>
                         </div>
                       ) : null}
                       {game.stateType === "live" ? (
@@ -1510,11 +1535,13 @@ export default function LivePage() {
                           <span className="live-mini-status live-mini-status-live">LIVE</span>
                         </div>
                       ) : null}
-                      <div className="live-mini-score-lines">
+                      <div className={`live-mini-score-lines${showLiveProb ? " has-winprob" : ""}`}>
                         <p className="live-mini-score-row">
                           <span className="live-mini-team-meta">
-                            <span className="live-mini-team" style={{ color: awayTeamColor }}>
-                              {game.awayTeam}
+                            <span className="live-mini-team-box">
+                              <span className="live-mini-team" style={{ color: awayTeamColor }}>
+                                {game.awayTeam}
+                              </span>
                             </span>
                             {showLiveProb ? <span className="live-mini-team-prob">{`${awayProbValue}%`}</span> : null}
                           </span>
@@ -1523,23 +1550,29 @@ export default function LivePage() {
                         {showLiveProb ? (
                           <div
                             className="live-mini-winprob-pill"
-                            style={{
-                              background: `linear-gradient(90deg, ${awayTeamColor} 0%, ${awayTeamColor} ${awayProbValue}%, ${homeTeamColor} ${awayProbValue}%, ${homeTeamColor} 100%)`,
-                            }}
+                            style={liveWinProbPillStyle}
                             aria-label={`Live win probability: ${game.awayTeam} ${awayProbValue} percent, ${game.homeTeam} ${homeProbValue} percent`}
                           />
                         ) : null}
                         <p className="live-mini-score-row">
                           <span className="live-mini-team-meta">
-                            <span className="live-mini-team" style={{ color: homeTeamColor }}>
-                              {game.homeTeam}
+                            <span className="live-mini-team-box">
+                              <span className="live-mini-team" style={{ color: homeTeamColor }}>
+                                {game.homeTeam}
+                              </span>
                             </span>
                             {showLiveProb ? <span className="live-mini-team-prob">{`${homeProbValue}%`}</span> : null}
                           </span>
                           <strong className="live-mini-score">{game.homeScoreLabel}</strong>
                         </p>
                       </div>
-                      <span className="live-mini-state">{game.stateLabel}</span>
+                      {game.stateLabel ? (
+                        <span className="live-mini-state">{game.stateLabel}</span>
+                      ) : game.stateType === "final" ? (
+                        <span className="live-mini-state live-mini-state-spacer" aria-hidden="true">
+                          --
+                        </span>
+                      ) : null}
                     </div>
                   </button>
                 );
