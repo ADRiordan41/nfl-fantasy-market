@@ -91,6 +91,17 @@ function formatStamp(value: string | null): string {
   });
 }
 
+function formatFirstPitchLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = parseTimestamp(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleTimeString([], {
+    timeZone: CHICAGO_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function sortPlayersByPerformance(players: LiveGamePlayer[]): LiveGamePlayer[] {
   return [...players].sort((a, b) => {
     if (b.game_fantasy_points !== a.game_fantasy_points) {
@@ -520,7 +531,7 @@ function isCompletedGameStatus(status: string | null | undefined): boolean {
 }
 
 function isSettledGame(game: Pick<LiveGame, "is_live" | "game_status">): boolean {
-  return !game.is_live || isCompletedGameStatus(game.game_status);
+  return isCompletedGameStatus(game.game_status);
 }
 
 function finalProbabilityFromScores(
@@ -908,10 +919,6 @@ function WinProbabilityChart({
   return (
     <section className="live-winprob-card" aria-label={`Win probability for ${activePoint.awayTeam} and ${activePoint.homeTeam}`}>
       <section className="live-scorebug" aria-label={`Game state ${activePoint.scoreLabel}`}>
-        <span className={`live-indicator live-scorebug-live-indicator${activelyLive ? "" : " live-indicator-muted"}`}>
-          <span className={`live-dot${activelyLive ? "" : " live-dot-muted"}`} />
-          {liveBadgeLabel}
-        </span>
         <div className="live-scorebug-main">
           <div className="live-scorebug-scoreboard">
             <div className="live-scorebug-team-row away">
@@ -934,7 +941,12 @@ function WinProbabilityChart({
               runnerOnThird={activePoint.runnerOnThird}
               compact
             />
-            <span className="live-scorebug-count">{countBugLabel}</span>
+            <div className="live-scorebug-footerline">
+              <span className={`live-mini-badge live-scorebug-inline-badge${activelyLive ? "" : " muted"}`}>
+                {liveBadgeLabel}
+              </span>
+              <span className="live-scorebug-count">{countBugLabel}</span>
+            </div>
           </div>
           <div className="live-scorebug-info">
             <div className="live-scorebug-state-box">
@@ -1177,8 +1189,8 @@ export default function LivePage() {
   }, [activeSportFilter, payload]);
 
   const overviewGames = useMemo(
-    () =>
-      visibleGames.map((game) => {
+    () => {
+      const overview = visibleGames.map((game) => {
         const teams = groupTeams(game);
         const { awayTeam, homeTeam } = resolveAwayHomeTeams(game, teams);
         const series = winProbabilityByGameId[game.game_id] ?? [];
@@ -1187,6 +1199,18 @@ export default function LivePage() {
         const homeScoreRaw = latestPoint?.homeScore ?? game.state?.home_score ?? null;
         const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
         const gameSettled = isSettledGame(game);
+        const firstPitchLabel = formatFirstPitchLabel(game.state?.first_pitch_at ?? null);
+        const rawStateLabel = latestPoint?.inningLabel ?? "--";
+        const pendingState =
+          rawStateLabel.trim().toLowerCase() === "state pending" ||
+          rawStateLabel.trim().toLowerCase() === "inning --";
+        const stateLabel =
+          !activelyLive && !gameSettled && firstPitchLabel && (pendingState || rawStateLabel === "--")
+            ? firstPitchLabel
+            : rawStateLabel;
+        const firstPitchAt = game.state?.first_pitch_at ?? null;
+        const firstPitchDate = firstPitchAt ? parseTimestamp(firstPitchAt) : new Date(Number.NaN);
+        const firstPitchEpoch = Number.isNaN(firstPitchDate.getTime()) ? Number.POSITIVE_INFINITY : firstPitchDate.getTime();
         return {
           gameId: game.game_id,
           sport: game.sport,
@@ -1196,9 +1220,23 @@ export default function LivePage() {
           homeScoreLabel: homeScoreRaw == null ? "--" : formatNumber(homeScoreRaw, 0),
           badgeLabel: activelyLive ? "LIVE" : gameSettled ? "FINAL" : "TODAY",
           statusLabel: game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Today"),
-          stateLabel: latestPoint?.inningLabel ?? "--",
+          stateLabel,
+          activelyLive,
+          gameSettled,
+          firstPitchEpoch,
         };
-      }),
+      });
+
+      // Order mini scorebugs so users see active games first, then upcoming games by start time.
+      overview.sort((left, right) => {
+        const leftRank = left.activelyLive ? 0 : left.gameSettled ? 2 : 1;
+        const rightRank = right.activelyLive ? 0 : right.gameSettled ? 2 : 1;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        if (left.firstPitchEpoch !== right.firstPitchEpoch) return left.firstPitchEpoch - right.firstPitchEpoch;
+        return left.gameId.localeCompare(right.gameId);
+      });
+      return overview;
+    },
     [visibleGames, winProbabilityByGameId],
   );
   const jumpToGame = useCallback((gameId: string) => {
@@ -1377,7 +1415,7 @@ export default function LivePage() {
                   const winProbabilityPoints = winProbabilityByGameId[game.game_id] ?? [];
                   const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
                   const gameSettled = isSettledGame(game);
-                  const liveBadgeLabel = activelyLive ? "LIVE NOW" : gameSettled ? "FINAL" : "TODAY";
+                  const liveBadgeLabel = activelyLive ? "LIVE" : gameSettled ? "FINAL" : "TODAY";
                   return (
                     <>
                       <div className="live-game-toggle">

@@ -630,6 +630,7 @@ class LiveGamePlayerOut(BaseModel):
 class LiveGameStateOut(BaseModel):
     home_team: str | None = None
     away_team: str | None = None
+    first_pitch_at: datetime | None = None
     home_score: int | None = None
     away_score: int | None = None
     inning: int | None = Field(default=None, ge=1)

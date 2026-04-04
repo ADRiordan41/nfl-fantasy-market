@@ -42,6 +42,7 @@ export type LiveGamePlayer = {
 export type LiveGameState = {
   home_team: string | null;
   away_team: string | null;
+  first_pitch_at: string | null;
   home_score: number | null;
   away_score: number | null;
   inning: number | null;

@@ -2599,10 +2599,9 @@ h1 {
   background: linear-gradient(165deg, rgba(232, 245, 255, 0.92) 0%, rgba(247, 252, 255, 0.95) 100%);
   padding: 8px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   justify-items: stretch;
-  position: relative;
 }
 
 .live-scorebug-scoreboard {
@@ -2664,6 +2663,7 @@ h1 {
 .live-scorebug-main {
   display: grid;
   grid-template-columns: minmax(94px, 0.92fr) minmax(0, 1.34fr) minmax(94px, 0.92fr);
+  grid-template-areas: "scoreboard bases info";
   gap: 4px;
   align-items: stretch;
   justify-content: stretch;
@@ -2676,6 +2676,7 @@ h1 {
 }
 
 .live-scorebug-info {
+  grid-area: info;
   display: grid;
   gap: 4px;
   align-content: stretch;
@@ -2684,17 +2685,8 @@ h1 {
   justify-self: stretch;
 }
 
-.live-scorebug-live-indicator {
-  position: absolute;
-  top: 6px;
-  left: 8px;
-  z-index: 2;
-  min-width: 0;
-  font-size: 10px;
-  padding: 2px 7px;
-}
-
 .live-scorebug-bases {
+  grid-area: bases;
   border: 1px solid rgba(157, 185, 219, 0.86);
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.82);
@@ -2711,6 +2703,10 @@ h1 {
   justify-self: stretch;
 }
 
+.live-scorebug-scoreboard {
+  grid-area: scoreboard;
+}
+
 .live-scorebug-bases .live-winprob-diamond {
   width: 100%;
   gap: 2px;
@@ -2721,6 +2717,21 @@ h1 {
   max-width: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
+}
+
+.live-scorebug-footerline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.live-scorebug-inline-badge {
+  min-height: 15px;
+  font-size: 8.5px;
+  padding: 0 5px;
+  letter-spacing: 0.03em;
 }
 
 .live-scorebug-count {
@@ -2738,8 +2749,7 @@ h1 {
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  justify-self: center;
-  margin-top: 1px;
+  margin-top: 0;
 }
 
 .live-scorebug-state-box {
@@ -4984,11 +4994,12 @@ td {
 
   .live-scorebug {
     padding: 6px;
-    gap: 6px;
+    gap: 5px;
   }
 
   .live-scorebug-main {
     grid-template-columns: minmax(82px, 0.9fr) minmax(0, 1.3fr) minmax(82px, 0.9fr);
+    grid-template-areas: "scoreboard bases info";
     gap: 3px;
     width: 100%;
     max-width: none;
@@ -5000,17 +5011,16 @@ td {
     gap: 3px;
   }
 
-  .live-scorebug-live-indicator {
-    top: 5px;
-    left: 6px;
-    font-size: 9px;
-    padding: 1px 6px;
-  }
-
   .live-scorebug-team-row {
     min-height: 0;
     padding: 5px 6px 6px;
     gap: 1px;
+  }
+
+  .live-scorebug-inline-badge {
+    min-height: 14px;
+    font-size: 8px;
+    padding: 0 4px;
   }
 
   .live-scorebug-team-code {

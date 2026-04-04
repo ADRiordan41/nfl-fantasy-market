@@ -2789,6 +2789,7 @@ def list_live_games(
                 game_state_out = LiveGameStateOut(
                     home_team=mlb_state.home_team,
                     away_team=mlb_state.away_team,
+                    first_pitch_at=mlb_state.first_pitch_at,
                     home_score=mlb_state.home_score,
                     away_score=mlb_state.away_score,
                     inning=mlb_state.inning,
