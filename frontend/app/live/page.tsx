@@ -811,7 +811,17 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
   };
 }
 
-function WinProbabilityChart({ points, players }: { points: WinProbabilityPoint[]; players: LiveGamePlayer[] }) {
+function WinProbabilityChart({
+  points,
+  players,
+  liveBadgeLabel,
+  activelyLive,
+}: {
+  points: WinProbabilityPoint[];
+  players: LiveGamePlayer[];
+  liveBadgeLabel: string;
+  activelyLive: boolean;
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   if (points.length === 0) return null;
   const playTextPlayerLookup = buildLivePlayerLookup(players);
@@ -898,6 +908,10 @@ function WinProbabilityChart({ points, players }: { points: WinProbabilityPoint[
   return (
     <section className="live-winprob-card" aria-label={`Win probability for ${activePoint.awayTeam} and ${activePoint.homeTeam}`}>
       <section className="live-scorebug" aria-label={`Game state ${activePoint.scoreLabel}`}>
+        <span className={`live-indicator live-scorebug-live-indicator${activelyLive ? "" : " live-indicator-muted"}`}>
+          <span className={`live-dot${activelyLive ? "" : " live-dot-muted"}`} />
+          {liveBadgeLabel}
+        </span>
         <div className="live-scorebug-main">
           <div className="live-scorebug-scoreboard">
             <div className="live-scorebug-team-row away">
@@ -1360,7 +1374,6 @@ export default function LivePage() {
               >
                 {(() => {
                   const teams = groupTeams(game);
-                  const { awayTeam, homeTeam } = resolveAwayHomeTeams(game, teams);
                   const winProbabilityPoints = winProbabilityByGameId[game.game_id] ?? [];
                   const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
                   const gameSettled = isSettledGame(game);
@@ -1368,22 +1381,12 @@ export default function LivePage() {
                   return (
                     <>
                       <div className="live-game-toggle">
-                        <div className="live-now-head">
-                          <span className={`live-indicator${activelyLive ? "" : " live-indicator-muted"}`}>
-                          <span className={`live-dot${activelyLive ? "" : " live-dot-muted"}`} />
-                            {liveBadgeLabel}
-                          </span>
-                        </div>
-                        <h3 className="live-game-title live-game-matchup-title" aria-label={`${awayTeam} at ${homeTeam}`}>
-                          <span className="live-game-matchup-team" style={{ color: teamPrimaryColor(awayTeam, game.sport) }}>
-                            {awayTeam}
-                          </span>
-                          <span className="live-game-matchup-separator">@</span>
-                          <span className="live-game-matchup-team" style={{ color: teamPrimaryColor(homeTeam, game.sport) }}>
-                            {homeTeam}
-                          </span>
-                        </h3>
-                        <WinProbabilityChart points={winProbabilityPoints} players={game.players} />
+                        <WinProbabilityChart
+                          points={winProbabilityPoints}
+                          players={game.players}
+                          liveBadgeLabel={liveBadgeLabel}
+                          activelyLive={activelyLive}
+                        />
                         <div className="live-team-grid">
                           {teams.map((team) => (
                             <section key={`${game.game_id}-${team.team}`} className="live-team-panel">
