@@ -2470,14 +2470,24 @@ h1 {
 }
 
 .live-mini-scorebug {
-  flex: 0 0 186px;
-  min-width: 186px;
-  border: 1px solid rgba(156, 186, 220, 0.82);
+  --mini-border: rgba(73, 120, 183, 0.88);
+  --mini-border-inner: rgba(132, 166, 206, 0.92);
+  --mini-border-hover: rgba(57, 105, 168, 0.96);
+  --mini-border-inner-hover: rgba(112, 148, 190, 0.96);
+  --mini-border-active: rgba(49, 97, 160, 0.98);
+  --mini-border-inner-active: rgba(86, 129, 182, 0.98);
+  --mini-shell-bg: rgba(230, 241, 255, 0.95);
+  --mini-shell-bg-hover: rgba(220, 235, 252, 0.98);
+  --mini-shell-bg-active: rgba(210, 229, 251, 0.98);
+  --mini-shadow: rgba(66, 121, 191, 0.22);
+  flex: 0 0 138px;
+  min-width: 138px;
+  border: 1px solid var(--mini-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  padding: 7px 8px;
-  display: grid;
-  gap: 6px;
+  background: var(--mini-shell-bg);
+  padding: 3px;
+  display: flex;
+  align-items: stretch;
   text-align: left;
   color: #23486f;
   cursor: pointer;
@@ -2485,10 +2495,35 @@ h1 {
   transition: border-color 130ms ease, background-color 130ms ease, transform 130ms ease;
 }
 
+.live-mini-scorebug-inner {
+  border: 1px solid var(--mini-border-inner);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 5px 5px 4px;
+  display: grid;
+  gap: 3px;
+  width: 100%;
+}
+
+.live-mini-scorebug.pregame {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.live-mini-scorebug.pregame .live-mini-scorebug-inner {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  gap: 2px;
+}
+
 .live-mini-scorebug:hover {
-  border-color: rgba(88, 136, 196, 0.96);
-  background: rgba(244, 250, 255, 0.98);
+  border-color: var(--mini-border-hover);
+  background: var(--mini-shell-bg-hover);
   transform: translateY(-1px);
+}
+
+.live-mini-scorebug:hover .live-mini-scorebug-inner {
+  border-color: var(--mini-border-inner-hover);
 }
 
 .live-mini-scorebug:focus-visible {
@@ -2497,16 +2532,64 @@ h1 {
 }
 
 .live-mini-scorebug.active {
-  border-color: rgba(66, 121, 191, 0.98);
-  background: rgba(231, 243, 255, 0.98);
-  box-shadow: 0 0 0 1px rgba(66, 121, 191, 0.22) inset;
+  border-color: var(--mini-border-active);
+  background: var(--mini-shell-bg-active);
+  box-shadow: 0 0 0 1px var(--mini-shadow) inset;
+}
+
+.live-mini-scorebug.active .live-mini-scorebug-inner {
+  border-color: var(--mini-border-inner-active);
+  background: rgba(246, 251, 255, 0.98);
+}
+
+.live-mini-scorebug.status-upcoming {
+  --mini-border: rgba(73, 120, 183, 0.88);
+  --mini-border-inner: rgba(132, 166, 206, 0.92);
+  --mini-border-hover: rgba(57, 105, 168, 0.96);
+  --mini-border-inner-hover: rgba(112, 148, 190, 0.96);
+  --mini-border-active: rgba(49, 97, 160, 0.98);
+  --mini-border-inner-active: rgba(86, 129, 182, 0.98);
+  --mini-shell-bg: rgba(176, 208, 245, 0.95);
+  --mini-shell-bg-hover: rgba(161, 197, 238, 0.98);
+  --mini-shell-bg-active: rgba(146, 186, 231, 0.98);
+  --mini-shadow: rgba(66, 121, 191, 0.22);
+}
+
+.live-mini-scorebug.status-live {
+  --mini-border: rgba(202, 54, 54, 0.9);
+  --mini-border-inner: rgba(219, 125, 125, 0.92);
+  --mini-border-hover: rgba(178, 42, 42, 0.95);
+  --mini-border-inner-hover: rgba(198, 95, 95, 0.95);
+  --mini-border-active: rgba(166, 34, 34, 0.98);
+  --mini-border-inner-active: rgba(185, 73, 73, 0.98);
+  --mini-shell-bg: rgba(244, 156, 156, 0.95);
+  --mini-shell-bg-hover: rgba(236, 137, 137, 0.98);
+  --mini-shell-bg-active: rgba(226, 118, 118, 0.98);
+  --mini-shadow: rgba(186, 44, 44, 0.24);
+}
+
+.live-mini-scorebug.status-final {
+  --mini-border: rgba(25, 30, 37, 0.94);
+  --mini-border-inner: rgba(92, 101, 114, 0.9);
+  --mini-border-hover: rgba(12, 15, 20, 0.98);
+  --mini-border-inner-hover: rgba(61, 70, 83, 0.95);
+  --mini-border-active: rgba(6, 9, 13, 0.98);
+  --mini-border-inner-active: rgba(47, 56, 69, 0.98);
+  --mini-shell-bg: rgba(169, 180, 196, 0.95);
+  --mini-shell-bg-hover: rgba(149, 161, 178, 0.98);
+  --mini-shell-bg-active: rgba(129, 143, 162, 0.98);
+  --mini-shadow: rgba(18, 24, 33, 0.26);
 }
 
 .live-mini-scorebug-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
+}
+
+.live-mini-scorebug-top.upcoming {
+  justify-content: center;
 }
 
 .live-mini-badge {
@@ -2539,21 +2622,34 @@ h1 {
   text-overflow: ellipsis;
 }
 
+.live-mini-status-live {
+  color: #a51f1f;
+  letter-spacing: 0.05em;
+}
+
 .live-mini-score-lines {
   display: grid;
-  gap: 2px;
+  gap: 1px;
+}
+
+.live-mini-winprob-pill {
+  min-height: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(25, 47, 75, 0.35);
+  overflow: hidden;
 }
 
 .live-mini-score-row {
   margin: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: max-content auto;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .live-mini-team {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 900;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -2563,8 +2659,23 @@ h1 {
   white-space: nowrap;
 }
 
+.live-mini-team-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+}
+
+.live-mini-team-prob {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #355878;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
 .live-mini-score {
-  font-size: 20px;
+  font-size: 16px;
   line-height: 0.95;
   color: #12385e;
   font-variant-numeric: tabular-nums;
@@ -3145,6 +3256,28 @@ h1 {
   stroke: #c4d8ec;
   stroke-width: 1;
   stroke-dasharray: 3 4;
+}
+
+.live-winprob-inning-guide {
+  stroke: rgba(136, 170, 207, 0.42);
+  stroke-width: 0.85;
+  stroke-dasharray: 2 5;
+  pointer-events: none;
+}
+
+.live-winprob-inning-tick {
+  stroke: rgba(91, 128, 167, 0.9);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.live-winprob-inning-label {
+  fill: #4a6583;
+  font-size: 8.2px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: auto;
+  pointer-events: none;
 }
 
 .live-winprob-line-home {
@@ -4964,10 +5097,25 @@ td {
   }
 
   .live-mini-scorebug {
-    flex-basis: 168px;
-    min-width: 168px;
-    padding: 6px 7px;
-    gap: 5px;
+    flex-basis: 126px;
+    min-width: 126px;
+    padding: 2px;
+  }
+
+  .live-mini-scorebug-inner {
+    padding: 4px 4px 3px;
+    gap: 2px;
+  }
+
+  .live-mini-scorebug.pregame {
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+
+  .live-mini-scorebug.pregame .live-mini-scorebug-inner {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    gap: 2px;
   }
 
   .live-mini-badge {
@@ -4981,11 +5129,19 @@ td {
   }
 
   .live-mini-team {
-    font-size: 11.5px;
+    font-size: 10.5px;
   }
 
   .live-mini-score {
-    font-size: 17px;
+    font-size: 14px;
+  }
+
+  .live-mini-winprob-pill {
+    min-height: 11px;
+  }
+
+  .live-mini-team-prob {
+    font-size: 8px;
   }
 
   .live-mini-state {

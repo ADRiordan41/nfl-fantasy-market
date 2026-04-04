@@ -27,6 +27,9 @@ type WinProbabilityPoint = {
   homeScore: number | null;
   awayProbability: number;
   homeProbability: number;
+  inningNumber: number | null;
+  inningHalfCode: string | null;
+  outsCount: number | null;
   inningLabel: string;
   outsLabel: string;
   countLabel: string;
@@ -711,6 +714,9 @@ function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], gene
       homeScore: atBat.home_score,
       awayProbability,
       homeProbability,
+      inningNumber: context.inning,
+      inningHalfCode: context.inningHalf,
+      outsCount: atBat.outs_after_play,
       inningLabel,
       outsLabel,
       countLabel,
@@ -796,6 +802,9 @@ function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt
     homeScore: context.homeScore,
     awayProbability,
     homeProbability,
+    inningNumber: context.inning,
+    inningHalfCode: context.inningHalf,
+    outsCount: context.outs,
     inningLabel,
     outsLabel,
     countLabel,
@@ -892,14 +901,66 @@ function WinProbabilityChart({
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
   const yAt = (probability: number) => top + ((100 - probability) / 100) * plotHeight;
-  const xAt = (index: number) => (points.length === 1 ? left + plotWidth / 2 : left + (index * plotWidth) / (points.length - 1));
+  const inningValues = points
+    .map((point) => (point.inningNumber == null ? null : Math.max(1, Math.trunc(point.inningNumber))))
+    .filter((inning): inning is number => inning != null);
+  const chartInnings = Math.max(9, ...inningValues);
+  const halfInningSpan = 0.5;
+  const outSlice = halfInningSpan / 3;
+  const bucketTotals = new Map<string, number>();
+  for (const point of points) {
+    const inning = point.inningNumber == null ? null : Math.max(1, Math.trunc(point.inningNumber));
+    const half = (point.inningHalfCode ?? "").trim().toUpperCase();
+    if (inning == null || (half !== "TOP" && half !== "BOTTOM")) continue;
+    const outs = point.outsCount == null ? 0 : clamp(Math.trunc(point.outsCount), 0, 2);
+    const key = `${inning}:${half}:${outs}`;
+    bucketTotals.set(key, (bucketTotals.get(key) ?? 0) + 1);
+  }
+  const bucketSeen = new Map<string, number>();
+  const progressByPoint = points.map((point, index) => {
+    const inning = point.inningNumber == null ? null : Math.max(1, Math.trunc(point.inningNumber));
+    const half = (point.inningHalfCode ?? "").trim().toUpperCase();
+    if (inning == null) {
+      return points.length === 1 ? chartInnings / 2 : (index * chartInnings) / (points.length - 1);
+    }
+    let progress = inning - 1;
+    if (half === "BOTTOM" || half === "MIDDLE") progress += halfInningSpan;
+    if (half === "END") progress += 1;
+    if (half === "TOP" || half === "BOTTOM") {
+      const outs = point.outsCount == null ? 0 : clamp(Math.trunc(point.outsCount), 0, 3);
+      if (outs >= 3) {
+        progress += halfInningSpan;
+      } else {
+        progress += outs * outSlice;
+        const key = `${inning}:${half}:${outs}`;
+        const total = bucketTotals.get(key) ?? 1;
+        const seen = bucketSeen.get(key) ?? 0;
+        bucketSeen.set(key, seen + 1);
+        progress += ((seen + 1) / (total + 1)) * outSlice;
+      }
+    }
+    return clamp(progress, 0, chartInnings);
+  });
+  for (let index = 1; index < progressByPoint.length; index += 1) {
+    if (progressByPoint[index] < progressByPoint[index - 1]) {
+      progressByPoint[index] = progressByPoint[index - 1];
+    }
+  }
+  const xAt = (progress: number) => left + (clamp(progress, 0, chartInnings) / chartInnings) * plotWidth;
   const midpointY = yAt(50);
   const toPath = (coords: Array<{ x: number; y: number }>) =>
     coords.map((coord, index) => `${index === 0 ? "M" : "L"} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`).join(" ");
+  const inningTickStep = chartInnings > 12 ? 2 : 1;
+  const inningGuideMarks = Array.from({ length: chartInnings - 1 }, (_, index) => index + 1).filter(
+    (inningBoundary) => inningBoundary % inningTickStep === 0,
+  );
+  const inningTicks = Array.from({ length: chartInnings }, (_, index) => index + 1).filter(
+    (inning) => inning === 1 || inning === chartInnings || (inning - 1) % inningTickStep === 0,
+  );
 
   // Plot the line on a "road top / home bottom" axis by anchoring Y to road win probability.
   // This is equivalent to vertically mirroring a home-probability plot.
-  const lineCoords = points.map((point, index) => ({ x: xAt(index), y: yAt(point.awayProbability) }));
+  const lineCoords = points.map((point, index) => ({ x: xAt(progressByPoint[index]), y: yAt(point.awayProbability) }));
   const activeCoord = lineCoords[activeIndex];
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (points.length === 1) {
@@ -910,8 +971,15 @@ function WinProbabilityChart({
     if (bounds.width <= 0) return;
     const rawX = ((event.clientX - bounds.left) / bounds.width) * width;
     const clampedX = clamp(rawX, left, width - right);
-    const progress = clamp((clampedX - left) / plotWidth, 0, 1);
-    const nextIndex = Math.round(progress * (points.length - 1));
+    let nextIndex = 0;
+    let nextDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < lineCoords.length; index += 1) {
+      const distance = Math.abs(lineCoords[index].x - clampedX);
+      if (distance < nextDistance) {
+        nextDistance = distance;
+        nextIndex = index;
+      }
+    }
     setHoveredIndex((current) => (current === nextIndex ? current : nextIndex));
   };
   const handlePointerLeave = () => setHoveredIndex(null);
@@ -1023,7 +1091,37 @@ function WinProbabilityChart({
               1,
             )} percent, ${activePoint.awayTeam} ${formatNumber(activePoint.awayProbability, 1)} percent`}
           >
+            {inningGuideMarks.map((inningBoundary) => {
+              const guideX = xAt(inningBoundary);
+              return (
+                <line
+                  key={`inning-guide-${inningBoundary}`}
+                  x1={guideX}
+                  x2={guideX}
+                  y1={top}
+                  y2={height - bottom}
+                  className="live-winprob-inning-guide"
+                />
+              );
+            })}
             <line x1={left} x2={width - right} y1={midpointY} y2={midpointY} className="live-winprob-midline" />
+            {inningTicks.map((inning) => {
+              const tickX = xAt(inning - 0.5);
+              return (
+                <g key={`inning-tick-${inning}`}>
+                  <line
+                    x1={tickX}
+                    x2={tickX}
+                    y1={height - bottom}
+                    y2={height - bottom + 2.75}
+                    className="live-winprob-inning-tick"
+                  />
+                  <text x={tickX} y={height - 2.35} className="live-winprob-inning-label">
+                    {inning}
+                  </text>
+                </g>
+              );
+            })}
             {hoveredIndex != null && (
               <line
                 x1={activeCoord.x}
@@ -1197,29 +1295,44 @@ export default function LivePage() {
         const latestPoint = series.length > 0 ? series[series.length - 1] : null;
         const awayScoreRaw = latestPoint?.awayScore ?? game.state?.away_score ?? null;
         const homeScoreRaw = latestPoint?.homeScore ?? game.state?.home_score ?? null;
-        const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
+        const awayWinProbabilityRaw = latestPoint?.awayProbability ?? null;
+        const homeWinProbabilityRaw =
+          latestPoint?.homeProbability ?? (awayWinProbabilityRaw == null ? null : roundTo(100 - awayWinProbabilityRaw, 1));
         const gameSettled = isSettledGame(game);
+        const firstPitchAt = game.state?.first_pitch_at ?? null;
+        const firstPitchDate = firstPitchAt ? parseTimestamp(firstPitchAt) : new Date(Number.NaN);
+        const firstPitchEpoch = Number.isNaN(firstPitchDate.getTime()) ? Number.POSITIVE_INFINITY : firstPitchDate.getTime();
+        const scheduledInFuture = firstPitchEpoch !== Number.POSITIVE_INFINITY && firstPitchEpoch > Date.now() + 60_000;
+        const activelyLive = game.is_live && !isCompletedGameStatus(game.game_status);
+        const gameStateType = gameSettled ? "final" : scheduledInFuture ? "upcoming" : activelyLive ? "live" : "upcoming";
+        const pregame = gameStateType === "upcoming";
         const firstPitchLabel = formatFirstPitchLabel(game.state?.first_pitch_at ?? null);
         const rawStateLabel = latestPoint?.inningLabel ?? "--";
         const pendingState =
           rawStateLabel.trim().toLowerCase() === "state pending" ||
           rawStateLabel.trim().toLowerCase() === "inning --";
         const stateLabel =
-          !activelyLive && !gameSettled && firstPitchLabel && (pendingState || rawStateLabel === "--")
-            ? firstPitchLabel
-            : rawStateLabel;
-        const firstPitchAt = game.state?.first_pitch_at ?? null;
-        const firstPitchDate = firstPitchAt ? parseTimestamp(firstPitchAt) : new Date(Number.NaN);
-        const firstPitchEpoch = Number.isNaN(firstPitchDate.getTime()) ? Number.POSITIVE_INFINITY : firstPitchDate.getTime();
+          pregame
+            ? firstPitchLabel ?? "--"
+            : !activelyLive && !gameSettled && firstPitchLabel && (pendingState || rawStateLabel === "--")
+              ? firstPitchLabel
+              : rawStateLabel;
+        const topTextLabel = pregame ? firstPitchLabel ?? "--" : game.game_status ?? "Final";
         return {
           gameId: game.game_id,
           sport: game.sport,
           awayTeam,
           homeTeam,
-          awayScoreLabel: awayScoreRaw == null ? "--" : formatNumber(awayScoreRaw, 0),
-          homeScoreLabel: homeScoreRaw == null ? "--" : formatNumber(homeScoreRaw, 0),
-          badgeLabel: activelyLive ? "LIVE" : gameSettled ? "FINAL" : "TODAY",
-          statusLabel: game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Today"),
+          awayScoreLabel: pregame ? "-" : awayScoreRaw == null ? "--" : formatNumber(awayScoreRaw, 0),
+          homeScoreLabel: pregame ? "-" : homeScoreRaw == null ? "--" : formatNumber(homeScoreRaw, 0),
+          awayWinProbability: awayWinProbabilityRaw,
+          homeWinProbability: homeWinProbabilityRaw,
+          showLiveWinProbability:
+            gameStateType === "live" && awayWinProbabilityRaw != null && homeWinProbabilityRaw != null,
+          stateType: gameStateType,
+          showFinalBadge: gameStateType === "final",
+          topTextLabel,
+          statusLabel: game.game_status ?? (activelyLive ? "In progress" : gameSettled ? "Final" : "Scheduled"),
           stateLabel,
           activelyLive,
           gameSettled,
@@ -1277,6 +1390,9 @@ export default function LivePage() {
           lastPoint.homeScore === point.homeScore &&
           lastPoint.awayProbability === point.awayProbability &&
           lastPoint.homeProbability === point.homeProbability &&
+          lastPoint.inningNumber === point.inningNumber &&
+          lastPoint.inningHalfCode === point.inningHalfCode &&
+          lastPoint.outsCount === point.outsCount &&
           lastPoint.inningLabel === point.inningLabel &&
           lastPoint.outsLabel === point.outsLabel &&
           lastPoint.countLabel === point.countLabel &&
@@ -1320,22 +1436,8 @@ export default function LivePage() {
           <p className="eyebrow">Live</p>
           <h1>Live Game Center</h1>
           <p className="subtle">
-            Today&apos;s slate with live and final game snapshots.
+            Today&apos;s games with live win probabilities.
           </p>
-        </div>
-        <div className="hero-metrics">
-          <article className="kpi-card">
-            <span>Today&apos;s Games</span>
-            <strong>{formatNumber(payload?.live_games_count ?? 0)}</strong>
-          </article>
-          <article className="kpi-card">
-            <span>Live Players</span>
-            <strong>{formatNumber(payload?.live_players_count ?? 0)}</strong>
-          </article>
-          <article className="kpi-card">
-            <span>Updated</span>
-            <strong>{formatStamp(payload?.generated_at ?? null)}</strong>
-          </article>
         </div>
       </section>
 
@@ -1375,35 +1477,73 @@ export default function LivePage() {
         <>
           <section className="live-game-overview" aria-label="All visible games">
             <div className="live-mini-scorebug-strip" role="list">
-              {overviewGames.map((game) => (
-                <button
-                  key={`overview-${game.gameId}`}
-                  type="button"
-                  className={`live-mini-scorebug${focusedGameId === game.gameId ? " active" : ""}`}
-                  onClick={() => jumpToGame(game.gameId)}
-                  title={`${game.awayTeam} ${game.awayScoreLabel} - ${game.homeScoreLabel} ${game.homeTeam} (${game.statusLabel})`}
-                >
-                  <div className="live-mini-scorebug-top">
-                    <span className={`live-mini-badge${game.badgeLabel === "LIVE" ? "" : " muted"}`}>{game.badgeLabel}</span>
-                    <span className="live-mini-status">{game.statusLabel}</span>
-                  </div>
-                  <div className="live-mini-score-lines">
-                    <p className="live-mini-score-row">
-                      <span className="live-mini-team" style={{ color: teamPrimaryColor(game.awayTeam, game.sport) }}>
-                        {game.awayTeam}
-                      </span>
-                      <strong className="live-mini-score">{game.awayScoreLabel}</strong>
-                    </p>
-                    <p className="live-mini-score-row">
-                      <span className="live-mini-team" style={{ color: teamPrimaryColor(game.homeTeam, game.sport) }}>
-                        {game.homeTeam}
-                      </span>
-                      <strong className="live-mini-score">{game.homeScoreLabel}</strong>
-                    </p>
-                  </div>
-                  <span className="live-mini-state">{game.stateLabel}</span>
-                </button>
-              ))}
+              {overviewGames.map((game) => {
+                const awayTeamColor = teamPrimaryColor(game.awayTeam, game.sport);
+                const homeTeamColor = teamPrimaryColor(game.homeTeam, game.sport);
+                const awayProbValue = game.awayWinProbability == null ? null : clamp(roundTo(game.awayWinProbability, 0), 0, 100);
+                const homeProbValue =
+                  game.homeWinProbability == null ? null : clamp(roundTo(game.homeWinProbability, 0), 0, 100);
+                const showLiveProb = game.showLiveWinProbability && awayProbValue != null && homeProbValue != null;
+                return (
+                  <button
+                    key={`overview-${game.gameId}`}
+                    type="button"
+                    className={`live-mini-scorebug ${
+                      game.stateType === "live" ? "status-live" : game.stateType === "final" ? "status-final" : "status-upcoming"
+                    }${game.stateType === "upcoming" ? " pregame" : ""}${focusedGameId === game.gameId ? " active" : ""}`}
+                    onClick={() => jumpToGame(game.gameId)}
+                    title={`${game.awayTeam} ${game.awayScoreLabel} - ${game.homeScoreLabel} ${game.homeTeam} (${game.statusLabel})`}
+                  >
+                    <div className="live-mini-scorebug-inner">
+                      {game.stateType === "upcoming" ? (
+                        <div className="live-mini-scorebug-top upcoming">
+                          <span className="live-mini-status">{game.topTextLabel}</span>
+                        </div>
+                      ) : game.showFinalBadge ? (
+                        <div className="live-mini-scorebug-top">
+                          <span className="live-mini-badge muted">FINAL</span>
+                          <span className="live-mini-status">{game.topTextLabel}</span>
+                        </div>
+                      ) : null}
+                      {game.stateType === "live" ? (
+                        <div className="live-mini-scorebug-top upcoming">
+                          <span className="live-mini-status live-mini-status-live">LIVE</span>
+                        </div>
+                      ) : null}
+                      <div className="live-mini-score-lines">
+                        <p className="live-mini-score-row">
+                          <span className="live-mini-team-meta">
+                            <span className="live-mini-team" style={{ color: awayTeamColor }}>
+                              {game.awayTeam}
+                            </span>
+                            {showLiveProb ? <span className="live-mini-team-prob">{`${awayProbValue}%`}</span> : null}
+                          </span>
+                          <strong className="live-mini-score">{game.awayScoreLabel}</strong>
+                        </p>
+                        {showLiveProb ? (
+                          <div
+                            className="live-mini-winprob-pill"
+                            style={{
+                              background: `linear-gradient(90deg, ${awayTeamColor} 0%, ${awayTeamColor} ${awayProbValue}%, ${homeTeamColor} ${awayProbValue}%, ${homeTeamColor} 100%)`,
+                            }}
+                            aria-label={`Live win probability: ${game.awayTeam} ${awayProbValue} percent, ${game.homeTeam} ${homeProbValue} percent`}
+                          />
+                        ) : null}
+                        <p className="live-mini-score-row">
+                          <span className="live-mini-team-meta">
+                            <span className="live-mini-team" style={{ color: homeTeamColor }}>
+                              {game.homeTeam}
+                            </span>
+                            {showLiveProb ? <span className="live-mini-team-prob">{`${homeProbValue}%`}</span> : null}
+                          </span>
+                          <strong className="live-mini-score">{game.homeScoreLabel}</strong>
+                        </p>
+                      </div>
+                      <span className="live-mini-state">{game.stateLabel}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </section>
           <section className="live-games-grid">
