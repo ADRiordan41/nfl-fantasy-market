@@ -342,7 +342,7 @@ export default function HomePage() {
 
       <section className="table-panel home-explainer">
         <div className="home-explainer-head">
-          <h3>How MatchupMarket Works</h3>
+          <h3>How to Use Matchup Market</h3>
           <div className="home-explainer-actions">
             <button type="button" className="home-tutorial-open-btn" onClick={() => openHomeTutorial("tour")}>
               Take A Tour
@@ -358,16 +358,62 @@ export default function HomePage() {
         </div>
         <div className="home-steps">
           <article className="home-step">
-            <h4>1. IPO Opens Each Sport</h4>
-            <p className="subtle">Players list at preseason projection-based prices before each season starts.</p>
+            <h4>What Is Matchup Market?</h4>
+            <p className="subtle">
+              Matchup Market is a sports market game where you can buy and short shares of players based on how you
+              think their fantasy value will change. If you believe a player&apos;s value is going to rise, you can buy
+              shares. If you think a player&apos;s value may fall, you can short shares and benefit if the price drops.
+              It is a simple and competitive game where you can use your sports knowledge.
+            </p>
           </article>
           <article className="home-step">
-            <h4>2. Prices Move Live</h4>
-            <p className="subtle">Player prices react to a combination of market activity and live fantasy performance.</p>
+            <h4>Browse Players in the Market</h4>
+            <p className="subtle">
+              Start by exploring the players available on the market. Each player has a price that can move up or down
+              over time.
+            </p>
+            <Link href="/market" className="ghost-link home-step-link">
+              Open Market
+            </Link>
           </article>
           <article className="home-step">
-            <h4>3. Final Season Settlement</h4>
-            <p className="subtle">At season close, positions settle against each player&apos;s final fantasy points total.</p>
+            <h4>Buy or Short Players</h4>
+            <p className="subtle">
+              Use stats, recent performance, news, and your own instincts to decide which players you think are
+              undervalued or overvalued.
+            </p>
+            <Link href="/market" className="ghost-link home-step-link">
+              Trade In Market
+            </Link>
+          </article>
+          <article className="home-step">
+            <h4>Manage Your Portfolio</h4>
+            <p className="subtle">
+              You can sell your positions to lock in gains, reduce risk, or free up space for new opportunities. Your
+              portfolio shows how your decisions are performing over time.
+            </p>
+            <Link href="/portfolio" className="ghost-link home-step-link">
+              Open Portfolio
+            </Link>
+          </article>
+          <article className="home-step">
+            <h4>Grow Your Portfolio</h4>
+            <p className="subtle">
+              The goal of Matchup Market is to grow your portfolio over time. As your portfolio value increases, you
+              can invest in more players, build a stronger strategy, and take advantage of more opportunities across
+              the market.
+            </p>
+            <p className="subtle">
+              The more value you build, the higher you can climb on the leaderboard and the closer you get to the top.
+            </p>
+          </article>
+          <article className="home-step">
+            <h4>Why People Use Matchup Market</h4>
+            <p className="subtle">
+              Matchup Market gives fans a fun way to do more than just watch the games. You can make predictions, act
+              on your opinions, and compete against other users in a fun and competitive game. Whether you are new to
+              fantasy sports or already know the players well, Matchup Market makes it easy to get started.
+            </p>
           </article>
         </div>
       </section>

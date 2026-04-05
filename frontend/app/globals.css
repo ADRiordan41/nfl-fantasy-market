@@ -1378,6 +1378,11 @@ h1 {
   margin: 0 0 6px;
 }
 
+.home-step-link {
+  margin-top: 4px;
+  display: inline-flex;
+}
+
 .home-snapshot-grid {
   display: grid;
   gap: 12px;
