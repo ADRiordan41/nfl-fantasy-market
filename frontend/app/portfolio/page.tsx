@@ -850,7 +850,7 @@ export default function PortfolioPage() {
                 ))}
               </section>
 
-              <section className="desktop-only table-panel market-table-panel desktop-market-table">
+              <section className="table-panel market-table-panel portfolio-market-table-panel">
                 <div className="portfolio-sport-group-head">
                   <h3>Held Players (Market View)</h3>
                   <p className="subtle portfolio-sport-summary">

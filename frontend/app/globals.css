@@ -4961,6 +4961,11 @@ button.segment.danger-segment.danger-active {
   max-width: 100%;
 }
 
+.portfolio-market-table-panel .table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .market-table th,
 .market-table td {
   padding: 4px 5px;
