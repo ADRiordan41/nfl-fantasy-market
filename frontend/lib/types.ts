@@ -94,6 +94,7 @@ export type LiveGame = {
 
 export type LiveGames = {
   generated_at: string;
+  requested_date?: string | null;
   live_games_count: number;
   live_players_count: number;
   games: LiveGame[];

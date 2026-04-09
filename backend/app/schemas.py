@@ -683,9 +683,40 @@ class LiveGameOut(BaseModel):
 
 class LiveGamesOut(BaseModel):
     generated_at: datetime
+    requested_date: str | None = None
     live_games_count: int
     live_players_count: int
     games: list[LiveGameOut]
+
+
+class TeamSummaryPlayerOut(BaseModel):
+    player_id: int
+    name: str
+    position: str
+    spot_price: float
+    points_to_date: float
+    live_now: bool
+
+
+class TeamGameSummaryOut(BaseModel):
+    game_id: str
+    game_label: str | None = None
+    game_status: str | None = None
+    game_fantasy_points_total: float
+    players_count: int
+    recorded_at: datetime | None = None
+
+
+class TeamPageOut(BaseModel):
+    sport: str
+    team: str
+    players_count: int
+    live_players_count: int
+    total_points_to_date: float
+    average_spot_price: float
+    players: list[TeamSummaryPlayerOut]
+    games: list[TeamGameSummaryOut]
+
 
 class SettlementOut(BaseModel):
     week: int

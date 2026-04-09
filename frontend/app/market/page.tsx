@@ -61,7 +61,7 @@ const MARKET_PRICE_FLASH_MS = 1100;
 const MARKET_FILTER_DEBOUNCE_MS = 180;
 const MARKET_VIRTUALIZATION_THRESHOLD = 60;
 const MARKET_VIRTUALIZATION_OVERSCAN = 8;
-const MARKET_TABLE_COLUMN_COUNT = 11;
+const MARKET_TABLE_COLUMN_COUNT = 8;
 type MobileQuickActionState = {
   playerId: number;
   side: "BUY" | "SHORT";
@@ -312,6 +312,11 @@ export default function MarketPage() {
   }, [hydratedSortKey, sortColumn, sortDirection, sortStorageKey]);
 
   useEffect(() => {
+    if (sortColumn === "change_24h_pct") {
+      setSortColumn("change_pct");
+      setSortDirection("desc");
+      return;
+    }
     if (sortColumn === "team" || sortColumn === "position") {
       setSortColumn("name");
       setSortDirection("asc");
@@ -757,11 +762,8 @@ export default function MarketPage() {
                 <colgroup>
                   <col className="market-col-player" />
                   <col className="market-col-price" />
-                  <col className="market-col-change" />
-                  <col className="market-col-change-24h" />
                   <col className="market-col-earnings" />
-                  <col className="market-col-shares-held" />
-                  <col className="market-col-shares-short" />
+                  <col className="market-col-change" />
                   <col className="market-col-quick" />
                   <col className="market-col-action" />
                   <col className="market-col-qty" />
@@ -773,11 +775,8 @@ export default function MarketPage() {
                       {renderSortButton("name", "Player")}
                     </th>
                     <th>{renderSortButton("spot_price", "Price")}</th>
-                    <th>{renderSortButton("change_pct", "Total Gain")}</th>
-                    <th>{renderSortButton("change_24h_pct", "24h Gain")}</th>
                     <th>{renderSortButton("earnings", "Earnings")}</th>
-                    <th>Shares Held</th>
-                    <th>Shares Short</th>
+                    <th>{renderSortButton("change_pct", "Σ Δ")}</th>
                     <th className="market-header-single">Quick Actions</th>
                     <th className="market-header-single">Action</th>
                     <th className="market-header-single">Qty</th>
@@ -795,6 +794,8 @@ export default function MarketPage() {
                       key={row.player.id}
                       row={row}
                       isTradingHalted={activeSportTradingHalted}
+                      earningsAfterPrice
+                      hideChange24hColumn
                       priceFlash={priceFlashById[row.player.id]}
                       measureRow={index === 0}
                       onMeasureRow={handleMeasureRow}

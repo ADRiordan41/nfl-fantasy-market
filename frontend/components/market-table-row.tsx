@@ -36,6 +36,9 @@ export type MarketTableRowModel = {
 type MarketTableRowProps = {
   row: MarketTableRowModel;
   isTradingHalted: boolean;
+  earningsBeforePrice?: boolean;
+  earningsAfterPrice?: boolean;
+  hideChange24hColumn?: boolean;
   hidePerformanceColumns?: boolean;
   extraColumnsBeforeEarnings?: boolean;
   combinePositionColumn?: boolean;
@@ -74,6 +77,9 @@ function flashClass(direction: "up" | "down" | undefined): string {
 function MarketTableRow({
   row,
   isTradingHalted,
+  earningsBeforePrice = false,
+  earningsAfterPrice = false,
+  hideChange24hColumn = false,
   hidePerformanceColumns = false,
   extraColumnsBeforeEarnings = false,
   combinePositionColumn = false,
@@ -214,15 +220,21 @@ function MarketTableRow({
           {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
         </div>
       </td>
+      {earningsBeforePrice ? (
+        <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+      ) : null}
       <td className={`market-cell-numeric market-price-cell market-mid-cell${flashClass(priceFlash?.spot)}`}>
         {formatCurrency(row.player.spot_price)}
       </td>
+      {earningsAfterPrice ? (
+        <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+      ) : null}
       {!hidePerformanceColumns ? (
         <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
           {formatPercent(Math.abs(row.totalChangePct))}
         </td>
       ) : null}
-      {!hidePerformanceColumns ? (
+      {!hidePerformanceColumns && !hideChange24hColumn ? (
         <td className={`market-cell-numeric ${row.change24hPct >= 0 ? "up" : "down"}`}>
           {formatPercent(Math.abs(row.change24hPct))}
         </td>
@@ -236,7 +248,9 @@ function MarketTableRow({
           {userTotalGainPct != null && Number.isFinite(userTotalGainPct) ? `(${formatPercent(userTotalGainPct)})` : ""}
         </td>
       ) : null}
-      <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+      {!earningsBeforePrice && !earningsAfterPrice ? (
+        <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+      ) : null}
       {!extraColumnsBeforeEarnings && hasAverageEntry ? (
         <td className="market-cell-numeric">{formatCurrency(averageEntryPrice)}</td>
       ) : null}
@@ -254,12 +268,7 @@ function MarketTableRow({
             <span className={`market-position-value ${holdingValueToneClass}`}>{formatCurrency(holdingTotalValueNumeric)}</span>
           </div>
         </td>
-      ) : (
-        <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesHeld))}</td>
-      )}
-      {combinePositionColumn ? null : (
-        <td className="market-cell-numeric">{formatNumber(Math.round(row.sharesShort))}</td>
-      )}
+      ) : null}
       <td className="market-cell-control">
         <div className={`market-row-actions${closeOnlyEnabled ? " market-row-actions-close-only" : ""}`}>
           {closeOnlyEnabled ? (

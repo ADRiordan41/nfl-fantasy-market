@@ -81,19 +81,6 @@ function parseTimestamp(value: string): Date {
   return new Date(normalized);
 }
 
-function formatStamp(value: string | null): string {
-  if (!value) return "--";
-  const parsed = parseTimestamp(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString([], {
-    timeZone: CHICAGO_TIME_ZONE,
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function formatFirstPitchLabel(value: string | null | undefined): string | null {
   if (!value) return null;
   const parsed = parseTimestamp(value);
@@ -113,13 +100,6 @@ function chicagoDateKey(value: Date): string {
     month: "2-digit",
     day: "2-digit",
   });
-}
-
-function isTodayChicagoFirstPitch(value: string | null | undefined): boolean {
-  if (!value) return false;
-  const parsed = parseTimestamp(value);
-  if (Number.isNaN(parsed.getTime())) return false;
-  return chicagoDateKey(parsed) === chicagoDateKey(new Date());
 }
 
 function sortPlayersByPerformance(players: LiveGamePlayer[]): LiveGamePlayer[] {
@@ -1262,20 +1242,32 @@ function WinProbabilityChart({
 export default function LivePage() {
   const router = useRouter();
   const gameCardRefs = useRef<Record<string, HTMLElement | null>>({});
+  const todayDateKey = useMemo(() => chicagoDateKey(new Date()), []);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [payload, setPayload] = useState<LiveGames | null>(null);
   const [sportFilter, setSportFilter] = useState("ALL");
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(todayDateKey);
   const [focusedGameId, setFocusedGameId] = useState<string | null>(null);
   const [winProbabilityByGameId, setWinProbabilityByGameId] = useState<Record<string, WinProbabilityPoint[]>>({});
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (dateOverride?: string) => {
+    const showFullLoading = payload == null;
+    if (showFullLoading) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     try {
-      const next = await apiGet<LiveGames>("/live/games");
+      const queryDate = (dateOverride ?? selectedDate).trim();
+      const params = new URLSearchParams();
+      if (queryDate && queryDate !== todayDateKey) {
+        params.set("date", queryDate);
+      }
+      const route = params.size > 0 ? `/live/games?${params.toString()}` : "/live/games";
+      const next = await apiGet<LiveGames>(route);
       setPayload(next);
-      setLastUpdated(chicagoNowStamp());
       setError("");
     } catch (err: unknown) {
       if (isUnauthorizedError(err)) {
@@ -1284,9 +1276,10 @@ export default function LivePage() {
       }
       setError(toMessage(err));
     } finally {
-      setLoading(false);
+      if (showFullLoading) setLoading(false);
+      setRefreshing(false);
     }
-  }, [router]);
+  }, [payload, router, selectedDate, todayDateKey]);
 
   useAdaptivePolling(load, { activeMs: 30_000, hiddenMs: 120_000 });
 
@@ -1294,14 +1287,14 @@ export default function LivePage() {
     () => ["ALL", ...Array.from(new Set((payload?.games ?? []).map((game) => game.sport))).sort()],
     [payload],
   );
+  const selectedDateDisplay = selectedDate === todayDateKey ? "Today" : selectedDate;
 
   const activeSportFilter = sports.includes(sportFilter) ? sportFilter : "ALL";
 
   const visibleGames = useMemo(() => {
     const games = payload?.games ?? [];
-    const gamesOnToday = games.filter((game) => isTodayChicagoFirstPitch(game.state?.first_pitch_at ?? null));
-    if (activeSportFilter === "ALL") return gamesOnToday;
-    return gamesOnToday.filter((game) => game.sport === activeSportFilter);
+    if (activeSportFilter === "ALL") return games;
+    return games.filter((game) => game.sport === activeSportFilter);
   }, [activeSportFilter, payload]);
 
   const overviewGames = useMemo(
@@ -1451,33 +1444,56 @@ export default function LivePage() {
 
   return (
     <main className="page-shell">
-      <section className="hero-panel">
-        <div>
+      <section className="hero-panel live-hero-panel">
+        <div className="live-hero-copy">
           <p className="eyebrow">Live</p>
           <h1>Live Game Center</h1>
-          <p className="subtle">
-            Today&apos;s games with live win probabilities.
-          </p>
         </div>
-      </section>
 
-      <section className="toolbar">
-        <select value={activeSportFilter} onChange={(event) => setSportFilter(event.target.value)}>
-          {sports.map((sport) => (
-            <option key={sport} value={sport}>
-              {sport === "ALL" ? "All sports" : sport}
-            </option>
-          ))}
-        </select>
-        <button onClick={load} disabled={loading}>
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
-        <p className="subtle toolbar-last-updated">Last refreshed {formatStamp(lastUpdated)}</p>
+        <section className="live-toolbar" aria-label="Live controls">
+          <div className="live-date-picker-group">
+            <div className="live-date-picker-field">
+              <span className="live-date-picker-value" aria-hidden="true">
+                {selectedDateDisplay}
+              </span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  const nextDate = event.target.value || todayDateKey;
+                  setSelectedDate(nextDate);
+                  setFocusedGameId(null);
+                  void load(nextDate);
+                }}
+                aria-label={
+                  selectedDate === todayDateKey
+                    ? "Choose game date, Today selected"
+                    : `Choose game date, ${selectedDate}`
+                }
+              />
+            </div>
+          </div>
+          <select value={activeSportFilter} onChange={(event) => setSportFilter(event.target.value)}>
+            {sports.map((sport) => (
+              <option key={sport} value={sport}>
+                {sport === "ALL" ? "All sports" : sport}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              void load();
+            }}
+            disabled={loading || refreshing}
+          >
+            {loading || refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        </section>
       </section>
 
       {error && <p className="error-box" role="alert">{error}</p>}
 
-      {loading ? (
+      {loading && !payload ? (
         <section className="table-panel" aria-busy="true">
           <div className="skeleton-stack">
             <div className="skeleton-line lg" />
@@ -1615,17 +1631,16 @@ export default function LivePage() {
                                 {team.topPlayers.map((player) => (
                                   <div key={`${game.game_id}-${team.team}-${player.player_id}`} className="live-top-row">
                                     <div className="live-top-player">
-                                      <span
-                                        className="live-top-name live-top-name-clickable"
+                                      <Link
+                                        href={`/player/${player.player_id}`}
+                                        className="live-top-player-link"
                                         onClick={(event) => {
-                                          event.preventDefault();
                                           event.stopPropagation();
-                                          void router.push(`/player/${player.player_id}`);
                                         }}
                                       >
-                                        {player.name}
-                                      </span>
-                                      <span className="subtle">{player.position}</span>
+                                        <span className="live-top-name live-top-name-clickable">{player.name}</span>
+                                        <span className="subtle">{player.position}</span>
+                                      </Link>
                                     </div>
                                     <div className="live-top-metrics">
                                       <strong>{formatNumber(player.game_fantasy_points, 2)} pts</strong>

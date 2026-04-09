@@ -2544,137 +2544,271 @@ def market_movers(
 @app.get("/live/games", response_model=LiveGamesOut)
 def list_live_games(
     sport: str | None = Query(default=None),
+    requested_date: str | None = Query(default=None, alias="date"),
     _auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ):
     normalized_sport = normalize_sport_code(sport) if sport and sport.strip().upper() != "ALL" else "ALL"
-    cache_key = build_cache_key("live_games", normalized_sport)
+    parsed_requested_date: date | None = None
+    requested_date_key: str | None = None
+    raw_requested_date = (requested_date or "").strip()
+    if raw_requested_date:
+        try:
+            parsed_requested_date = date.fromisoformat(raw_requested_date)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+        requested_date_key = parsed_requested_date.isoformat()
+
+    cache_key = build_cache_key("live_games", normalized_sport, requested_date_key or "auto")
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
+
     # Keep completed games from the prior slate visible until 2:00 AM Chicago time.
-    start_of_day_chicago = chicago_rollover_start(rollover_hour=2)
+    # For explicit date selection, use that calendar day in Chicago local time.
+    if parsed_requested_date is None:
+        start_of_day_chicago = chicago_rollover_start(rollover_hour=2)
+        end_of_day_chicago: datetime | None = None
+        schedule_date = start_of_day_chicago.date()
+    else:
+        start_of_day_chicago = datetime.combine(parsed_requested_date, datetime.min.time())
+        end_of_day_chicago = start_of_day_chicago + timedelta(days=1)
+        schedule_date = parsed_requested_date
+
     mlb_schedule_game_ids: list[str] = []
     if normalized_sport in {"ALL", "MLB"}:
         try:
             mlb_schedule_game_ids = fetch_mlb_schedule_game_pks(
-                schedule_date=start_of_day_chicago.date(),
+                schedule_date=schedule_date,
                 timeout=3.5,
             )
         except Exception as exc:
             logger.warning("Failed to fetch MLB schedule for live games: %s", exc)
-    stmt = select(Player).where(
-        Player.ipo_open.is_(True),
-        or_(
-            Player.live_now.is_(True),
-            and_(
-                Player.live_updated_at.is_not(None),
-                Player.live_updated_at >= start_of_day_chicago,
-                or_(
-                    Player.live_game_id.is_not(None),
-                    Player.live_game_label.is_not(None),
-                ),
-            ),
-        ),
-    )
-    if sport and sport.strip().upper() != "ALL":
-        stmt = stmt.where(Player.sport == normalize_sport_code(sport))
 
-    players = db.execute(
-        stmt.order_by(
-            Player.sport.asc(),
-            Player.live_game_label.asc(),
-            Player.live_game_status.asc(),
-            Player.name.asc(),
-        )
-    ).scalars().all()
     generated_at = chicago_now()
 
-    stats_snapshot = get_stats_snapshot_by_player(db, [player.id for player in players])
     grouped: dict[str, dict[str, object]] = {}
+    live_players_count = 0
 
-    for player in players:
-        sport_code = str(player.sport).strip().upper()
-        live_game_id = (str(player.live_game_id).strip() if player.live_game_id else "") or ""
-        live_game_label = (str(player.live_game_label).strip() if player.live_game_label else "") or ""
-        live_status = (str(player.live_game_status).strip() if player.live_game_status else "") or ""
-        if live_game_id:
-            group_key = f"id:{sport_code}:{live_game_id.lower()}"
-            resolved_game_id = f"{sport_code}:{live_game_id}"
-        elif live_game_label:
-            normalized_label = normalize_text(live_game_label)
-            group_key = f"label:{sport_code}:{normalized_label}"
-            resolved_game_id = f"{sport_code}:{normalized_label.replace(' ', '-') or 'live'}"
-        else:
-            group_key = f"player:{sport_code}:{int(player.id)}"
-            resolved_game_id = f"{sport_code}:player-{int(player.id)}"
-
-        resolved_label = (
-            live_game_label
-            or (f"{player.team} Live Game" if player.team else f"{player.name} Live Game")
+    if parsed_requested_date is None:
+        stmt = select(Player).where(
+            Player.ipo_open.is_(True),
+            or_(
+                Player.live_now.is_(True),
+                and_(
+                    Player.live_updated_at.is_not(None),
+                    Player.live_updated_at >= start_of_day_chicago,
+                    or_(
+                        Player.live_game_id.is_not(None),
+                        Player.live_game_label.is_not(None),
+                    ),
+                ),
+            ),
         )
+        if sport and sport.strip().upper() != "ALL":
+            stmt = stmt.where(Player.sport == normalize_sport_code(sport))
 
-        bucket = grouped.get(group_key)
-        if bucket is None:
-            bucket = {
-                "game_id": resolved_game_id,
-                "raw_game_id": live_game_id or None,
-                "sport": sport_code,
-                "game_label": resolved_label,
-                "game_status": live_status or None,
-                "week": int(player.live_week) if player.live_week is not None else None,
-                "is_live": bool(player.live_now),
-                "updated_at": player.live_updated_at,
-                "players": [],
-            }
-            grouped[group_key] = bucket
-        else:
-            if not bucket["raw_game_id"] and live_game_id:
-                bucket["raw_game_id"] = live_game_id
-            incoming_week = int(player.live_week) if player.live_week is not None else None
-            prior_week = bucket["week"]
-            if incoming_week is not None and (prior_week is None or incoming_week > prior_week):
-                bucket["week"] = incoming_week
-            incoming_updated_at = player.live_updated_at
-            prior_updated_at = bucket["updated_at"]
-            if live_status:
-                should_replace_status = (
-                    not bucket["game_status"]
-                    or (
-                        incoming_updated_at is not None
-                        and (prior_updated_at is None or incoming_updated_at >= prior_updated_at)
+        players = db.execute(
+            stmt.order_by(
+                Player.sport.asc(),
+                Player.live_game_label.asc(),
+                Player.live_game_status.asc(),
+                Player.name.asc(),
+            )
+        ).scalars().all()
+
+        live_players_count = sum(1 for player in players if bool(player.live_now))
+        stats_snapshot = get_stats_snapshot_by_player(db, [player.id for player in players])
+
+        for player in players:
+            sport_code = str(player.sport).strip().upper()
+            live_game_id = (str(player.live_game_id).strip() if player.live_game_id else "") or ""
+            live_game_label = (str(player.live_game_label).strip() if player.live_game_label else "") or ""
+            live_status = (str(player.live_game_status).strip() if player.live_game_status else "") or ""
+            if live_game_id:
+                group_key = f"id:{sport_code}:{live_game_id.lower()}"
+                resolved_game_id = f"{sport_code}:{live_game_id}"
+            elif live_game_label:
+                normalized_label = normalize_text(live_game_label)
+                group_key = f"label:{sport_code}:{normalized_label}"
+                resolved_game_id = f"{sport_code}:{normalized_label.replace(' ', '-') or 'live'}"
+            else:
+                group_key = f"player:{sport_code}:{int(player.id)}"
+                resolved_game_id = f"{sport_code}:player-{int(player.id)}"
+
+            resolved_label = (
+                live_game_label
+                or (f"{player.team} Live Game" if player.team else f"{player.name} Live Game")
+            )
+
+            bucket = grouped.get(group_key)
+            if bucket is None:
+                bucket = {
+                    "game_id": resolved_game_id,
+                    "raw_game_id": live_game_id or None,
+                    "sport": sport_code,
+                    "game_label": resolved_label,
+                    "game_status": live_status or None,
+                    "week": int(player.live_week) if player.live_week is not None else None,
+                    "is_live": bool(player.live_now),
+                    "updated_at": player.live_updated_at,
+                    "players": [],
+                }
+                grouped[group_key] = bucket
+            else:
+                if not bucket["raw_game_id"] and live_game_id:
+                    bucket["raw_game_id"] = live_game_id
+                incoming_week = int(player.live_week) if player.live_week is not None else None
+                prior_week = bucket["week"]
+                if incoming_week is not None and (prior_week is None or incoming_week > prior_week):
+                    bucket["week"] = incoming_week
+                incoming_updated_at = player.live_updated_at
+                prior_updated_at = bucket["updated_at"]
+                if live_status:
+                    should_replace_status = (
+                        not bucket["game_status"]
+                        or (
+                            incoming_updated_at is not None
+                            and (prior_updated_at is None or incoming_updated_at >= prior_updated_at)
+                        )
                     )
-                )
-                if should_replace_status:
-                    bucket["game_status"] = live_status
-            if incoming_updated_at and (prior_updated_at is None or incoming_updated_at > prior_updated_at):
-                bucket["updated_at"] = incoming_updated_at
-            if bool(player.live_now):
-                bucket["is_live"] = True
+                    if should_replace_status:
+                        bucket["game_status"] = live_status
+                if incoming_updated_at and (prior_updated_at is None or incoming_updated_at > prior_updated_at):
+                    bucket["updated_at"] = incoming_updated_at
+                if bool(player.live_now):
+                    bucket["is_live"] = True
 
-        fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
-        _ = latest_week
-        spot = current_spot_price(player, fundamental_price=fundamental)
-        game_points = (
-            float(player.live_game_fantasy_points)
-            if player.live_game_fantasy_points is not None
-            else 0.0
-        )
-        bucket_players = bucket["players"]
-        assert isinstance(bucket_players, list)
-        bucket_players.append(
-            LiveGamePlayerOut(
-                player_id=int(player.id),
-                name=str(player.name),
-                team=str(player.team),
-                position=str(player.position),
-                points_to_date=float(points_to_date),
-                game_fantasy_points=game_points,
-                game_stat_line=(str(player.live_game_stat_line).strip() if player.live_game_stat_line else None) or None,
-                spot_price=float(spot),
-                fundamental_price=float(fundamental),
+            fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+            _ = latest_week
+            spot = current_spot_price(player, fundamental_price=fundamental)
+            game_points = (
+                float(player.live_game_fantasy_points)
+                if player.live_game_fantasy_points is not None
+                else 0.0
+            )
+            bucket_players = bucket["players"]
+            assert isinstance(bucket_players, list)
+            bucket_players.append(
+                LiveGamePlayerOut(
+                    player_id=int(player.id),
+                    name=str(player.name),
+                    team=str(player.team),
+                    position=str(player.position),
+                    points_to_date=float(points_to_date),
+                    game_fantasy_points=game_points,
+                    game_stat_line=(str(player.live_game_stat_line).strip() if player.live_game_stat_line else None) or None,
+                    spot_price=float(spot),
+                    fundamental_price=float(fundamental),
+                )
+            )
+    else:
+        assert end_of_day_chicago is not None
+        game_stmt = (
+            select(Player, PlayerGamePoint)
+            .join(PlayerGamePoint, PlayerGamePoint.player_id == Player.id)
+            .where(
+                Player.ipo_open.is_(True),
+                PlayerGamePoint.recorded_at >= start_of_day_chicago,
+                PlayerGamePoint.recorded_at < end_of_day_chicago,
             )
         )
+        if sport and sport.strip().upper() != "ALL":
+            game_stmt = game_stmt.where(Player.sport == normalize_sport_code(sport))
+
+        game_rows = db.execute(
+            game_stmt.order_by(
+                Player.sport.asc(),
+                PlayerGamePoint.game_label.asc(),
+                PlayerGamePoint.game_status.asc(),
+                Player.name.asc(),
+            )
+        ).all()
+        player_ids = sorted({int(player.id) for player, _ in game_rows})
+        live_players_count = len(player_ids)
+        stats_snapshot = get_stats_snapshot_by_player(db, player_ids)
+
+        for player, game_point in game_rows:
+            sport_code = str(player.sport).strip().upper()
+            raw_game_id = (str(game_point.game_id).strip() if game_point.game_id else "") or ""
+            game_label = (str(game_point.game_label).strip() if game_point.game_label else "") or ""
+            game_status = (str(game_point.game_status).strip() if game_point.game_status else "") or ""
+            if raw_game_id:
+                group_key = f"id:{sport_code}:{raw_game_id.lower()}"
+                resolved_game_id = f"{sport_code}:{raw_game_id}"
+            elif game_label:
+                normalized_label = normalize_text(game_label)
+                group_key = f"label:{sport_code}:{normalized_label}"
+                resolved_game_id = f"{sport_code}:{normalized_label.replace(' ', '-') or 'history'}"
+            else:
+                group_key = f"player:{sport_code}:{int(player.id)}"
+                resolved_game_id = f"{sport_code}:player-{int(player.id)}"
+
+            resolved_label = game_label or (f"{player.team} Game" if player.team else f"{player.name} Game")
+            incoming_updated_at = game_point.recorded_at
+            bucket = grouped.get(group_key)
+            if bucket is None:
+                bucket = {
+                    "game_id": resolved_game_id,
+                    "raw_game_id": raw_game_id or None,
+                    "sport": sport_code,
+                    "game_label": resolved_label,
+                    "game_status": game_status or None,
+                    "week": int(player.live_week) if player.live_week is not None else None,
+                    "is_live": False,
+                    "updated_at": incoming_updated_at,
+                    "players": [],
+                }
+                grouped[group_key] = bucket
+            else:
+                if not bucket["raw_game_id"] and raw_game_id:
+                    bucket["raw_game_id"] = raw_game_id
+                incoming_week = int(player.live_week) if player.live_week is not None else None
+                prior_week = bucket["week"]
+                if incoming_week is not None and (prior_week is None or incoming_week > prior_week):
+                    bucket["week"] = incoming_week
+                prior_updated_at = bucket["updated_at"]
+                if game_status:
+                    should_replace_status = (
+                        not bucket["game_status"]
+                        or (
+                            incoming_updated_at is not None
+                            and (prior_updated_at is None or incoming_updated_at >= prior_updated_at)
+                        )
+                    )
+                    if should_replace_status:
+                        bucket["game_status"] = game_status
+                if incoming_updated_at and (prior_updated_at is None or incoming_updated_at > prior_updated_at):
+                    bucket["updated_at"] = incoming_updated_at
+
+            fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+            _ = latest_week
+            spot = current_spot_price(player, fundamental_price=fundamental)
+            season_points_to_date = (
+                float(game_point.season_fantasy_points)
+                if game_point.season_fantasy_points is not None
+                else float(points_to_date)
+            )
+            game_points = (
+                float(game_point.game_fantasy_points)
+                if game_point.game_fantasy_points is not None
+                else 0.0
+            )
+            bucket_players = bucket["players"]
+            assert isinstance(bucket_players, list)
+            bucket_players.append(
+                LiveGamePlayerOut(
+                    player_id=int(player.id),
+                    name=str(player.name),
+                    team=str(player.team),
+                    position=str(player.position),
+                    points_to_date=season_points_to_date,
+                    game_fantasy_points=game_points,
+                    game_stat_line=None,
+                    spot_price=float(spot),
+                    fundamental_price=float(fundamental),
+                )
+            )
 
     mlb_game_id_tokens: set[str] = set()
     mlb_existing_game_ids: set[str] = set()
@@ -2849,9 +2983,9 @@ def list_live_games(
         )
 
     games.sort(key=lambda game: (game.sport, game.game_label.lower(), game.game_id.lower()))
-    live_players_count = sum(1 for player in players if bool(player.live_now))
     result = LiveGamesOut(
         generated_at=generated_at,
+        requested_date=requested_date_key,
         live_games_count=len(games),
         live_players_count=live_players_count,
         games=games,
