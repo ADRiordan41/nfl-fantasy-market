@@ -166,6 +166,38 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertGreater(float(high_fundamental), float(low_fundamental))
         self.assertGreater(float(high_fundamental), float(baseline_fundamental))
 
+    def test_stats_upsert_updates_player_team_from_payload(self) -> None:
+        admin = self.make_user()
+        nfl_player = self.make_player(name="Mover NFL", team="BUF", sport="NFL", position="WR")
+        mlb_player = self.make_player(name="Mover MLB", team="TBR", sport="MLB", position="OF")
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(nfl_player.id),
+                week=1,
+                fantasy_points=7.0,
+                team="mia",
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(mlb_player.id),
+                week=1,
+                fantasy_points=5.0,
+                team="SFG",
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        self.db.refresh(nfl_player)
+        self.db.refresh(mlb_player)
+
+        self.assertEqual("MIA", str(nfl_player.team))
+        self.assertEqual("SF", str(mlb_player.team))
+
     def test_short_position_pnl_moves_with_dynamic_price(self) -> None:
         user = self.make_user(cash_balance=100000.0)
         admin = self.make_user(username="admin2", cash_balance=50000.0)

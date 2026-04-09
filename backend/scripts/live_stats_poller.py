@@ -802,6 +802,7 @@ def build_player_indexes(players: list[dict[str, Any]]) -> tuple[dict[tuple[str,
 
 def row_signature(row: IncomingStat) -> str:
     payload = {
+        "team": row.team,
         "fantasy_points": round(float(row.fantasy_points), 6),
         "live_now": row.live_now,
         "live_week": row.live_week,
@@ -963,6 +964,7 @@ def run_cycle(
             "player_id": ref.player_id,
             "week": row.week,
             "fantasy_points": row.fantasy_points,
+            "team": row.team,
         }
         if row.live_now is not None:
             payload["live_now"] = bool(row.live_now)
@@ -1052,6 +1054,7 @@ def run_cycle(
                 "player_id": player_id,
                 "week": clear_week,
                 "fantasy_points": fantasy_points,
+                "team": str(player.get("team") or ""),
                 "live_now": False,
             }
             if dry_run:

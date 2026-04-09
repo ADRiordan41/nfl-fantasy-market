@@ -606,6 +606,7 @@ class StatIn(BaseModel):
     player_id: int
     week: int = Field(ge=1)
     fantasy_points: float
+    team: str | None = None
     live_now: bool | None = None
     live_week: int | None = Field(default=None, ge=1)
     live_game_id: str | None = Field(default=None, max_length=64)

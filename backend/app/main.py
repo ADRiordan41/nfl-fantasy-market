@@ -2984,6 +2984,20 @@ def normalize_optional_profile_field(value: str | None) -> str | None:
     return normalized or None
 
 
+def normalize_team_for_player(player: Player, value: str | None) -> str | None:
+    normalized = normalize_optional_profile_field(value)
+    if not normalized:
+        return None
+    condensed = "".join(ch for ch in normalized.upper() if ch.isalnum())
+    if not condensed:
+        return None
+    if str(player.sport).strip().upper() == "MLB":
+        condensed = normalize_mlb_team_code(condensed) or condensed
+    if len(condensed) > 8:
+        return None
+    return condensed
+
+
 TERMINAL_GAME_STATUS_TOKENS = (
     "FINAL",
     "GAME OVER",
@@ -6652,6 +6666,7 @@ def apply_live_snapshot_from_stat(
             stat.live_game_status,
             stat.live_game_stat_line,
             stat.live_game_fantasy_points,
+            stat.team,
         )
     )
     if not has_live_payload:
@@ -6679,6 +6694,10 @@ def apply_live_snapshot_from_stat(
         assign_if_changed("live_game_stat_line", normalize_optional_profile_field(stat.live_game_stat_line))
     if stat.live_game_fantasy_points is not None:
         assign_if_changed("live_game_fantasy_points", float(stat.live_game_fantasy_points))
+    if stat.team is not None:
+        normalized_team = normalize_team_for_player(player, stat.team)
+        if normalized_team is not None:
+            assign_if_changed("team", normalized_team)
 
     if stat.live_now is False:
         if stat.live_week is None:
@@ -7296,6 +7315,7 @@ def admin_backfill_mlb_stats(
                         player_id=int(player.id),
                         week=int(payload.week),
                         fantasy_points=float(row.fantasy_points),
+                        team=row.team,
                         live_now=row.live_now,
                         live_week=int(row.live_week or payload.week),
                         live_game_id=row.live_game_id,
@@ -7315,8 +7335,7 @@ def admin_backfill_mlb_stats(
                         fantasy_points=float(stat_payload.fantasy_points),
                     )
                     live_changed = False
-                    if stat_payload.live_now is True:
-                        live_changed = apply_live_snapshot_from_stat(player=player, stat=stat_payload)
+                    live_changed = apply_live_snapshot_from_stat(player=player, stat=stat_payload)
                     game_point_changed = upsert_player_game_point_from_stat(
                         db=db,
                         player=player,
@@ -7861,6 +7880,10 @@ def admin_stats_publish(
                 error_count += 1
                 continue
             players_by_id[int(row.player_id)] = player
+        normalized_team = normalize_team_for_player(player, row.input_team)
+        if normalized_team is not None and str(player.team).strip().upper() != normalized_team:
+            player.team = normalized_team
+            touched_player_ids.add(int(row.player_id))
         weekly_totals[(int(row.player_id), int(row.week))] += float(row.fantasy_points)
         if row.game_id:
             game_rows_by_player[int(row.player_id)].append(row)
@@ -7970,7 +7993,9 @@ def upsert_weekly_stat(
         week=stat.week,
         fantasy_points=stat.fantasy_points,
     )
+    previous_team = str(player.team).strip().upper()
     live_changed = apply_live_snapshot_from_stat(player=player, stat=stat)
+    team_changed = str(player.team).strip().upper() != previous_team
     game_point_changed = upsert_player_game_point_from_stat(
         db=db,
         player=player,
@@ -7978,7 +8003,7 @@ def upsert_weekly_stat(
     )
 
     db.flush()
-    if stat_changed or game_point_changed:
+    if stat_changed or game_point_changed or team_changed:
         refresh_players_after_stats_update(
             db=db,
             player_ids={int(player.id)},

@@ -161,6 +161,7 @@ def main() -> int:
             "player_id": ref.player_id,
             "week": int(row_week),
             "fantasy_points": float(points),
+            "team": team or ref.team,
         }
 
         if args.dry_run:

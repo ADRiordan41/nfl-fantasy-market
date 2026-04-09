@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
+import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency } from "@/lib/format";
 import type { Quote } from "@/lib/types";
 
 export type MarketTradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
@@ -219,12 +219,12 @@ function MarketTableRow({
       </td>
       {!hidePerformanceColumns ? (
         <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
-          {formatSignedPercent(row.totalChangePct)}
+          {formatPercent(Math.abs(row.totalChangePct))}
         </td>
       ) : null}
       {!hidePerformanceColumns ? (
         <td className={`market-cell-numeric ${row.change24hPct >= 0 ? "up" : "down"}`}>
-          {formatSignedPercent(row.change24hPct)}
+          {formatPercent(Math.abs(row.change24hPct))}
         </td>
       ) : null}
       {extraColumnsBeforeEarnings && hasAverageEntry ? (

@@ -128,6 +128,7 @@ def run_backfill(args: argparse.Namespace) -> int:
                 "player_id": int(ref.player_id),
                 "week": int(row.week),
                 "fantasy_points": float(row.fantasy_points),
+                "team": row.team,
             }
             if row.live_now is not None:
                 payload["live_now"] = bool(row.live_now)

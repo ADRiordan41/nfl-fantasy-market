@@ -574,6 +574,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }
 
+  function openFeedbackModal() {
+    setFeedbackOpen(true);
+    setFeedbackSuccess("");
+    setFeedbackError("");
+  }
+
   const showNav = pathname !== "/auth";
   const visibleNavItems = useMemo(
     () =>
@@ -831,6 +837,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     {item.label}
                   </Link>
                 ))}
+                {currentUser && (
+                  <button
+                    type="button"
+                    className="mobile-home-action"
+                    role="menuitem"
+                    onClick={() => {
+                      setMobileHomeMenuOpen(false);
+                      openFeedbackModal();
+                    }}
+                  >
+                    Send feedback
+                  </button>
+                )}
                 {currentUser ? (
                   <button
                     type="button"
@@ -872,11 +891,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             className="feedback-fab"
-            onClick={() => {
-              setFeedbackOpen(true);
-              setFeedbackSuccess("");
-              setFeedbackError("");
-            }}
+            onClick={openFeedbackModal}
           >
             Feedback
           </button>

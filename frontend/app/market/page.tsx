@@ -10,33 +10,21 @@ import MarketTableRow, {
 } from "@/components/market-table-row";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
-import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
-import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
+import { formatCurrency } from "@/lib/format";
 import { notifySuccess } from "@/lib/toast";
+import { teamPrimaryColor } from "@/lib/teamColors";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { MarketMovers, Player, Portfolio, Quote, TradingStatus, UserAccount } from "@/lib/types";
 
-type MarketSortColumn = "name" | "team" | "position" | "spot_price" | "change_pct" | "change_24h_pct" | "earnings";
+type MarketSortColumn =
+  | "name"
+  | "team"
+  | "position"
+  | "spot_price"
+  | "change_pct"
+  | "change_24h_pct"
+  | "earnings";
 type SortDirection = "asc" | "desc";
-type MobileMarketSortMode =
-  | "price_desc"
-  | "price_asc"
-  | "overall_gainers"
-  | "overall_losers"
-  | "daily_gainers"
-  | "daily_losers"
-  | "weekly_gainers"
-  | "weekly_losers";
-const MOBILE_SORT_OPTIONS: Array<{ value: MobileMarketSortMode; label: string }> = [
-  { value: "price_desc", label: "Price: High to low" },
-  { value: "price_asc", label: "Price: Low to high" },
-  { value: "overall_gainers", label: "Overall: Biggest gainers" },
-  { value: "overall_losers", label: "Overall: Biggest losers" },
-  { value: "daily_gainers", label: "24H: Biggest gainers" },
-  { value: "daily_losers", label: "24H: Biggest losers" },
-  { value: "weekly_gainers", label: "7D: Biggest gainers" },
-  { value: "weekly_losers", label: "7D: Biggest losers" },
-];
 type PriceSnapshot = {
   spot: number;
 };
@@ -74,37 +62,24 @@ const MARKET_FILTER_DEBOUNCE_MS = 180;
 const MARKET_VIRTUALIZATION_THRESHOLD = 60;
 const MARKET_VIRTUALIZATION_OVERSCAN = 8;
 const MARKET_TABLE_COLUMN_COUNT = 11;
-
-type MobileTradeState = {
-  row: MarketTableRowModel;
-  side: MarketTradeSide;
-  qty: string;
-  quote: Quote | null;
-  previewing: boolean;
-  placing: boolean;
+type MobileQuickActionState = {
+  playerId: number;
+  side: "BUY" | "SHORT";
 };
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function formatStamp(value: string | null): string {
-  if (!value) return "--";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString([], {
-    timeZone: CHICAGO_TIME_ZONE,
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
 function getSignedPercent(base: number, spot: number): number {
   if (!base) return 0;
   return ((spot - base) / base) * 100;
+}
+
+function formatSignedPercentCompact(value: number): string {
+  if (!Number.isFinite(value)) return "0.0%";
+  const rounded = Math.round(Math.abs(value) * 10) / 10;
+  return `${rounded.toFixed(1)}%`;
 }
 
 function isMarketSortColumn(value: unknown): value is MarketSortColumn {
@@ -121,17 +96,6 @@ function isSportFilter(value: string): value is SportFilter {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
-}
-
-function parseWholeShares(value: string): number | null {
-  const trimmed = value.trim();
-  if (!/^[0-9]+$/.test(trimmed)) return null;
-  const parsed = Number.parseInt(trimmed, 10);
-  return parsed > 0 ? parsed : null;
-}
-
-function isCostSide(side: MarketTradeSide): boolean {
-  return side === "BUY" || side === "SHORT";
 }
 
 export default function MarketPage() {
@@ -153,10 +117,8 @@ export default function MarketPage() {
   const [positionFilter, setPositionFilter] = useState("ALL");
   const [sortColumn, setSortColumn] = useState<MarketSortColumn>("spot_price");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [mobileSortMode, setMobileSortMode] = useState<MobileMarketSortMode>("price_desc");
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [hydratedSortKey, setHydratedSortKey] = useState("");
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
   const [rowHeight, setRowHeight] = useState(DEFAULT_MARKET_ROW_HEIGHT);
   const [virtualWindow, setVirtualWindow] = useState<VirtualWindow>({
@@ -166,7 +128,7 @@ export default function MarketPage() {
     bottomSpacer: 0,
   });
   const [error, setError] = useState("");
-  const [mobileTrade, setMobileTrade] = useState<MobileTradeState | null>(null);
+  const [mobileQuickAction, setMobileQuickAction] = useState<MobileQuickActionState | null>(null);
 
   const handleRequestError = useCallback(
     (err: unknown) => {
@@ -267,7 +229,6 @@ export default function MarketPage() {
         setChange24hById(next24hById);
         setChange7dById(next7dById);
         setTradingStatus(statusData);
-        setLastUpdated(chicagoNowStamp());
         setError("");
       } catch (err: unknown) {
         handleRequestError(err);
@@ -439,23 +400,6 @@ export default function MarketPage() {
     return filteredRows;
   }, [activeSport, change24hById, change7dById, ownedById, players, positionFilter, query, sortColumn, sortDirection]);
 
-  const mobileVisibleRows = useMemo(() => {
-    const sortedRows = [...visibleRows];
-    const tiebreak = (a: MarketTableRowModel, b: MarketTableRowModel) => a.player.name.localeCompare(b.player.name);
-    sortedRows.sort((a, b) => {
-      if (mobileSortMode === "price_desc") return b.player.spot_price - a.player.spot_price || tiebreak(a, b);
-      if (mobileSortMode === "price_asc") return a.player.spot_price - b.player.spot_price || tiebreak(a, b);
-      if (mobileSortMode === "overall_gainers") return b.totalChangePct - a.totalChangePct || tiebreak(a, b);
-      if (mobileSortMode === "overall_losers") return a.totalChangePct - b.totalChangePct || tiebreak(a, b);
-      if (mobileSortMode === "daily_gainers") return b.change24hPct - a.change24hPct || tiebreak(a, b);
-      if (mobileSortMode === "daily_losers") return a.change24hPct - b.change24hPct || tiebreak(a, b);
-      if (mobileSortMode === "weekly_gainers") return b.change7dPct - a.change7dPct || tiebreak(a, b);
-      if (mobileSortMode === "weekly_losers") return a.change7dPct - b.change7dPct || tiebreak(a, b);
-      return tiebreak(a, b);
-    });
-    return sortedRows;
-  }, [mobileSortMode, visibleRows]);
-
   useEffect(() => {
     const shell = marketShellRef.current;
     const tablePanel = marketTablePanelRef.current;
@@ -626,58 +570,19 @@ export default function MarketPage() {
   const visibleStart = virtualizationEnabled ? virtualWindow.start : 0;
   const renderedRows = virtualizationEnabled ? visibleRows.slice(virtualWindow.start, virtualWindow.end) : visibleRows;
 
-  function openMobileTrade(row: MarketTableRowModel) {
-    setMobileTrade({
-      row,
-      side: row.sharesHeld > 0 ? "SELL" : "BUY",
-      qty: "",
-      quote: null,
-      previewing: false,
-      placing: false,
-    });
-  }
-
-  function closeMobileTrade() {
-    setMobileTrade(null);
-  }
-
-  function updateMobileTrade(patch: Partial<MobileTradeState>) {
-    setMobileTrade((current) => (current ? { ...current, ...patch } : current));
-  }
-
-  async function previewMobileTrade() {
-    if (!mobileTrade || activeSportTradingHalted) return;
-    const shares = parseWholeShares(mobileTrade.qty);
-    if (!shares) {
-      setError("Enter whole shares (1 or more) before previewing.");
-      return;
-    }
-    updateMobileTrade({ previewing: true });
+  async function executeMobileMaxTrade(row: MarketTableRowModel, side: "BUY" | "SHORT", maxShares: number) {
+    if (activeSportTradingHalted || maxShares <= 0 || mobileQuickAction) return;
+    setMobileQuickAction({ playerId: row.player.id, side });
     setError("");
     try {
-      const nextQuote = await requestQuote(mobileTrade.row.player.id, mobileTrade.side, shares);
-      updateMobileTrade({ quote: nextQuote });
+      const nextQuote = await requestQuote(row.player.id, side, maxShares);
+      await executeTrade(row.player.id, side, nextQuote.shares);
     } catch {
       // Parent handlers already surface the error.
     } finally {
-      updateMobileTrade({ previewing: false });
-    }
-  }
-
-  async function executeMobileTrade() {
-    if (!mobileTrade || !mobileTrade.quote || activeSportTradingHalted) {
-      setError("Preview a quote first.");
-      return;
-    }
-    updateMobileTrade({ placing: true });
-    setError("");
-    try {
-      await executeTrade(mobileTrade.row.player.id, mobileTrade.side, mobileTrade.quote.shares);
-      closeMobileTrade();
-    } catch {
-      // Parent handlers already surface the error.
-    } finally {
-      updateMobileTrade({ placing: false });
+      setMobileQuickAction((current) =>
+        current && current.playerId === row.player.id && current.side === side ? null : current,
+      );
     }
   }
 
@@ -720,13 +625,7 @@ export default function MarketPage() {
 
       {activeSportTradingHalted && <p className="error-box" role="status">{activeSportHaltMessage}</p>}
 
-      <section className="toolbar">
-        <input
-          value={queryInput}
-          onChange={(event) => setQueryInput(event.target.value)}
-          placeholder="Search player or team"
-          aria-label="Search players"
-        />
+      <section className="toolbar market-toolbar-controls">
         <select value={positionFilter} onChange={(event) => setPositionFilter(event.target.value)}>
           {positions.map((position) => (
             <option key={position} value={position}>
@@ -737,10 +636,18 @@ export default function MarketPage() {
         <button onClick={() => void load()} disabled={loading}>
           {loading ? "Refreshing..." : "Refresh"}
         </button>
-        <p className="subtle toolbar-last-updated">Last updated {formatStamp(lastUpdated)}</p>
       </section>
 
       {error && <p className="error-box" role="alert">{error}</p>}
+
+      <section className="toolbar market-table-search">
+        <input
+          value={queryInput}
+          onChange={(event) => setQueryInput(event.target.value)}
+          placeholder="Search player or team"
+          aria-label="Search players"
+        />
+      </section>
 
       {loading ? (
         <section className="table-panel" aria-busy="true">
@@ -762,66 +669,86 @@ export default function MarketPage() {
         />
       ) : (
         <>
-          <section className="market-mobile-list">
-            <article className="market-mobile-card" aria-label="Sort market cards">
-              <label className="field-label" htmlFor="market-mobile-sort">Sort cards</label>
-              <select
-                id="market-mobile-sort"
-                value={mobileSortMode}
-                onChange={(event) => setMobileSortMode(event.target.value as MobileMarketSortMode)}
-              >
-                {MOBILE_SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </article>
-
-            {mobileVisibleRows.map((row) => (
-              <article key={row.player.id} className="market-mobile-card">
-                <div className="holding-head market-mobile-card-head">
-                  <div className="market-mobile-title-block">
-                    <div className="market-player-cell">
-                      <span className="card-title">{row.player.name}</span>
-                      {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
-                    </div>
-                    <p className="subtle market-mobile-meta">
-                      {row.player.team} {row.player.position} | Held {formatNumber(Math.round(row.sharesHeld))} | Short {formatNumber(Math.round(row.sharesShort))}
-                    </p>
-                  </div>
-                  <strong className="market-mobile-price">{formatCurrency(row.player.spot_price)}</strong>
-                </div>
-                <div className="market-mobile-metrics-row">
-                  <div className="holding-metrics market-mobile-holding-metrics">
-                    <span>
-                      Total{" "}
-                      <strong className={row.totalChangePct >= 0 ? "up" : "down"}>{formatSignedPercent(row.totalChangePct)}</strong>
-                    </span>
-                    <span>
-                      24H{" "}
-                      <strong className={row.change24hPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change24hPct)}</strong>
-                    </span>
-                    <span>
-                      7D{" "}
-                      <strong className={row.change7dPct >= 0 ? "up" : "down"}>{formatSignedPercent(row.change7dPct)}</strong>
-                    </span>
-                  </div>
-                </div>
-                <div className="market-mobile-actions">
-                  <button type="button" className="primary-btn" onClick={() => openMobileTrade(row)}>
-                    Trade
-                  </button>
-                  <button
-                    type="button"
-                    className="chip market-mini-btn"
-                    onClick={() => router.push(`/player/${row.player.id}`)}
-                  >
-                    View
-                  </button>
-                </div>
-              </article>
-            ))}
+          <section className="table-panel market-table-panel market-mobile-list">
+            <div className="table-wrap">
+              <table className="market-mobile-table" aria-label="Mobile market table">
+                <colgroup>
+                  <col className="market-mobile-col-player" />
+                  <col className="market-mobile-col-price" />
+                  <col className="market-mobile-col-delta" />
+                  <col className="market-mobile-col-earnings" />
+                  <col className="market-mobile-col-max" />
+                  <col className="market-mobile-col-max" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className="market-mobile-player-head market-sticky-player-cell market-header-corner">
+                      {renderSortButton("name", "Player")}
+                    </th>
+                    <th>{renderSortButton("spot_price", "Price")}</th>
+                    <th>{renderSortButton("change_pct", "Δ")}</th>
+                    <th>{renderSortButton("earnings", "Earnings")}</th>
+                    <th className="market-header-single">Max Buy</th>
+                    <th className="market-header-single">Max Short</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row) => {
+                    const quickActionBusy = Boolean(mobileQuickAction);
+                    const teamCode = row.player.team.trim().toUpperCase() || "--";
+                    const teamColor = teamPrimaryColor(row.player.team, row.player.sport);
+                    const teamTextStyle = {
+                      color: teamColor,
+                    };
+                    return (
+                      <tr key={row.player.id} className="market-mobile-table-row">
+                        <td className="market-sticky-player-cell">
+                          <div className="market-mobile-player-cell">
+                            <div className="market-mobile-player-line">
+                              <span className="market-mobile-player-name card-title">{row.player.name}</span>
+                              <span className="market-mobile-team-text" style={teamTextStyle}>
+                                {teamCode}
+                              </span>
+                            </div>
+                            <span className="market-player-meta">
+                              {row.player.team} {row.player.position}
+                            </span>
+                            {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
+                          </div>
+                        </td>
+                        <td className="market-cell-numeric">{formatCurrency(row.player.spot_price)}</td>
+                        <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
+                          {formatSignedPercentCompact(row.totalChangePct)}
+                        </td>
+                        <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+                        <td className="market-cell-control">
+                          <button
+                            type="button"
+                            className="market-mobile-max-btn market-quick-buy-btn"
+                            onClick={() => void executeMobileMaxTrade(row, "BUY", row.buyRemaining)}
+                            disabled={activeSportTradingHalted || row.buyRemaining <= 0 || quickActionBusy}
+                            aria-label={`Buy max ${row.buyRemaining} shares of ${row.player.name}`}
+                          >
+                            Buy
+                          </button>
+                        </td>
+                        <td className="market-cell-control">
+                          <button
+                            type="button"
+                            className="market-mobile-max-btn market-quick-short-btn"
+                            onClick={() => void executeMobileMaxTrade(row, "SHORT", row.shortRemaining)}
+                            disabled={activeSportTradingHalted || row.shortRemaining <= 0 || quickActionBusy}
+                            aria-label={`Short max ${row.shortRemaining} shares of ${row.player.name}`}
+                          >
+                            Short
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section ref={marketTablePanelRef} className="table-panel market-table-panel desktop-market-table">
@@ -892,120 +819,8 @@ export default function MarketPage() {
           </section>
         </>
       )}
-
-      {mobileTrade && (
-        <div className="market-mobile-sheet-backdrop" role="presentation" onClick={closeMobileTrade}>
-          <section
-            className="market-mobile-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Trade ${mobileTrade.row.player.name}`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="market-mobile-sheet-head">
-              <div>
-                <p className="eyebrow">Trade</p>
-                <h3>{mobileTrade.row.player.name}</h3>
-                <p className="subtle">
-                  {mobileTrade.row.player.team} {mobileTrade.row.player.position} | Price {formatCurrency(mobileTrade.row.player.spot_price)}
-                </p>
-              </div>
-              <button type="button" onClick={closeMobileTrade}>
-                Close
-              </button>
-            </div>
-
-            <div className="segment-row segment-4 market-mobile-segments">
-              {(["BUY", "SELL", "SHORT", "COVER"] as const).map((side) => (
-                <button
-                  key={side}
-                  type="button"
-                  className={
-                    mobileTrade.side === side
-                      ? side === "SELL" || side === "SHORT"
-                        ? "segment active danger-segment danger-active"
-                        : "segment active"
-                      : side === "SELL" || side === "SHORT"
-                        ? "segment danger-segment"
-                        : "segment"
-                  }
-                  onClick={() => updateMobileTrade({ side, quote: null })}
-                >
-                  {side}
-                </button>
-              ))}
-            </div>
-
-            <div className="market-mobile-sheet-metrics">
-              <span>Held {formatNumber(Math.round(mobileTrade.row.sharesHeld))}</span>
-              <span>Short {formatNumber(Math.round(mobileTrade.row.sharesShort))}</span>
-              <span>Buy Max {formatNumber(mobileTrade.row.buyRemaining)}</span>
-              <span>Short Max {formatNumber(mobileTrade.row.shortRemaining)}</span>
-            </div>
-
-            <label className="field-label" htmlFor="market-mobile-qty">
-              Quantity
-            </label>
-            <input
-              id="market-mobile-qty"
-              className="market-mobile-qty-input"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={4}
-              value={mobileTrade.qty}
-              onChange={(event) => updateMobileTrade({ qty: event.target.value.replace(/\D/g, "").slice(0, 4), quote: null })}
-              placeholder="0"
-              disabled={activeSportTradingHalted}
-            />
-
-            <div className="market-mobile-quick-actions">
-              <button
-                type="button"
-                className="chip market-mini-btn market-quick-buy-btn"
-                onClick={() => updateMobileTrade({ side: "BUY", qty: String(mobileTrade.row.buyRemaining), quote: null })}
-                disabled={mobileTrade.row.buyRemaining <= 0}
-              >
-                Buy Max
-              </button>
-              <button
-                type="button"
-                className="chip market-mini-btn market-quick-short-btn"
-                onClick={() => updateMobileTrade({ side: "SHORT", qty: String(mobileTrade.row.shortRemaining), quote: null })}
-                disabled={mobileTrade.row.shortRemaining <= 0}
-              >
-                Short Max
-              </button>
-            </div>
-
-            <div className="market-mobile-quote-card">
-              {mobileTrade.quote ? (
-                <>
-                  <p className="market-quote-main">
-                    {isCostSide(mobileTrade.side) ? "Estimated Cost" : "Estimated Net"}: {formatCurrency(mobileTrade.quote.total)}
-                  </p>
-                  <p className="market-quote-sub">Avg {formatCurrency(mobileTrade.quote.average_price, 3)}</p>
-                </>
-              ) : (
-                <p className="subtle">Preview to see cost, proceeds, and average execution price.</p>
-              )}
-            </div>
-
-            <div className="market-mobile-sheet-actions">
-              <button type="button" onClick={() => void previewMobileTrade()} disabled={activeSportTradingHalted || mobileTrade.previewing}>
-                {mobileTrade.previewing ? "Quoting..." : "Preview"}
-              </button>
-              <button
-                type="button"
-                className={mobileTrade.side === "SELL" || mobileTrade.side === "SHORT" ? "primary-btn short-btn" : "primary-btn"}
-                onClick={() => void executeMobileTrade()}
-                disabled={activeSportTradingHalted || !mobileTrade.quote || mobileTrade.placing}
-              >
-                {mobileTrade.placing ? "Placing..." : `Place ${mobileTrade.side}`}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
     </main>
   );
 }
+
+
