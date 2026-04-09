@@ -851,12 +851,6 @@ export default function PortfolioPage() {
               </section>
 
               <section className="table-panel market-table-panel portfolio-market-table-panel">
-                <div className="portfolio-sport-group-head">
-                  <h3>Held Players (Market View)</h3>
-                  <p className="subtle portfolio-sport-summary">
-                    {formatNumber(marketRows.length)} held players shown with the same columns and actions as the market table.
-                  </p>
-                </div>
                 <div className="table-wrap">
                   <table className="market-table portfolio-market-table">
                     <colgroup>

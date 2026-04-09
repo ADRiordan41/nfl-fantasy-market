@@ -1225,6 +1225,11 @@ textarea[aria-invalid="true"] {
   box-shadow: 0 18px 40px rgba(6, 19, 35, 0.24);
 }
 
+/* Remove crowded hero subheadings across page headers while keeping profile bios. */
+.hero-panel > div > p.subtle:not(.profile-bio-text) {
+  display: none;
+}
+
 .live-hero-panel {
   gap: 14px;
 }
@@ -4961,7 +4966,20 @@ button.segment.danger-segment.danger-active {
   max-width: 100%;
 }
 
+.portfolio-market-table-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 .portfolio-market-table-panel .table-wrap {
+  border: 1px solid #b7c8dc;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
   overflow-x: auto;
   overflow-y: hidden;
 }
