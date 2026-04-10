@@ -969,3 +969,50 @@ class AdminIpoActionOut(BaseModel):
     players_updated: int
     ipo_opened_at: datetime | None = None
     message: str
+
+
+class AdminIpoPlayerCreateIn(BaseModel):
+    sport: str = Field(min_length=2, max_length=16)
+    name: str = Field(min_length=1, max_length=128)
+    team: str = Field(min_length=1, max_length=8)
+    position: str = Field(min_length=1, max_length=8)
+    base_price: float = Field(default=10.0, ge=0)
+    k: float = Field(default=0.0025, gt=0, le=1.0)
+    list_immediately: bool = True
+    season: int | None = Field(default=None, ge=1900, le=2500)
+
+
+class AdminIpoPlayerCreateOut(BaseModel):
+    player_id: int
+    sport: str
+    name: str
+    team: str
+    position: str
+    listed: bool
+    ipo_season: int | None = None
+    ipo_opened_at: datetime | None = None
+    base_price: float
+    k: float
+    created: bool
+    message: str
+
+
+class AdminSeasonEndingCloseoutIn(BaseModel):
+    player_id: int = Field(ge=1)
+    payout_price: float | None = Field(default=None, ge=0)
+    delist: bool = True
+    reason: str | None = Field(default="SEASON_ENDING_INJURY", max_length=64)
+
+
+class AdminSeasonEndingCloseoutOut(BaseModel):
+    player_id: int
+    sport: str
+    player_name: str
+    payout_price: float
+    short_payout_price: float
+    positions_closed: int
+    shares_closed: float
+    users_credited: int
+    total_payout: float
+    listed_after: bool
+    message: str

@@ -1054,6 +1054,49 @@ textarea[aria-invalid="true"] {
   min-width: 0;
 }
 
+.admin-ipo-create-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.admin-ipo-create-panel h4 {
+  margin: 0;
+}
+
+.admin-ipo-checkbox-wrap {
+  display: grid;
+  align-content: end;
+}
+
+.admin-ipo-inline-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.admin-ipo-inline-checkbox input {
+  width: auto;
+  margin: 0;
+}
+
+.admin-ipo-closeout-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.admin-ipo-payout-input {
+  width: 84px;
+  min-width: 84px;
+  text-align: right;
+}
+
 .admin-review-controls {
   margin-bottom: 10px;
   display: grid;

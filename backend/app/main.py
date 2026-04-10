@@ -102,8 +102,12 @@ from .schemas import (
     AdminIpoActionOut,
     AdminIpoHideIn,
     AdminIpoLaunchIn,
+    AdminIpoPlayerCreateIn,
+    AdminIpoPlayerCreateOut,
     AdminIpoPlayerOut,
     AdminIpoPlayersOut,
+    AdminSeasonEndingCloseoutIn,
+    AdminSeasonEndingCloseoutOut,
     AdminSiteResetIn,
     AdminSiteResetOut,
     AdminStatsBackfillMlbIn,
@@ -912,6 +916,37 @@ def normalize_sport_code(raw_sport: str | None, default: str = "NFL") -> str:
     if not VALID_SPORT_CODE.match(sport):
         raise HTTPException(400, "Invalid sport code.")
     return sport
+
+
+def normalize_player_name(raw_name: str | None) -> str:
+    normalized = " ".join((raw_name or "").strip().split())
+    if not normalized:
+        raise HTTPException(400, "Player name is required.")
+    if len(normalized) > 128:
+        raise HTTPException(400, "Player name must be 128 characters or fewer.")
+    return normalized
+
+
+def normalize_player_team_code(*, sport_code: str, raw_team: str | None) -> str:
+    normalized = normalize_optional_profile_field(raw_team)
+    if not normalized:
+        raise HTTPException(400, "Team code is required.")
+    condensed = "".join(ch for ch in normalized.upper() if ch.isalnum())
+    if sport_code == "MLB":
+        condensed = normalize_mlb_team_code(condensed) or condensed
+    if not condensed or len(condensed) > 8:
+        raise HTTPException(400, "Team code must contain 1-8 letters or numbers.")
+    return condensed
+
+
+def normalize_player_position_code(raw_position: str | None) -> str:
+    normalized = normalize_optional_profile_field(raw_position)
+    if not normalized:
+        raise HTTPException(400, "Position code is required.")
+    condensed = "".join(ch for ch in normalized.upper() if ch.isalnum())
+    if not condensed or len(condensed) > 8:
+        raise HTTPException(400, "Position code must contain 1-8 letters or numbers.")
+    return condensed
 
 
 def client_ip_from_request(request: Request) -> str:
@@ -7027,6 +7062,88 @@ def build_admin_ipo_summaries(players: list[Player]) -> list[AdminIpoSportOut]:
     return summaries
 
 
+def close_out_single_player_holdings(
+    *,
+    db: Session,
+    player: Player,
+    long_payout_price: Decimal,
+    short_payout_price: Decimal,
+    tx_type_prefix: str,
+) -> tuple[int, Decimal, int, Decimal]:
+    holdings = db.execute(
+        select(Holding)
+        .where(
+            Holding.player_id == int(player.id),
+            Holding.shares_owned != 0,
+        )
+        .order_by(Holding.user_id.asc(), Holding.id.asc())
+        .with_for_update()
+    ).scalars().all()
+    if not holdings:
+        return 0, Decimal("0"), 0, Decimal("0")
+
+    user_ids = sorted({int(holding.user_id) for holding in holdings})
+    users = db.execute(
+        select(User)
+        .where(User.id.in_(user_ids))
+        .order_by(User.id.asc())
+        .with_for_update()
+    ).scalars().all()
+    users_by_id = {int(user.id): user for user in users}
+
+    closed_positions = 0
+    closed_shares = Decimal("0")
+    total_payout = Decimal("0")
+    credited_users: set[int] = set()
+
+    for holding in holdings:
+        user = users_by_id.get(int(holding.user_id))
+        if user is None:
+            continue
+
+        shares = Decimal(str(holding.shares_owned))
+        if shares == 0:
+            continue
+        qty = abs(shares)
+
+        if shares < 0:
+            amount = short_position_close_value(
+                qty=qty,
+                basis_amount=holding_basis_amount(holding),
+                executed_spot_price=short_payout_price,
+            )
+            tx_type = f"{tx_type_prefix}_COVER"
+            unit_price = short_payout_price
+        else:
+            amount = qty * long_payout_price
+            tx_type = f"{tx_type_prefix}_SELL"
+            unit_price = long_payout_price
+
+        user.cash_balance = float(Decimal(str(user.cash_balance)) + amount)
+        holding.shares_owned = 0.0
+        holding.basis_amount = 0.0
+        holding.entry_basis_amount = 0.0
+        holding.mark_basis_amount = 0.0
+
+        closed_positions += 1
+        closed_shares += qty
+        total_payout += amount
+        credited_users.add(int(user.id))
+
+        db.add(
+            Transaction(
+                user_id=user.id,
+                player_id=player.id,
+                type=tx_type,
+                shares=float(qty),
+                unit_price=float(unit_price),
+                amount=float(amount),
+            )
+        )
+
+    return closed_positions, closed_shares, len(credited_users), total_payout
+
+
 def close_out_sport_holdings_for_ipo_hide(
     db: Session,
     players: list[Player],
@@ -7222,6 +7339,109 @@ def admin_ipo_players(
     )
 
 
+@app.post("/admin/ipo/player/create", response_model=AdminIpoPlayerCreateOut)
+def admin_ipo_create_player(
+    payload: AdminIpoPlayerCreateIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    sport_code = normalize_sport_code(payload.sport)
+    player_name = normalize_player_name(payload.name)
+    team_code = normalize_player_team_code(sport_code=sport_code, raw_team=payload.team)
+    position_code = normalize_player_position_code(payload.position)
+    should_list = bool(payload.list_immediately)
+    resolved_season = int(payload.season) if payload.season is not None else chicago_now().year
+    opened_at = chicago_now() if should_list else None
+
+    existing = db.execute(
+        select(Player)
+        .where(
+            Player.sport == sport_code,
+            func.lower(Player.name) == player_name.lower(),
+            Player.team == team_code,
+            Player.position == position_code,
+        )
+        .order_by(Player.id.asc())
+        .limit(1)
+        .with_for_update()
+    ).scalars().first()
+
+    created = False
+    if existing is None:
+        player = Player(
+            sport=sport_code,
+            name=player_name,
+            team=team_code,
+            position=position_code,
+            base_price=float(payload.base_price),
+            k=float(payload.k),
+            total_shares=0.0,
+            market_bias=0.0,
+            market_bias_updated_at=None,
+            ipo_open=should_list,
+            ipo_season=resolved_season if should_list else None,
+            ipo_opened_at=opened_at,
+            live_now=False,
+            live_week=None,
+            live_game_id=None,
+            live_game_label=None,
+            live_game_status=None,
+            live_game_stat_line=None,
+            live_game_fantasy_points=0.0,
+            live_updated_at=None,
+        )
+        db.add(player)
+        db.flush()
+        created = True
+    else:
+        player = existing
+        player.name = player_name
+        player.team = team_code
+        player.position = position_code
+        player.base_price = float(payload.base_price)
+        player.k = float(payload.k)
+        if should_list:
+            player.ipo_open = True
+            player.ipo_season = resolved_season
+            player.ipo_opened_at = opened_at
+
+    db.flush()
+    record_price_points_for_players(
+        db=db,
+        players=[player],
+        source="ADMIN_IPO_PLAYER_CREATE" if created else "ADMIN_IPO_PLAYER_UPDATE",
+    )
+    db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id)},
+        sports={sport_code},
+        include_sports_catalog=True,
+    )
+
+    listed = player_is_listed(player)
+    action_verb = "Created" if created else "Updated"
+    listing_phrase = (
+        f" and listed for season {int(player.ipo_season) if player.ipo_season is not None else resolved_season}"
+        if listed
+        else " as hidden (not listed yet)"
+    )
+    message = f"{action_verb} {player_name} ({team_code} {position_code}){listing_phrase}."
+    return AdminIpoPlayerCreateOut(
+        player_id=int(player.id),
+        sport=sport_code,
+        name=str(player.name),
+        team=str(player.team),
+        position=str(player.position),
+        listed=listed,
+        ipo_season=int(player.ipo_season) if player.ipo_season is not None else None,
+        ipo_opened_at=player.ipo_opened_at,
+        base_price=float(player.base_price),
+        k=float(player.k),
+        created=created,
+        message=message,
+    )
+
+
 @app.post("/admin/ipo/launch", response_model=AdminIpoActionOut)
 def admin_ipo_launch(
     payload: AdminIpoLaunchIn,
@@ -7322,6 +7542,92 @@ def admin_ipo_hide(
         players_updated=updated_count,
         ipo_opened_at=None,
         message=f"{sport_code} IPO hidden.{closeout_msg} Players are no longer visible in market listings.",
+    )
+
+
+@app.post("/admin/ipo/player/season-ending-closeout", response_model=AdminSeasonEndingCloseoutOut)
+def admin_ipo_player_season_ending_closeout(
+    payload: AdminSeasonEndingCloseoutIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    player = db.execute(
+        select(Player).where(Player.id == int(payload.player_id)).with_for_update()
+    ).scalar_one_or_none()
+    if player is None:
+        raise HTTPException(404, "Player not found.")
+
+    stats_snapshot = get_stats_snapshot_by_player(db, [int(player.id)])
+    fundamental_price, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+    default_long_payout_price = current_spot_price(player, fundamental_price=fundamental_price)
+    long_payout_price = (
+        Decimal(str(payload.payout_price))
+        if payload.payout_price is not None
+        else default_long_payout_price
+    )
+    long_payout_price = max(Decimal("0"), long_payout_price)
+    short_payout_price = max(Decimal("0"), points_to_date)
+
+    positions_closed, shares_closed, users_credited, total_payout = close_out_single_player_holdings(
+        db=db,
+        player=player,
+        long_payout_price=long_payout_price,
+        short_payout_price=short_payout_price,
+        tx_type_prefix="SEI",
+    )
+
+    player.total_shares = 0.0
+    set_market_bias(player, bias=Decimal("0"))
+    player.live_now = False
+    player.live_week = None
+    player.live_game_id = None
+    player.live_game_label = None
+    player.live_game_stat_line = None
+    player.live_game_fantasy_points = 0.0
+    reason = normalize_optional_profile_field(payload.reason)
+    player.live_game_status = reason[:64] if reason else "SEASON_ENDING_INJURY"
+    player.live_updated_at = chicago_now()
+
+    if payload.delist:
+        player.ipo_open = False
+        player.ipo_season = None
+        player.ipo_opened_at = None
+
+    add_price_point(
+        db=db,
+        player=player,
+        source="ADMIN_SEI_CLOSEOUT",
+        fundamental_price=fundamental_price,
+        points_to_date=points_to_date,
+        latest_week=latest_week,
+    )
+    db.commit()
+    invalidate_market_read_cache(
+        player_ids={int(player.id)},
+        sports={str(player.sport)},
+        include_sports_catalog=bool(payload.delist),
+    )
+
+    message = (
+        f"Closed out {str(player.name)}. Longs paid at ${float(long_payout_price):,.2f}, "
+        f"shorts covered at earnings ${float(short_payout_price):,.2f}. "
+        f"{positions_closed} position(s), {float(shares_closed):.4f} shares, "
+        f"{users_credited} user(s) credited."
+    )
+    if payload.delist:
+        message += " Player was delisted."
+    return AdminSeasonEndingCloseoutOut(
+        player_id=int(player.id),
+        sport=str(player.sport),
+        player_name=str(player.name),
+        payout_price=float(long_payout_price),
+        short_payout_price=float(short_payout_price),
+        positions_closed=positions_closed,
+        shares_closed=float(shares_closed),
+        users_credited=users_credited,
+        total_payout=float(total_payout),
+        listed_after=player_is_listed(player),
+        message=message,
     )
 
 

@@ -512,6 +512,35 @@ export type AdminIpoActionResult = {
   message: string;
 };
 
+export type AdminIpoPlayerCreateResult = {
+  player_id: number;
+  sport: string;
+  name: string;
+  team: string;
+  position: string;
+  listed: boolean;
+  ipo_season: number | null;
+  ipo_opened_at: string | null;
+  base_price: number;
+  k: number;
+  created: boolean;
+  message: string;
+};
+
+export type AdminSeasonEndingCloseoutResult = {
+  player_id: number;
+  sport: string;
+  player_name: string;
+  payout_price: number;
+  short_payout_price: number;
+  positions_closed: number;
+  shares_closed: number;
+  users_credited: number;
+  total_payout: number;
+  listed_after: boolean;
+  message: string;
+};
+
 export type TradingHaltState = {
   sport: string;
   halted: boolean;

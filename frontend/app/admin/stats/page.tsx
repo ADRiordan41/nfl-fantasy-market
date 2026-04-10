@@ -18,9 +18,11 @@ import type {
   AdminBotSimulationStatus,
   AdminFeedbackMessage,
   AdminIpoActionResult,
+  AdminIpoPlayerCreateResult,
   AdminModerationReport,
   AdminIpoPlayers,
   AdminIpoSport,
+  AdminSeasonEndingCloseoutResult,
   AdminSiteResetResult,
   AdminStatsBackfillMlbResult,
   AdminStatsClearSportResult,
@@ -66,8 +68,17 @@ export default function AdminStatsPage() {
   const [reviewSport, setReviewSport] = useState("");
   const [review, setReview] = useState<AdminIpoPlayers | null>(null);
   const [ipoSeasonBySport, setIpoSeasonBySport] = useState<Record<string, string>>({});
+  const [seiPayoutByPlayerId, setSeiPayoutByPlayerId] = useState<Record<number, string>>({});
   const [busyIpoAction, setBusyIpoAction] = useState("");
   const [ipoMessage, setIpoMessage] = useState("");
+  const [newIpoSport, setNewIpoSport] = useState("NFL");
+  const [newIpoName, setNewIpoName] = useState("");
+  const [newIpoTeam, setNewIpoTeam] = useState("");
+  const [newIpoPosition, setNewIpoPosition] = useState("");
+  const [newIpoBasePrice, setNewIpoBasePrice] = useState("10");
+  const [newIpoK, setNewIpoK] = useState("0.0025");
+  const [newIpoListImmediately, setNewIpoListImmediately] = useState(true);
+  const [newIpoSeason, setNewIpoSeason] = useState(defaultSeason);
   const [sportReviewOpen, setSportReviewOpen] = useState(false);
   const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
   const [globalHaltReason, setGlobalHaltReason] = useState("");
@@ -326,6 +337,12 @@ export default function AdminStatsPage() {
   }, [loadIpoReview, reviewSport]);
 
   useEffect(() => {
+    if (!sportSummaries.length) return;
+    if (sportSummaries.some((row) => row.sport === newIpoSport)) return;
+    setNewIpoSport(sportSummaries[0].sport);
+  }, [newIpoSport, sportSummaries]);
+
+  useEffect(() => {
     void loadFeedback();
   }, [loadFeedback]);
 
@@ -542,6 +559,118 @@ export default function AdminStatsPage() {
       setIpoMessage(result.message);
       notifySuccess(result.message);
       await loadIpoReview(sport);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyIpoAction("");
+    }
+  }
+
+  async function createIpoPlayer() {
+    const sport = newIpoSport.trim().toUpperCase();
+    const name = newIpoName.trim();
+    const team = newIpoTeam.trim().toUpperCase();
+    const position = newIpoPosition.trim().toUpperCase();
+    if (!sport || !name || !team || !position) {
+      setError("Sport, name, team, and position are required to add a player.");
+      notifyError("Fill in sport, name, team, and position.");
+      return;
+    }
+    const basePrice = Number.parseFloat(newIpoBasePrice.trim());
+    if (!Number.isFinite(basePrice) || basePrice < 0) {
+      setError("Base price must be a valid non-negative number.");
+      notifyError("Invalid base price.");
+      return;
+    }
+    const k = Number.parseFloat(newIpoK.trim());
+    if (!Number.isFinite(k) || k <= 0) {
+      setError("K must be a valid positive number.");
+      notifyError("Invalid K value.");
+      return;
+    }
+
+    let parsedSeason: number | null = null;
+    if (newIpoListImmediately || newIpoSeason.trim()) {
+      const parsed = Number.parseInt(newIpoSeason.trim(), 10);
+      if (!Number.isFinite(parsed) || parsed < 1900 || parsed > 2500) {
+        setError("Season must be a valid year.");
+        notifyError("Invalid season year.");
+        return;
+      }
+      parsedSeason = parsed;
+    }
+
+    setBusyIpoAction("create-player");
+    setError("");
+    setIpoMessage("");
+    try {
+      const result = await apiPost<AdminIpoPlayerCreateResult>("/admin/ipo/player/create", {
+        sport,
+        name,
+        team,
+        position,
+        base_price: basePrice,
+        k,
+        list_immediately: newIpoListImmediately,
+        season: parsedSeason,
+      });
+      setIpoMessage(result.message);
+      notifySuccess(result.message);
+      setNewIpoName("");
+      setNewIpoTeam("");
+      setNewIpoPosition("");
+      setReviewSport(result.sport);
+      await loadIpoSports();
+      await loadIpoReview(result.sport);
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyIpoAction("");
+    }
+  }
+
+  async function closeOutSeasonEndingInjury(player: { id: number; sport: string; name: string; listed: boolean }) {
+    if (!player.listed) {
+      notifyError("Player is already hidden.");
+      return;
+    }
+
+    let payoutPrice: number | null = null;
+    try {
+      payoutPrice = parseOptionalPayoutPrice(seiPayoutByPlayerId[player.id] ?? "");
+    } catch (err: unknown) {
+      const message = toMessage(err);
+      setError(message);
+      notifyError(message);
+      return;
+    }
+
+    const confirmMessage = payoutPrice == null
+      ? `Close out all ${player.name} positions at current spot and delist this player?`
+      : `Close out all ${player.name} positions at payout $${payoutPrice.toFixed(2)} and delist this player?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    setBusyIpoAction(`closeout:${player.id}`);
+    setError("");
+    setIpoMessage("");
+    try {
+      const result = await apiPost<AdminSeasonEndingCloseoutResult>(
+        "/admin/ipo/player/season-ending-closeout",
+        {
+          player_id: player.id,
+          payout_price: payoutPrice,
+          delist: true,
+          reason: "SEASON_ENDING_INJURY",
+        },
+      );
+      setIpoMessage(result.message);
+      notifySuccess(result.message);
+      setSeiPayoutByPlayerId((previous) => ({
+        ...previous,
+        [player.id]: "",
+      }));
+      await loadIpoSports();
+      await loadIpoReview(player.sport);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -841,6 +970,16 @@ export default function AdminStatsPage() {
     return parsed;
   }
 
+  function parseOptionalPayoutPrice(raw: string): number | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseFloat(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error("Payout price must be a non-negative number.");
+    }
+    return parsed;
+  }
+
   async function saveBotProfile(bot: AdminBotProfile) {
     setBusyBotAction(`save:${bot.id}`);
     setError("");
@@ -1051,6 +1190,120 @@ export default function AdminStatsPage() {
       <section className="table-panel">
         <h3>IPO Control Center</h3>
         {ipoMessage && <p className="success-box" role="status">{ipoMessage}</p>}
+        <div className="admin-ipo-create-panel">
+          <h4>Add Midseason Prospect</h4>
+          <div className="admin-input-grid">
+            <div>
+              <label className="field-label" htmlFor="new-ipo-sport">
+                Sport
+              </label>
+              <select
+                id="new-ipo-sport"
+                value={newIpoSport}
+                onChange={(event) => setNewIpoSport(event.target.value)}
+              >
+                {activeSportOptions.map((sport) => (
+                  <option key={sport} value={sport}>
+                    {sport}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="new-ipo-name">
+                Player Name
+              </label>
+              <input
+                id="new-ipo-name"
+                value={newIpoName}
+                onChange={(event) => setNewIpoName(event.target.value)}
+                placeholder="Top Prospect"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="new-ipo-team">
+                Team
+              </label>
+              <input
+                id="new-ipo-team"
+                value={newIpoTeam}
+                onChange={(event) => setNewIpoTeam(event.target.value)}
+                placeholder="NYY"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="new-ipo-position">
+                Position
+              </label>
+              <input
+                id="new-ipo-position"
+                value={newIpoPosition}
+                onChange={(event) => setNewIpoPosition(event.target.value)}
+                placeholder="OF"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="new-ipo-base-price">
+                Base Price
+              </label>
+              <input
+                id="new-ipo-base-price"
+                inputMode="decimal"
+                value={newIpoBasePrice}
+                onChange={(event) => setNewIpoBasePrice(event.target.value)}
+                placeholder="10"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="new-ipo-k">
+                K
+              </label>
+              <input
+                id="new-ipo-k"
+                inputMode="decimal"
+                value={newIpoK}
+                onChange={(event) => setNewIpoK(event.target.value)}
+                placeholder="0.0025"
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="new-ipo-season">
+                IPO Season
+              </label>
+              <input
+                id="new-ipo-season"
+                inputMode="numeric"
+                value={newIpoSeason}
+                onChange={(event) => setNewIpoSeason(event.target.value)}
+                placeholder={defaultSeason}
+              />
+            </div>
+            <div className="admin-ipo-checkbox-wrap">
+              <label className="field-label" htmlFor="new-ipo-list-now">
+                Listing
+              </label>
+              <label className="admin-ipo-inline-checkbox" htmlFor="new-ipo-list-now">
+                <input
+                  id="new-ipo-list-now"
+                  type="checkbox"
+                  checked={newIpoListImmediately}
+                  onChange={(event) => setNewIpoListImmediately(event.target.checked)}
+                />
+                List immediately
+              </label>
+            </div>
+          </div>
+          <div className="admin-actions">
+            <button
+              className="primary-btn"
+              type="button"
+              onClick={() => void createIpoPlayer()}
+              disabled={busyIpoAction.length > 0}
+            >
+              {busyIpoAction === "create-player" ? "Adding..." : "Add Prospect + IPO"}
+            </button>
+          </div>
+        </div>
         {!sportSummaries.length ? (
           <p className="subtle">No sports found in the current player catalog.</p>
         ) : (
@@ -1970,6 +2223,7 @@ export default function AdminStatsPage() {
                 <p className="subtle">
                   {review.sport}: listed {formatNumber(review.listed_players)} / {formatNumber(review.total_players)} players.
                 </p>
+                <p className="subtle">SEI closeout pays longs at current spot and shorts at current earnings, then delists the player. Payout override only affects the long side.</p>
                 <div className="table-wrap">
                   <table>
                     <thead>
@@ -1980,6 +2234,7 @@ export default function AdminStatsPage() {
                         <th>Listed</th>
                         <th>IPO Season</th>
                         <th>Purchase Price</th>
+                        <th>SEI Closeout</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1993,6 +2248,31 @@ export default function AdminStatsPage() {
                           </td>
                           <td>{player.ipo_season == null ? "--" : String(player.ipo_season)}</td>
                           <td>{formatCurrency(player.base_price, 2)}</td>
+                          <td>
+                            <div className="admin-ipo-closeout-cell">
+                              <input
+                                className="admin-ipo-payout-input"
+                                inputMode="decimal"
+                                value={seiPayoutByPlayerId[player.id] ?? ""}
+                                onChange={(event) =>
+                                  setSeiPayoutByPlayerId((previous) => ({
+                                    ...previous,
+                                    [player.id]: event.target.value,
+                                  }))
+                                }
+                                placeholder="spot"
+                                aria-label={`Optional long payout for ${player.name}`}
+                              />
+                              <button
+                                type="button"
+                                className="danger-btn"
+                                onClick={() => void closeOutSeasonEndingInjury(player)}
+                                disabled={busyIpoAction.length > 0 || !player.listed}
+                              >
+                                {busyIpoAction === `closeout:${player.id}` ? "Closing..." : "Close + Pay"}
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
