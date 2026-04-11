@@ -1,24 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --bg-top: #061a36;
-  --bg-mid: #0d2f63;
-  --bg-bottom: #164d89;
-  --surface: rgba(255, 255, 255, 0.9);
-  --surface-strong: rgba(251, 254, 255, 0.96);
-  --ink: #0b1c34;
-  --muted: #5b6f89;
-  --line: rgba(177, 200, 225, 0.82);
-  --brand: #2f7fff;
-  --brand-dark: #1c4fbf;
-  --accent: #ff8a2a;
-  --accent-dark: #d4650a;
-  --short: #cc4333;
-  --short-dark: #a12a1e;
-  --up: #2f7fff;
-  --down: #d45f2b;
-  --danger-bg: #fff2f0;
-  --danger-line: #f0b5a8;
+  --bg-top: #040811;
+  --bg-mid: #0a1323;
+  --bg-bottom: #0f1b31;
+  --surface: rgba(13, 22, 39, 0.84);
+  --surface-strong: rgba(17, 28, 48, 0.94);
+  --ink: #e8eefb;
+  --muted: #93a6c6;
+  --line: rgba(101, 128, 173, 0.34);
+  --brand: #5ba1ff;
+  --brand-dark: #2b62c9;
+  --accent: #ff9d4a;
+  --accent-dark: #db6f18;
+  --short: #ff7b68;
+  --short-dark: #d84f3f;
+  --up: #74b2ff;
+  --down: #ff925d;
+  --danger-bg: rgba(82, 28, 28, 0.48);
+  --danger-line: rgba(227, 111, 92, 0.42);
   --app-shell-max-width: 1340px;
   --app-shell-vw: 94vw;
 }
@@ -32,11 +32,12 @@ body {
   min-height: 100vh;
   position: relative;
   isolation: isolate;
+  color-scheme: dark;
   color: var(--ink);
   background:
-    radial-gradient(circle at -8% -20%, rgba(66, 146, 255, 0.42) 0%, rgba(66, 146, 255, 0) 44%),
-    radial-gradient(circle at 106% -12%, rgba(255, 148, 71, 0.42) 0%, rgba(255, 148, 71, 0) 40%),
-    radial-gradient(circle at 56% 124%, rgba(126, 176, 255, 0.32) 0%, rgba(126, 176, 255, 0) 46%),
+    radial-gradient(circle at -8% -20%, rgba(73, 145, 255, 0.2) 0%, rgba(73, 145, 255, 0) 42%),
+    radial-gradient(circle at 108% -10%, rgba(255, 157, 74, 0.16) 0%, rgba(255, 157, 74, 0) 38%),
+    radial-gradient(circle at 58% 126%, rgba(78, 126, 212, 0.14) 0%, rgba(78, 126, 212, 0) 42%),
     linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 48%, var(--bg-bottom) 100%);
   background-attachment: fixed;
   font-family: var(--font-brand-sans, "Aleo"), "Aleo", serif;
@@ -49,8 +50,8 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 100%),
-    linear-gradient(210deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 100%);
+    linear-gradient(120deg, rgba(144, 171, 218, 0.06) 0 1px, transparent 1px 100%),
+    linear-gradient(210deg, rgba(118, 146, 193, 0.05) 0 1px, transparent 1px 100%);
   background-size: 22px 22px, 26px 26px;
   opacity: 0.42;
 }
@@ -62,11 +63,11 @@ body::after {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(circle at 20% 32%, rgba(124, 180, 255, 0.28) 0%, rgba(124, 180, 255, 0) 40%),
-    radial-gradient(circle at 80% 26%, rgba(255, 166, 96, 0.24) 0%, rgba(255, 166, 96, 0) 34%),
-    radial-gradient(circle at 54% 82%, rgba(146, 191, 255, 0.26) 0%, rgba(146, 191, 255, 0) 38%);
-  filter: blur(26px) saturate(120%);
-  opacity: 0.95;
+    radial-gradient(circle at 18% 32%, rgba(91, 161, 255, 0.16) 0%, rgba(91, 161, 255, 0) 38%),
+    radial-gradient(circle at 80% 24%, rgba(255, 157, 74, 0.12) 0%, rgba(255, 157, 74, 0) 32%),
+    radial-gradient(circle at 54% 82%, rgba(77, 125, 210, 0.1) 0%, rgba(77, 125, 210, 0) 36%);
+  filter: blur(32px) saturate(112%);
+  opacity: 0.9;
 }
 
 a {
@@ -80,9 +81,9 @@ a {
   top: -48px;
   z-index: 80;
   border-radius: 10px;
-  border: 1px solid rgba(171, 198, 232, 0.95);
-  background: rgba(250, 253, 255, 0.98);
-  color: #16355a;
+  border: 1px solid rgba(111, 142, 194, 0.78);
+  background: rgba(12, 22, 39, 0.96);
+  color: var(--ink);
   padding: 8px 12px;
   box-shadow: 0 12px 26px rgba(6, 19, 35, 0.22);
   transition: top 120ms ease;
@@ -136,7 +137,7 @@ button,
 button:hover,
 .ghost-link:hover {
   transform: translateY(-1px);
-  border-color: #a7b8c3;
+  border-color: rgba(120, 152, 206, 0.72);
 }
 
 button:disabled {
@@ -150,7 +151,7 @@ select {
   height: 42px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(11, 20, 36, 0.92);
   color: var(--ink);
   padding: 0 12px;
   width: 100%;
@@ -161,7 +162,7 @@ textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(11, 20, 36, 0.94);
   color: var(--ink);
   padding: 10px 12px;
   line-height: 1.45;
@@ -170,7 +171,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #7a8ea8;
+  color: #7083a2;
 }
 
 input:hover,
@@ -189,8 +190,8 @@ textarea:focus {
 input:disabled,
 select:disabled,
 textarea:disabled {
-  background: rgba(236, 244, 252, 0.82);
-  color: #5f748f;
+  background: rgba(28, 39, 60, 0.78);
+  color: #7b8da8;
 }
 
 input[aria-invalid="true"],
@@ -4561,7 +4562,7 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-mobile-col-player {
-  width: 33%;
+  width: 29%;
 }
 
 .market-mobile-col-price {
@@ -4931,20 +4932,20 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-page-shell .desktop-market-table .market-col-player {
-  width: 258px;
+  width: 220px;
 }
 
 .market-page-shell .desktop-market-table .market-col-price {
-  width: 88px;
+  width: 90px;
 }
 
 .market-page-shell .desktop-market-table .market-col-change,
 .market-page-shell .desktop-market-table .market-col-change-24h {
-  width: 96px;
+  width: 90px;
 }
 
 .market-page-shell .desktop-market-table .market-col-earnings {
-  width: 102px;
+  width: 90px;
 }
 
 .market-page-shell .desktop-market-table .market-col-quick {
@@ -4960,27 +4961,27 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-page-shell .desktop-market-table .market-col-quote {
-  width: 148px;
+  width: 132px;
 }
 
 .market-col-player {
-  width: 232px;
+  width: 208px;
 }
 
 .market-col-price {
-  width: 76px;
+  width: 82px;
 }
 
 .market-col-change {
-  width: 72px;
+  width: 82px;
 }
 
 .market-col-change-24h {
-  width: 78px;
+  width: 82px;
 }
 
 .market-col-earnings {
-  width: 86px;
+  width: 82px;
 }
 
 .market-col-price-side {
@@ -5016,7 +5017,7 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-col-quote {
-  width: 128px;
+  width: 114px;
 }
 
 .portfolio-market-table .market-col-quote {
@@ -5231,18 +5232,21 @@ button.segment.danger-segment.danger-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 0;
   width: 100%;
   min-height: 0;
   height: auto;
   border: 0;
-  border-radius: 8px;
+  border-radius: 0;
   background: transparent;
   padding: 3px 5px;
   color: inherit;
   box-shadow: none;
   font-weight: 700;
   white-space: nowrap;
+  position: relative;
+  appearance: none;
+  min-width: 0;
 }
 
 .market-page-shell .desktop-market-table .market-sort-btn {
@@ -5256,58 +5260,29 @@ button.segment.danger-segment.danger-active {
 .market-sort-btn:hover {
   transform: none;
   border-color: transparent;
-  background: rgba(227, 240, 255, 0.84);
+  background: transparent;
   text-decoration: none;
 }
 
 .market-sort-btn.active {
-  background: rgba(214, 232, 255, 0.94);
-  color: #14385d;
-  box-shadow: inset 0 0 0 1px rgba(143, 177, 214, 0.82);
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.market-sort-btn.active .market-sort-label {
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--ink);
 }
 
 .market-sort-indicator {
-  position: relative;
-  display: inline-block;
-  width: 8px;
-  height: 10px;
-  flex: 0 0 auto;
-}
-
-.market-sort-indicator::before,
-.market-sort-indicator::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  display: none;
   width: 0;
   height: 0;
-  border-left: 3px solid transparent;
-  border-right: 3px solid transparent;
-  opacity: 0.4;
-}
-
-.market-sort-indicator::before {
-  top: 0;
-  border-bottom: 4px solid #537294;
-}
-
-.market-sort-indicator::after {
-  bottom: 0;
-  border-top: 4px solid #537294;
-}
-
-.market-sort-indicator.asc::before,
-.market-sort-indicator.desc::after,
-.market-sort-indicator.both::before,
-.market-sort-indicator.both::after {
-  opacity: 1;
-}
-
-.market-sort-btn.active .market-sort-indicator::before,
-.market-sort-btn.active .market-sort-indicator::after {
-  border-bottom-color: #0e345c;
-  border-top-color: #0e345c;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .market-player-cell {
@@ -6067,7 +6042,7 @@ td {
   }
 
   .market-mobile-list .market-mobile-col-player {
-    width: 33%;
+    width: 30%;
   }
 
   .market-mobile-list .market-mobile-col-price {
@@ -6417,7 +6392,7 @@ td {
   }
 
   .market-mobile-list .market-mobile-col-player {
-    width: 34%;
+    width: 31%;
   }
 
   .market-mobile-list .market-mobile-col-price {
@@ -6859,4 +6834,940 @@ td {
 .notification-row.unread {
   border-color: rgba(47, 127, 255, 0.35);
   background: rgba(47, 127, 255, 0.08);
+}
+
+/* Global dark-theme override layer */
+.app-header,
+.mobile-nav,
+.mobile-home-menu,
+.search-results,
+.auth-card,
+.hero-panel,
+.toolbar,
+.table-panel,
+.empty-panel,
+.holding-card,
+.admin-panel,
+.admin-setting-card,
+.admin-ipo-card,
+.admin-ipo-create-panel,
+.admin-feedback-detail,
+.community-compose,
+.community-post-card,
+.community-comment-card,
+.market-mobile-card,
+.market-mobile-sheet,
+.market-mobile-controls,
+.market-mobile-table-wrap,
+.notification-row,
+.kpi-card,
+.home-step,
+.auth-page .auth-card,
+.app-footer-link,
+.mobile-home-action {
+  border-color: rgba(95, 123, 170, 0.34) !important;
+  background:
+    linear-gradient(180deg, rgba(19, 30, 49, 0.96) 0%, rgba(12, 20, 35, 0.94) 100%) !important;
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  color: var(--ink);
+}
+
+.app-header {
+  background:
+    radial-gradient(circle at 12% -48%, rgba(91, 161, 255, 0.1) 0%, rgba(91, 161, 255, 0) 38%),
+    radial-gradient(circle at 102% -30%, rgba(255, 157, 74, 0.06) 0%, rgba(255, 157, 74, 0) 32%),
+    linear-gradient(152deg, rgba(13, 21, 36, 0.98) 0%, rgba(8, 14, 26, 0.96) 100%) !important;
+  border-color: rgba(77, 101, 138, 0.34) !important;
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.brand-lockup:hover {
+  background: rgba(91, 161, 255, 0.1);
+}
+
+.brand-matchup {
+  color: #ffab61;
+  text-shadow: 0 0 18px rgba(255, 157, 74, 0.12);
+}
+
+.brand-market {
+  color: #72afff;
+  text-shadow: 0 0 20px rgba(91, 161, 255, 0.16);
+}
+
+.desktop-tab,
+.mobile-link,
+.app-footer-link,
+.mobile-home-action,
+.header-icon-link {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(104, 131, 174, 0.16);
+}
+
+.desktop-tab:hover,
+.mobile-home-action:hover,
+.app-footer-link:hover,
+.header-icon-link:hover {
+  color: var(--ink);
+  background: rgba(91, 161, 255, 0.06);
+  border-color: rgba(104, 151, 220, 0.28);
+}
+
+button,
+.ghost-link,
+.auth-btn,
+.header-icon-link,
+.mobile-home-action,
+.app-footer-link {
+  background: rgba(16, 26, 44, 0.94) !important;
+  color: var(--ink) !important;
+  border-color: rgba(94, 121, 165, 0.34) !important;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+button:hover,
+.ghost-link:hover,
+.auth-btn:hover,
+.header-icon-link:hover,
+.mobile-home-action:hover,
+.app-footer-link:hover {
+  background: rgba(21, 34, 57, 0.98) !important;
+  color: #f2f6ff !important;
+  border-color: rgba(108, 142, 196, 0.44) !important;
+}
+
+button:disabled,
+.ghost-link:disabled,
+.auth-btn:disabled {
+  background: rgba(19, 28, 43, 0.7) !important;
+  color: #8092ae !important;
+  border-color: rgba(84, 104, 137, 0.28) !important;
+}
+
+.desktop-tab.active,
+.mobile-link.active,
+.mobile-home-trigger.open,
+.auth-tab.active,
+.primary-btn,
+.home-create-account-cta {
+  color: #f8fbff !important;
+  background: linear-gradient(135deg, #2f6fe0 0%, #5ba1ff 58%, #ff9d4a 100%) !important;
+  border-color: rgba(114, 175, 255, 0.42) !important;
+  box-shadow:
+    0 14px 28px rgba(10, 20, 38, 0.32),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset !important;
+}
+
+.subtle,
+.field-label,
+.toolbar-last-updated,
+.app-footer-copy,
+.market-header-group-row th,
+.market-header-single,
+.market-price-header,
+.market-header-corner .market-sort-label,
+.community-meta,
+.notification-row time,
+.kpi-card span {
+  color: var(--muted) !important;
+}
+
+.home-hero,
+.community-hero {
+  background:
+    radial-gradient(circle at 85% 10%, rgba(91, 161, 255, 0.14) 0%, rgba(91, 161, 255, 0) 34%),
+    radial-gradient(circle at 10% 100%, rgba(255, 157, 74, 0.12) 0%, rgba(255, 157, 74, 0) 32%),
+    linear-gradient(150deg, rgba(20, 31, 52, 0.96) 0%, rgba(11, 18, 31, 0.96) 100%) !important;
+  border-color: rgba(99, 128, 174, 0.34) !important;
+}
+
+.home-headline,
+.community-post-title,
+.community-post-detail h3,
+.auth-card h1,
+.auth-card h2,
+.hero-panel h1,
+.hero-panel h2,
+.table-panel h3,
+.empty-panel h3 {
+  color: #edf3ff;
+}
+
+.market-page-shell .market-table-panel .table-wrap,
+.portfolio-market-table-panel .table-wrap,
+.market-mobile-table,
+.market-table {
+  border-color: rgba(90, 116, 158, 0.5) !important;
+  background: #101a2d !important;
+  box-shadow: none !important;
+}
+
+.market-table thead th,
+.market-mobile-table thead th,
+.market-header-group {
+  background: linear-gradient(180deg, rgba(28, 42, 66, 0.98) 0%, rgba(20, 30, 47, 0.98) 100%) !important;
+  border-color: rgba(90, 116, 158, 0.5) !important;
+  box-shadow: inset 0 -1px 0 rgba(117, 145, 191, 0.18) !important;
+}
+
+.market-table th,
+.market-table td,
+.market-mobile-table th,
+.market-mobile-table td {
+  border-color: rgba(90, 116, 158, 0.42) !important;
+}
+
+.market-table tbody tr:nth-child(odd) td,
+.market-mobile-table-row:nth-child(odd) td,
+.market-table tbody tr:nth-child(odd) .market-sticky-player-cell,
+.market-mobile-table tbody tr:nth-child(odd) .market-sticky-player-cell {
+  background: #111b2c !important;
+}
+
+.market-table tbody tr:nth-child(even) td,
+.market-mobile-table-row:nth-child(even) td,
+.market-table tbody tr:nth-child(even) .market-sticky-player-cell,
+.market-mobile-table tbody tr:nth-child(even) .market-sticky-player-cell {
+  background: #0d1523 !important;
+}
+
+.market-table tbody tr:hover td,
+.market-table tbody tr:hover .market-sticky-player-cell,
+.market-mobile-table-row:hover td,
+.market-mobile-table tbody tr:hover .market-sticky-player-cell,
+.market-row-quoted td,
+.market-row-quoted .market-sticky-player-cell,
+.market-row-placing td,
+.market-row-placing .market-sticky-player-cell {
+  background: #1d304f !important;
+}
+
+.market-mobile-player-name,
+.market-player-name,
+.market-header-corner .market-sort-label,
+.market-table .card-title,
+.card-title,
+.community-user-link,
+.notification-row strong,
+.kpi-card strong {
+  color: #edf3ff !important;
+}
+
+.segment {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(93, 118, 158, 0.34);
+  color: var(--muted);
+}
+
+.segment.active,
+button.segment.danger-segment.danger-active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.chip,
+.market-mobile-sheet-metrics span,
+.market-mobile-quote-card,
+.market-mobile-holding-metrics {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: var(--ink) !important;
+}
+
+.search-results,
+.community-sort-panel,
+.community-window-menu {
+  background:
+    linear-gradient(180deg, rgba(20, 30, 49, 0.98) 0%, rgba(12, 20, 35, 0.98) 100%) !important;
+  border-color: rgba(97, 126, 171, 0.4) !important;
+}
+
+.notification-row.unread,
+.leaderboard-row-active {
+  background: rgba(91, 161, 255, 0.12) !important;
+  border-color: rgba(91, 161, 255, 0.24) !important;
+}
+
+/* Secondary dark sweep for fixed-color inner content */
+table,
+th,
+td,
+.table-wrap table,
+.table-wrap th,
+.table-wrap td {
+  color: var(--ink);
+  border-color: rgba(87, 111, 147, 0.4);
+}
+
+thead th {
+  color: #c6d5f0;
+}
+
+.community-post-preview,
+.community-comment-body,
+.community-post-body,
+.home-tutorial-step p,
+.home-tutorial-subtitle,
+.market-mobile-team-text,
+.home-market-mobile-player .subtle,
+.home-market-mobile-bottom .subtle,
+.polished-empty,
+.empty-panel p,
+.table-panel p {
+  color: #d7e2f5 !important;
+}
+
+.community-post-title,
+.community-user-link,
+.community-user-link:hover,
+.card-title,
+.empty-state-head h3,
+.home-market-mobile-top strong,
+.home-market-mobile-bottom span:last-child,
+.home-tutorial-head h3,
+.home-tutorial-step h4 {
+  color: #eff4ff !important;
+}
+
+.community-meta {
+  border-top-color: rgba(95, 122, 162, 0.36) !important;
+}
+
+.home-market-mobile-card,
+.home-tutorial-modal,
+.home-tutorial-step,
+.polished-empty,
+.empty-state-icon-wrap,
+.live-date-picker-field,
+.market-card.team-tinted,
+.market-card.team-tinted .team-pill,
+.team-pill {
+  border-color: rgba(92, 120, 162, 0.38) !important;
+  color: var(--ink) !important;
+}
+
+.home-market-mobile-card,
+.home-tutorial-step,
+.polished-empty,
+.live-date-picker-field,
+.empty-state-icon-wrap {
+  background:
+    linear-gradient(180deg, rgba(18, 29, 48, 0.96) 0%, rgba(12, 20, 35, 0.94) 100%) !important;
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.home-tutorial-modal {
+  background:
+    radial-gradient(circle at 8% -30%, rgba(91, 161, 255, 0.12) 0%, rgba(91, 161, 255, 0) 38%),
+    radial-gradient(circle at 102% -26%, rgba(255, 157, 74, 0.1) 0%, rgba(255, 157, 74, 0) 40%),
+    linear-gradient(165deg, rgba(18, 29, 48, 0.99) 0%, rgba(10, 17, 30, 0.98) 100%) !important;
+}
+
+.home-tutorial-open-btn-secondary,
+.home-tutorial-switch-btn,
+.sport-filter-btn,
+.live-date-picker-field {
+  background: rgba(16, 26, 44, 0.94) !important;
+  color: var(--ink) !important;
+  border-color: rgba(94, 121, 165, 0.34) !important;
+}
+
+.sport-filter-btn.active {
+  color: #f8fbff !important;
+}
+
+.live-date-picker-value {
+  color: var(--ink);
+}
+
+.live-date-picker-field input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2);
+}
+
+.market-card.team-tinted {
+  background:
+    radial-gradient(circle at 88% -16%, rgba(var(--team-rgb), 0.18) 0%, rgba(var(--team-rgb), 0) 46%),
+    linear-gradient(162deg, rgba(18, 29, 48, 0.98) 0%, rgba(12, 20, 35, 0.96) 62%, rgba(var(--team-rgb), 0.12) 100%) !important;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(var(--team-rgb), 0.12) inset !important;
+}
+
+.market-card.team-tinted .team-pill,
+.team-pill {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: #d6e3f7 !important;
+}
+
+.up,
+.market-cell-numeric.up,
+.trend.up {
+  color: #83c8ff !important;
+}
+
+.down,
+.market-cell-numeric.down,
+.trend.down {
+  color: #ff9a74 !important;
+}
+
+/* Header and nav chrome must stay dark across later desktop media-query overrides */
+.desktop-nav {
+  background: rgba(10, 17, 30, 0.72) !important;
+  border: 1px solid rgba(74, 98, 137, 0.26) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 10px 22px rgba(0, 0, 0, 0.16) !important;
+}
+
+.desktop-tab {
+  background: rgba(255, 255, 255, 0.02) !important;
+  color: var(--muted) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+.desktop-tab + .desktop-tab {
+  border-left: 1px solid rgba(84, 109, 150, 0.28) !important;
+}
+
+.desktop-tab:hover {
+  background: rgba(91, 161, 255, 0.06) !important;
+  color: var(--ink) !important;
+}
+
+.desktop-tab.active {
+  background: linear-gradient(135deg, #275fc0 0%, #458bef 62%, #ff9d4a 100%) !important;
+  color: #ffffff !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 22px rgba(0, 0, 0, 0.24) !important;
+}
+
+.desktop-tab.active::before {
+  background: rgba(255, 255, 255, 0.74) !important;
+}
+
+.auth-link,
+.auth-muted,
+.auth-btn,
+.header-icon-link {
+  background: rgba(16, 26, 44, 0.94) !important;
+  color: var(--ink) !important;
+  border-color: rgba(94, 121, 165, 0.34) !important;
+}
+
+.auth-muted {
+  color: var(--muted) !important;
+  border-style: solid !important;
+}
+
+.header-search,
+.header-search-form {
+  background: transparent !important;
+}
+
+.header-search-input {
+  background: rgba(12, 21, 37, 0.96) !important;
+  color: var(--ink) !important;
+  border-color: rgba(95, 122, 164, 0.38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 8px 18px rgba(0, 0, 0, 0.18) !important;
+}
+
+.header-search-input::placeholder {
+  color: #7f92af !important;
+}
+
+.search-results {
+  background:
+    linear-gradient(180deg, rgba(18, 29, 48, 0.99) 0%, rgba(10, 17, 30, 0.98) 100%) !important;
+  border-color: rgba(95, 122, 164, 0.38) !important;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Named component cleanup for remaining light-mode objects */
+.auth-muted,
+.mobile-home-menu,
+.mobile-home-action,
+.app-footer-link,
+.home-tutorial-open-btn-secondary,
+.home-tutorial-switch-btn,
+.community-sort-toggle .segment,
+.live-date-picker-field,
+.empty-state-icon-wrap,
+.market-mobile-quote-card,
+.market-mobile-holding-metrics,
+.market-mobile-sheet-metrics span,
+.community-sort-panel,
+.community-window-menu,
+.search-result-item,
+.search-empty,
+.search-section-label {
+  background: rgba(16, 26, 44, 0.94) !important;
+  color: var(--ink) !important;
+  border-color: rgba(94, 121, 165, 0.34) !important;
+}
+
+.mobile-nav,
+.mobile-home-menu,
+.app-footer-link,
+.notification-row,
+.table-panel,
+.empty-panel,
+.holding-card,
+.market-card,
+.trade-card,
+.quote-card,
+.community-post-card,
+.community-comment-card,
+.market-mobile-card,
+.market-mobile-sheet,
+.market-mobile-controls,
+.market-mobile-table-wrap,
+.auth-card,
+.hero-panel,
+.toolbar,
+.admin-panel,
+.admin-setting-card,
+.admin-ipo-card,
+.admin-ipo-create-panel,
+.admin-feedback-detail,
+.kpi-card,
+.home-step,
+.home-tutorial-modal,
+.home-tutorial-step {
+  background:
+    linear-gradient(180deg, rgba(19, 30, 49, 0.96) 0%, rgba(12, 20, 35, 0.94) 100%) !important;
+  color: var(--ink) !important;
+  border-color: rgba(95, 123, 170, 0.34) !important;
+}
+
+.app-status-strip,
+.app-footer,
+.market-mobile-controls .subtle,
+.home-market-mobile-player .subtle,
+.home-market-mobile-bottom .subtle,
+.auth-error,
+.market-table-status,
+.community-meta,
+.subtle {
+  color: var(--muted) !important;
+}
+
+.home-snapshot-head h3,
+.community-post-title,
+.community-post-detail h3,
+.table-panel h3,
+.empty-panel h3,
+.card-title,
+.market-player-name,
+.market-mobile-player-name,
+.home-market-mobile-top strong,
+.kpi-card strong,
+.empty-state-head h3,
+.search-result-name {
+  color: #edf3ff !important;
+}
+
+.community-post-preview,
+.community-comment-body,
+.community-post-body,
+.search-result-meta,
+.search-empty,
+.search-section-label,
+.table-panel td,
+.table-panel th {
+  color: #d7e2f5 !important;
+}
+
+.community-user-link,
+.community-user-link:hover,
+.home-market-mobile-player .community-user-link,
+.home-market-mobile-player .community-user-link:hover {
+  color: #9cc7ff !important;
+}
+
+.table-wrap,
+.table-wrap table,
+.home-market-table-wrap,
+.market-page-shell .market-table-panel .table-wrap,
+.portfolio-market-table-panel .table-wrap {
+  background: transparent !important;
+}
+
+.table-panel table,
+.table-panel thead th,
+.table-panel tbody td,
+.table-panel tr,
+.home-market-table-wrap table,
+.home-market-table-wrap thead th,
+.home-market-table-wrap tbody td {
+  background: transparent !important;
+  border-color: rgba(87, 111, 147, 0.4) !important;
+}
+
+.market-mobile-table,
+.market-table,
+.market-mobile-table thead th,
+.market-table thead th,
+.market-mobile-table td,
+.market-table td {
+  color: var(--ink) !important;
+}
+
+.mobile-nav {
+  background:
+    linear-gradient(180deg, rgba(14, 22, 37, 0.96) 0%, rgba(9, 15, 27, 0.94) 100%) !important;
+  border-color: rgba(78, 102, 139, 0.28) !important;
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.mobile-link {
+  position: relative;
+  color: #8da3c5 !important;
+  background: rgba(255, 255, 255, 0.015) !important;
+  border-color: transparent !important;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.mobile-link:hover,
+.mobile-link:focus-visible {
+  color: var(--ink) !important;
+  background: rgba(91, 161, 255, 0.05) !important;
+}
+
+.mobile-link.active,
+.mobile-home-trigger.open {
+  color: #eaf2ff !important;
+  border-color: rgba(109, 146, 206, 0.24) !important;
+  background:
+    linear-gradient(180deg, rgba(34, 50, 79, 0.98) 0%, rgba(22, 34, 56, 0.96) 100%) !important;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(91, 161, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.mobile-link.active .nav-icon,
+.mobile-home-trigger.open .nav-icon {
+  filter: drop-shadow(0 0 8px rgba(91, 161, 255, 0.12));
+}
+
+.mobile-link.active::after,
+.mobile-home-trigger.open::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 6px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(91, 161, 255, 0.3) 0%, rgba(255, 157, 74, 0.28) 100%);
+}
+
+/* Final page-by-page utility cleanup */
+.success-box,
+.error-box,
+.app-status-strip,
+.portfolio-user-meta,
+.portfolio-admin-badge,
+.auth-error,
+.market-ticker-empty,
+.empty-state-icon-wrap,
+.live-date-picker-field,
+.sport-filter-btn,
+.market-mobile-player-name,
+.market-mobile-price,
+.market-mobile-holding-metrics strong,
+.market-mobile-sheet-head h3,
+.market-mobile-sheet-head p,
+.community-report-btn,
+.community-window-option,
+.community-window-option:hover {
+  color: var(--ink) !important;
+}
+
+.success-box {
+  border-color: rgba(72, 124, 201, 0.34) !important;
+  background: rgba(22, 36, 58, 0.9) !important;
+}
+
+.error-box {
+  border-color: rgba(208, 102, 86, 0.34) !important;
+  background: rgba(50, 22, 24, 0.74) !important;
+}
+
+.app-status-strip {
+  background: transparent !important;
+}
+
+.portfolio-admin-badge,
+.sport-filter-btn {
+  background: rgba(16, 26, 44, 0.94) !important;
+  border-color: rgba(94, 121, 165, 0.34) !important;
+}
+
+.community-window-option {
+  background: transparent !important;
+}
+
+.community-window-option:hover {
+  background: rgba(91, 161, 255, 0.08) !important;
+}
+
+/* Sortable spreadsheet headers should not inherit global button chrome */
+.market-sort-btn,
+.market-sort-btn:hover,
+.market-sort-btn:focus-visible,
+.market-sort-btn.active {
+  background: transparent !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: inherit !important;
+}
+
+.market-sort-btn.active {
+  box-shadow: none !important;
+}
+
+.market-sort-btn.active .market-sort-label {
+  font-weight: 800;
+}
+
+/* Portfolio cleanup */
+.account-mix-panel {
+  background:
+    linear-gradient(180deg, rgba(17, 28, 47, 0.98) 0%, rgba(10, 18, 31, 0.96) 100%) !important;
+}
+
+.account-mix-donut {
+  filter: saturate(1.02);
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -12px 18px rgba(3, 8, 16, 0.3);
+}
+
+.account-mix-donut-track {
+  stroke: rgba(82, 106, 142, 0.44);
+}
+
+.account-mix-segment.active {
+  filter: brightness(1.08);
+}
+
+.account-mix-segment.muted {
+  opacity: 0.34;
+}
+
+.account-mix-tooltip {
+  border-color: rgba(96, 123, 165, 0.4);
+  background: rgba(14, 23, 39, 0.96);
+  color: var(--ink);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
+}
+
+.account-mix-center strong,
+.account-mix-row strong,
+.portfolio-sport-group-head h3,
+.portfolio-table td,
+.portfolio-table th,
+.portfolio-market-table td,
+.portfolio-market-table th,
+.holding-metrics,
+.portfolio-trade-quote {
+  color: var(--ink) !important;
+}
+
+.account-mix-center span,
+.account-mix-caption,
+.account-mix-gl,
+.portfolio-sport-summary,
+.portfolio-row-halt-note,
+.muted-line {
+  color: var(--muted) !important;
+}
+
+.account-mix-row {
+  border-color: rgba(90, 116, 158, 0.34);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.account-mix-row.active {
+  border-color: rgba(96, 145, 220, 0.42);
+  background: rgba(91, 161, 255, 0.08);
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.18);
+}
+
+.account-mix-swatch {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.portfolio-market-table-panel .table-wrap,
+.portfolio-table,
+.portfolio-market-table,
+.portfolio-market-table .market-sticky-player-cell {
+  background: #0f182a !important;
+}
+
+.portfolio-market-table-panel .table-wrap,
+.portfolio-table,
+.portfolio-market-table {
+  border-color: rgba(87, 111, 147, 0.44) !important;
+}
+
+.portfolio-table thead th,
+.portfolio-market-table thead th {
+  background: linear-gradient(180deg, rgba(24, 38, 60, 0.98) 0%, rgba(17, 27, 43, 0.98) 100%) !important;
+  color: #cad7ef !important;
+  border-color: rgba(87, 111, 147, 0.44) !important;
+}
+
+.portfolio-table tbody tr:nth-child(odd) td,
+.portfolio-market-table tbody tr:nth-child(odd) td,
+.portfolio-market-table tbody tr:nth-child(odd) .market-sticky-player-cell {
+  background: #0f1829 !important;
+}
+
+.portfolio-table tbody tr:nth-child(even) td,
+.portfolio-market-table tbody tr:nth-child(even) td,
+.portfolio-market-table tbody tr:nth-child(even) .market-sticky-player-cell {
+  background: #0b1321 !important;
+}
+
+.portfolio-table tbody tr:hover td,
+.portfolio-market-table tbody tr:hover td,
+.portfolio-market-table tbody tr:hover .market-sticky-player-cell {
+  background: #172742 !important;
+}
+
+.allocation-track {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.allocation-track div {
+  background: linear-gradient(90deg, #458bef 0%, #ff9d4a 100%);
+  box-shadow: 0 0 18px rgba(91, 161, 255, 0.16);
+}
+
+/* Frozen spreadsheet pane polish */
+.market-table .market-sticky-player-cell,
+.portfolio-market-table .market-sticky-player-cell {
+  background-clip: padding-box;
+  box-shadow:
+    inset -1px 0 0 rgba(93, 118, 158, 0.5),
+    12px 0 16px -14px rgba(0, 0, 0, 0.46) !important;
+}
+
+.market-table thead .market-sticky-player-cell,
+.portfolio-market-table thead .market-sticky-player-cell {
+  background: linear-gradient(180deg, #1b2a42 0%, #141f31 100%) !important;
+  box-shadow:
+    inset -1px 0 0 rgba(108, 135, 178, 0.56),
+    12px 0 18px -14px rgba(0, 0, 0, 0.42) !important;
+}
+
+.market-table tbody tr:nth-child(odd) .market-sticky-player-cell {
+  background: #111b2c !important;
+}
+
+.market-table tbody tr:nth-child(even) .market-sticky-player-cell {
+  background: #0d1523 !important;
+}
+
+.market-table tbody tr:hover .market-sticky-player-cell,
+.market-row-quoted .market-sticky-player-cell,
+.market-row-placing .market-sticky-player-cell {
+  background: #1d304f !important;
+}
+
+.portfolio-market-table tbody tr:nth-child(odd) .market-sticky-player-cell {
+  background: #0f1829 !important;
+}
+
+.portfolio-market-table tbody tr:nth-child(even) .market-sticky-player-cell {
+  background: #0b1321 !important;
+}
+
+.portfolio-market-table tbody tr:hover .market-sticky-player-cell {
+  background: #172742 !important;
+}
+
+.market-mobile-table .market-sticky-player-cell,
+.market-mobile-table td:first-child,
+.market-mobile-table th:first-child {
+  background-clip: padding-box;
+  box-shadow:
+    inset -1px 0 0 rgba(93, 118, 158, 0.42),
+    10px 0 14px -14px rgba(0, 0, 0, 0.4) !important;
+}
+
+.market-mobile-table thead th:first-child {
+  background: linear-gradient(180deg, #1b2a42 0%, #141f31 100%) !important;
+}
+
+.market-mobile-table tbody tr:nth-child(odd) td:first-child {
+  background: #111b2c !important;
+}
+
+.market-mobile-table tbody tr:nth-child(even) td:first-child {
+  background: #0d1523 !important;
+}
+
+.market-mobile-table tbody tr:hover td:first-child,
+.market-mobile-table-row:hover td:first-child,
+.market-mobile-table-row:focus-visible td:first-child {
+  background: #1d304f !important;
+}
+
+/* Loading states should stay dark while data hydrates */
+[aria-busy="true"].table-panel,
+[aria-busy="true"].empty-panel,
+[aria-busy="true"].holding-card,
+[aria-busy="true"].hero-panel {
+  background:
+    linear-gradient(180deg, rgba(17, 28, 47, 0.98) 0%, rgba(10, 18, 31, 0.96) 100%) !important;
+}
+
+.skeleton-line {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(40, 58, 87, 0.72) 0%,
+      rgba(70, 98, 142, 0.5) 50%,
+      rgba(40, 58, 87, 0.72) 100%
+    ) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.skeleton-line.lg {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(45, 64, 96, 0.76) 0%,
+      rgba(83, 112, 156, 0.56) 50%,
+      rgba(45, 64, 96, 0.76) 100%
+    ) !important;
 }

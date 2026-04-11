@@ -548,7 +548,6 @@ export default function MarketPage() {
   const renderSortButton = useCallback(
     (column: MarketSortColumn, label: string) => {
       const active = sortColumn === column;
-      const indicator = active ? sortDirection : "both";
       return (
         <button
           type="button"
@@ -557,11 +556,10 @@ export default function MarketPage() {
           aria-pressed={active}
         >
           <span className="market-sort-label">{label}</span>
-          <span className={`market-sort-indicator ${indicator}`} aria-hidden="true" />
         </button>
       );
     },
-    [sortColumn, sortDirection, toggleSort],
+    [sortColumn, toggleSort],
   );
 
   const cashBalance = portfolio?.cash_balance ?? 0;

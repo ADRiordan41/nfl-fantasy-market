@@ -482,7 +482,6 @@ export default function PortfolioPage() {
 
   function renderSortButton(column: MarketSortColumn, label: string) {
     const active = sortColumn === column;
-    const indicator = active ? sortDirection : "both";
     return (
       <button
         type="button"
@@ -491,7 +490,6 @@ export default function PortfolioPage() {
         aria-pressed={active}
       >
         <span className="market-sort-label">{label}</span>
-        <span className={`market-sort-indicator ${indicator}`} aria-hidden="true" />
       </button>
     );
   }
