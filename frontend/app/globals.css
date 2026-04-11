@@ -19,6 +19,8 @@
   --down: #d45f2b;
   --danger-bg: #fff2f0;
   --danger-line: #f0b5a8;
+  --app-shell-max-width: 1340px;
+  --app-shell-vw: 94vw;
 }
 
 * {
@@ -346,7 +348,7 @@ textarea[aria-invalid="true"] {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  width: min(1200px, 92vw);
+  width: min(var(--app-shell-max-width), var(--app-shell-vw));
   margin: 10px auto 0;
   padding: 6px 10px;
   border-radius: 20px;
@@ -374,7 +376,7 @@ textarea[aria-invalid="true"] {
 
 .brand-lockup {
   display: flex;
-  gap: 8px;
+  gap: 9px;
   align-items: center;
   min-width: 0;
   padding: 2px 6px 2px 2px;
@@ -386,7 +388,7 @@ textarea[aria-invalid="true"] {
   background: rgba(223, 236, 255, 0.56);
 }
 
-.brand-lockup span {
+.brand-lockup > span:not(.brand-mark) {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -400,9 +402,10 @@ textarea[aria-invalid="true"] {
 .brand-title {
   display: inline-flex;
   align-items: baseline;
-  gap: 2px;
-  font-size: clamp(1rem, 1.8vw, 1.3rem);
+  gap: 4px;
+  font-size: clamp(1.36rem, 2.36vw, 1.78rem);
   letter-spacing: -0.01em;
+  line-height: 1;
 }
 
 .brand-matchup {
@@ -416,21 +419,23 @@ textarea[aria-invalid="true"] {
 }
 
 .brand-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 14px;
+  width: 70px;
+  height: 35px;
   display: grid;
   place-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  background: linear-gradient(135deg, var(--brand) 0%, var(--accent) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 22px rgba(11, 43, 100, 0.32);
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  flex: 0 0 auto;
 }
 
 .brand-mark-icon {
   width: 100%;
   height: 100%;
   display: block;
+  aspect-ratio: 94 / 46;
+  filter: drop-shadow(0 0 3px rgba(11, 43, 100, 0.18));
 }
 
 .brand-mark-axis {
@@ -655,7 +660,7 @@ textarea[aria-invalid="true"] {
 }
 
 .app-status-strip {
-  width: min(1200px, 92vw);
+  width: min(var(--app-shell-max-width), var(--app-shell-vw));
   margin: 8px auto 0;
   padding: 0 2px;
   display: flex;
@@ -691,7 +696,7 @@ textarea[aria-invalid="true"] {
 }
 
 .app-content {
-  width: min(1200px, 92vw);
+  width: min(var(--app-shell-max-width), var(--app-shell-vw));
   margin: 16px auto 0;
   padding-bottom: 100px;
 }
@@ -702,7 +707,7 @@ textarea[aria-invalid="true"] {
 }
 
 .app-footer {
-  width: min(1200px, 92vw);
+  width: min(var(--app-shell-max-width), var(--app-shell-vw));
   margin: 8px auto 92px;
   padding: 10px 12px;
   border: 1px solid rgba(178, 204, 231, 0.7);
@@ -881,9 +886,14 @@ textarea[aria-invalid="true"] {
 }
 
 .nav-logo-icon {
-  width: 100%;
-  height: 100%;
+  width: 90%;
+  height: auto;
+  max-height: 62%;
   display: block;
+  aspect-ratio: 94 / 46;
+  stroke: none;
+  fill: none;
+  filter: drop-shadow(0 1px 2px rgba(8, 28, 60, 0.24));
 }
 
 .nav-logo-axis {
@@ -917,25 +927,29 @@ textarea[aria-invalid="true"] {
 }
 
 .market-page-shell {
-  width: max-content;
+  width: 100%;
+  max-width: var(--app-shell-max-width, 1340px);
   min-width: 0;
-  grid-template-columns: max-content;
+  grid-template-columns: minmax(0, 1fr);
   margin: 0 auto;
-  padding-right: 12px;
+  padding-right: 0;
 }
 
 .market-page-shell > .hero-panel,
 .market-page-shell > .toolbar,
 .market-page-shell > .error-box,
-.market-page-shell > .empty-panel {
-  width: var(--market-lane-width, 928px);
-  max-width: var(--market-lane-width, 928px);
+.market-page-shell > .empty-panel,
+.market-page-shell > .market-table-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .market-page-shell > .market-table-panel {
-  width: max-content;
-  min-width: 860px;
-  max-width: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .page-shell > * {
@@ -4903,7 +4917,17 @@ button.segment.danger-segment.danger-active {
 
 /* Desktop market table readability pass (market page only). */
 .market-page-shell .desktop-market-table .market-table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   font-size: 14px;
+}
+
+.market-page-shell .desktop-market-table .table-wrap {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .market-page-shell .desktop-market-table .market-col-player {
@@ -5987,7 +6011,7 @@ td {
   }
 }
 
-@media (max-width: 959px) {
+@media (max-width: 959px) and (hover: none) and (pointer: coarse) {
   .market-page-shell {
     width: 100%;
     max-width: 100%;
@@ -6082,12 +6106,20 @@ td {
 }
 
 @media (min-width: 960px) {
+  .market-mobile-list {
+    display: none !important;
+  }
+
+  .desktop-market-table {
+    display: block !important;
+  }
+
   .app-header {
     flex-wrap: nowrap;
     align-items: stretch;
     justify-content: flex-start;
     gap: 10px;
-    min-height: 56px;
+    min-height: 58px;
     padding-top: 0;
     padding-bottom: 0;
     border-radius: 18px;
@@ -6096,7 +6128,8 @@ td {
   .header-primary {
     flex: 1 1 auto;
     min-width: 0;
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
     align-items: stretch;
     align-self: stretch;
     gap: 8px;
@@ -6104,17 +6137,36 @@ td {
 
   .brand-lockup {
     flex: 0 0 auto;
+    width: max-content;
     min-width: max-content;
-    align-self: center;
-    height: auto;
-    padding: 3px 8px 3px 3px;
+    max-width: none;
+    align-self: stretch;
+    height: 100%;
+    padding: 0 8px 0 4px;
     border-radius: 12px;
+    justify-content: flex-start;
+    align-items: center;
+  }
+
+  .brand-lockup > span:not(.brand-mark) {
+    justify-content: center;
+  }
+
+  .brand-title {
+    font-size: clamp(1.5rem, 2.05vw, 1.94rem);
+    align-items: center;
+    line-height: 1.05;
+    transform: translateY(1px);
   }
 
   .brand-mark {
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
+    width: 72px;
+    height: 36px;
+    border-radius: 0;
+  }
+
+  .brand-mark-icon {
+    transform: translateY(-1px);
   }
 
   .desktop-nav {
@@ -6136,6 +6188,8 @@ td {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
     overflow: hidden;
     margin-bottom: 0;
+    min-height: 42px;
+    height: 42px;
   }
 
   .header-actions {

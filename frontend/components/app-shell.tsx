@@ -179,28 +179,43 @@ function SettingsIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function HomeIcon(props: SVGProps<SVGSVGElement>) {
+type SigmaDeltaIconProps = SVGProps<SVGSVGElement> & {
+  gradientPrefix: string;
+};
+
+function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
+  const sigmaId = `${gradientPrefix}Sigma`;
+  const deltaId = `${gradientPrefix}Delta`;
   return (
     <svg
-      viewBox="0 0 48 48"
-      fill="none"
-      aria-hidden="true"
       {...props}
+      viewBox="0 0 94 46"
+      fill="none"
+      stroke="none"
+      preserveAspectRatio="xMidYMid meet"
     >
       <defs>
-        <linearGradient id="mmDockGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#2f7fff" />
-          <stop offset="100%" stopColor="#ff8a2a" />
+        <linearGradient id={sigmaId} x1="2" y1="6" x2="40" y2="41" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#ffc862" />
+          <stop offset="0.56" stopColor="#ff961a" />
+          <stop offset="1" stopColor="#e96800" />
+        </linearGradient>
+        <linearGradient id={deltaId} x1="44" y1="6" x2="92" y2="41" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#70d3ff" />
+          <stop offset="0.56" stopColor="#2799ff" />
+          <stop offset="1" stopColor="#0d59de" />
         </linearGradient>
       </defs>
-      <rect x="2.5" y="2.5" width="43" height="43" rx="12.5" fill="url(#mmDockGradient)" />
-      <path d="M10 34h28" className="nav-logo-axis" />
-      <path d="M10.5 30.5 18 22.5 24 26.8 36.2 15.8" className="nav-logo-line" />
-      <circle cx="18" cy="22.5" r="2.1" className="nav-logo-point" />
-      <circle cx="24" cy="26.8" r="2.1" className="nav-logo-point" />
-      <circle cx="36.2" cy="15.8" r="2.3" className="nav-logo-point-accent" />
+      <path d="M2 6H42V12H20L31.5 23L20 34H42V40H2L24.5 23L2 6Z" fill={`url(#${sigmaId})`} />
+      <path d="M2 6H42V12H20L31.5 23L20 34H42V40H2L24.5 23L2 6Z" fill="#fff4e4" fillOpacity="0.16" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M68 6L92 40H44L68 6ZM68 17L78 34H58L68 17Z" fill={`url(#${deltaId})`} />
+      <path fillRule="evenodd" clipRule="evenodd" d="M68 6L92 40H44L68 6ZM68 17L78 34H58L68 17Z" fill="#ecf8ff" fillOpacity="0.14" />
     </svg>
   );
+}
+
+function HomeIcon(props: SVGProps<SVGSVGElement>) {
+  return <SigmaDeltaIcon {...props} aria-hidden="true" gradientPrefix="mmMobile" />;
 }
 
 const NAV_ITEMS = [
@@ -258,24 +273,6 @@ function cacheUser(user: UserAccount | null): void {
     return;
   }
   window.sessionStorage.setItem(USER_CACHE_STORAGE_KEY, JSON.stringify(user));
-}
-
-function formatTickerGeneratedAt(value: string | null | undefined): string {
-  if (!value) return "Waiting for market data";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "Waiting for market data";
-  const elapsedMs = Date.now() - parsed.getTime();
-  if (elapsedMs < 45_000) return "Updated just now";
-  if (elapsedMs < 90_000) return "Updated 1m ago";
-
-  const elapsedMinutes = Math.floor(elapsedMs / 60_000);
-  if (elapsedMinutes < 60) return `Updated ${elapsedMinutes}m ago`;
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `Updated ${elapsedHours}h ago`;
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  return `Updated ${elapsedDays}d ago`;
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -633,8 +630,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [movers]);
   const tickerLoopEntries = tickerEntries.length > 0 ? [...tickerEntries, ...tickerEntries] : [];
   const currentYear = new Date().getFullYear();
-  const tickerStatusLabel = formatTickerGeneratedAt(movers?.generated_at);
-
   return (
     <div className={`app-shell${showNav ? " with-ticker" : ""}`}>
       {showNav && (
@@ -678,20 +673,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="header-primary">
           <Link href="/" className="brand-lockup">
             <span className="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 48 48" className="brand-mark-icon">
-                <defs>
-                  <linearGradient id="mmBrandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#2f7fff" />
-                    <stop offset="100%" stopColor="#ff8a2a" />
-                  </linearGradient>
-                </defs>
-                <rect x="2.5" y="2.5" width="43" height="43" rx="12.5" fill="url(#mmBrandGradient)" />
-                <path d="M10 34h28" className="brand-mark-axis" />
-                <path d="M10.5 30.5 18 22.5 24 26.8 36.2 15.8" className="brand-mark-line" />
-                <circle cx="18" cy="22.5" r="2.1" className="brand-mark-point" />
-                <circle cx="24" cy="26.8" r="2.1" className="brand-mark-point" />
-                <circle cx="36.2" cy="15.8" r="2.3" className="brand-mark-point-accent" />
-              </svg>
+              <SigmaDeltaIcon className="brand-mark-icon" gradientPrefix="mmBrand" />
             </span>
             <span>
               <strong className="brand-title">
@@ -782,12 +764,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
-
-      {showNav && (
-        <div className="app-status-strip" role="status" aria-live="polite">
-          <span className="status-pill neutral">{tickerStatusLabel}</span>
-        </div>
-      )}
 
       <div id="main-content" tabIndex={-1} className="app-content">
         <div className="route-frame" key={`${pathname}-${currentUser?.username ?? "guest"}`}>
