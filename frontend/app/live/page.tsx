@@ -6,7 +6,7 @@ import { Fragment, type CSSProperties, type ReactNode, type PointerEvent, useCal
 import { apiGet, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { teamPrimaryColor } from "@/lib/teamColors";
+import { teamPrimaryColor, teamReadableColor } from "@/lib/teamColors";
 import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { LiveGame, LiveGamePlayer, LiveGames } from "@/lib/types";
@@ -886,8 +886,8 @@ function WinProbabilityChart({
   const pitcherNameValue = showMatchupRow ? pitcherLabel : "Current pitcher pending";
   const batterPlayerHref = activePoint.batterPlayerId != null ? `/player/${activePoint.batterPlayerId}` : null;
   const pitcherPlayerHref = activePoint.pitcherPlayerId != null ? `/player/${activePoint.pitcherPlayerId}` : null;
-  const awayTeamColor = teamPrimaryColor(activePoint.awayTeam, activePoint.sport);
-  const homeTeamColor = teamPrimaryColor(activePoint.homeTeam, activePoint.sport);
+  const awayTeamReadableColor = teamReadableColor(activePoint.awayTeam, activePoint.sport);
+  const homeTeamReadableColor = teamReadableColor(activePoint.homeTeam, activePoint.sport);
   const highlightedPlaySummary = formatHighlightedPlay(activePoint);
   const width = 340;
   const height = 124;
@@ -987,13 +987,13 @@ function WinProbabilityChart({
         <div className="live-scorebug-main">
           <div className="live-scorebug-scoreboard">
             <div className="live-scorebug-team-row away">
-              <span className="live-scorebug-team-code" style={{ color: awayTeamColor }}>
+              <span className="live-scorebug-team-code" style={{ color: awayTeamReadableColor }}>
                 {activePoint.awayTeam}
               </span>
               <strong className="live-scorebug-runs">{awayScoreValue}</strong>
             </div>
             <div className="live-scorebug-team-row home">
-              <span className="live-scorebug-team-code" style={{ color: homeTeamColor }}>
+              <span className="live-scorebug-team-code" style={{ color: homeTeamReadableColor }}>
                 {activePoint.homeTeam}
               </span>
               <strong className="live-scorebug-runs">{homeScoreValue}</strong>
@@ -1055,7 +1055,9 @@ function WinProbabilityChart({
       </section>
       <div className="live-winprob-legend">
         <span className="live-winprob-team">
-          <strong className="live-winprob-team-name live-winprob-team-a">{activePoint.awayTeam}</strong>
+          <strong className="live-winprob-team-name live-winprob-team-a" style={{ color: awayTeamReadableColor }}>
+            {activePoint.awayTeam}
+          </strong>
           <span>{formatNumber(activePoint.awayProbability, 1)}%</span>
         </span>
         <span className="live-winprob-play-inline" aria-live="polite" title={highlightedPlaySummary}>
@@ -1070,7 +1072,9 @@ function WinProbabilityChart({
           </span>
         </span>
         <span className="live-winprob-team">
-          <strong className="live-winprob-team-name live-winprob-team-b">{activePoint.homeTeam}</strong>
+          <strong className="live-winprob-team-name live-winprob-team-b" style={{ color: homeTeamReadableColor }}>
+            {activePoint.homeTeam}
+          </strong>
           <span>{formatNumber(activePoint.homeProbability, 1)}%</span>
         </span>
       </div>
@@ -1516,6 +1520,8 @@ export default function LivePage() {
               {overviewGames.map((game) => {
                 const awayTeamColor = teamPrimaryColor(game.awayTeam, game.sport);
                 const homeTeamColor = teamPrimaryColor(game.homeTeam, game.sport);
+                const awayTeamReadableColor = teamReadableColor(game.awayTeam, game.sport);
+                const homeTeamReadableColor = teamReadableColor(game.homeTeam, game.sport);
                 const awayProbValue = game.awayWinProbability == null ? null : clamp(roundTo(game.awayWinProbability, 0), 0, 100);
                 const homeProbValue =
                   game.homeWinProbability == null ? null : clamp(roundTo(game.homeWinProbability, 0), 0, 100);
@@ -1555,7 +1561,7 @@ export default function LivePage() {
                         <p className="live-mini-score-row">
                           <span className="live-mini-team-meta">
                             <span className="live-mini-team-box">
-                              <span className="live-mini-team" style={{ color: awayTeamColor }}>
+                              <span className="live-mini-team" style={{ color: awayTeamReadableColor }}>
                                 {game.awayTeam}
                               </span>
                             </span>
@@ -1573,7 +1579,7 @@ export default function LivePage() {
                         <p className="live-mini-score-row">
                           <span className="live-mini-team-meta">
                             <span className="live-mini-team-box">
-                              <span className="live-mini-team" style={{ color: homeTeamColor }}>
+                              <span className="live-mini-team" style={{ color: homeTeamReadableColor }}>
                                 {game.homeTeam}
                               </span>
                             </span>

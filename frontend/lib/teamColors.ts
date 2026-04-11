@@ -143,7 +143,96 @@ function hexToRgb(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
+function rgbToHex(r: number, g: number, b: number): string {
+  const toHex = (value: number) => Math.round(Math.min(255, Math.max(0, value))).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const red = r / 255;
+  const green = g / 255;
+  const blue = b / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let hue = 0;
+  const lightness = (max + min) / 2;
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+
+  if (delta !== 0) {
+    if (max === red) {
+      hue = ((green - blue) / delta) % 6;
+    } else if (max === green) {
+      hue = (blue - red) / delta + 2;
+    } else {
+      hue = (red - green) / delta + 4;
+    }
+    hue *= 60;
+    if (hue < 0) hue += 360;
+  }
+
+  return [hue, saturation, lightness];
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const huePrime = h / 60;
+  const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
+  const match = l - chroma / 2;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (huePrime >= 0 && huePrime < 1) {
+    red = chroma;
+    green = x;
+  } else if (huePrime < 2) {
+    red = x;
+    green = chroma;
+  } else if (huePrime < 3) {
+    green = chroma;
+    blue = x;
+  } else if (huePrime < 4) {
+    green = x;
+    blue = chroma;
+  } else if (huePrime < 5) {
+    red = x;
+    blue = chroma;
+  } else {
+    red = chroma;
+    blue = x;
+  }
+
+  return [(red + match) * 255, (green + match) * 255, (blue + match) * 255];
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const channel = (value: number) => {
+    const normalized = value / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  const red = channel(r);
+  const green = channel(g);
+  const blue = channel(b);
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
 export function teamColorRgb(team: string, sport = ""): string {
   const [r, g, b] = hexToRgb(teamPrimaryColor(team, sport));
   return `${r}, ${g}, ${b}`;
+}
+
+export function teamReadableColor(team: string, sport = ""): string {
+  const primary = teamPrimaryColor(team, sport);
+  const [r, g, b] = hexToRgb(primary);
+  const luminance = relativeLuminance(r, g, b);
+  if (luminance >= 0.28) return primary;
+
+  const [h, s, l] = rgbToHsl(r, g, b);
+  const liftedLightness = Math.max(l, 0.66);
+  const adjustedSaturation = s < 0.15 ? s : Math.max(s, 0.42);
+  const [liftedR, liftedG, liftedB] = hslToRgb(h, adjustedSaturation, liftedLightness);
+  return rgbToHex(liftedR, liftedG, liftedB);
 }

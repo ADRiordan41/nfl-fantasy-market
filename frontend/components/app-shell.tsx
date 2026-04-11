@@ -789,13 +789,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               className={`mobile-link mobile-home-trigger ${pathname === "/" ? "active" : ""}${mobileHomeMenuOpen ? " open" : ""}`}
               onClick={() => setMobileHomeMenuOpen((open) => !open)}
-              aria-label="Home and account actions"
+              aria-label="Menu"
               aria-haspopup="menu"
               aria-expanded={mobileHomeMenuOpen}
-              title="Home and account actions"
+              title="Menu"
             >
               <HomeIcon className="nav-icon nav-logo-icon" />
-              <span className="sr-only">Home</span>
+              <span className="mobile-link-label">Menu</span>
             </button>
             {mobileHomeMenuOpen && (
               <div className="mobile-home-menu" role="menu" aria-label="Home and account actions">
@@ -856,7 +856,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               title={item.label}
             >
               <item.Icon className="nav-icon" />
-              <span className="sr-only">{item.label}</span>
+              <span className="mobile-link-label">{item.label}</span>
             </Link>
           ))}
         </nav>
