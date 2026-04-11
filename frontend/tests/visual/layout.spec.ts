@@ -29,7 +29,7 @@ test.describe("Desktop baselines", () => {
 
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "Market Snapshot" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "This Week's Top 10 Movers" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Community Snapshot" })).toBeVisible();
     await expect(page.getByText("Loading market snapshot...")).toHaveCount(0);
     await expect(page.getByText("Loading forum snapshot...")).toHaveCount(0);
@@ -106,7 +106,7 @@ test.describe("Desktop baselines", () => {
 
     await page.goto("/live");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByText("Showing 2 games and 4 live players.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Live Game Center" })).toBeVisible();
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("live-desktop.png", { fullPage: true });
@@ -118,7 +118,7 @@ test.describe("Desktop baselines", () => {
 
     await page.goto("/settings");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "User Settings" })).toBeVisible();
     await stabilizeUi(page);
 
     await expect(page).toHaveScreenshot("settings-desktop.png", { fullPage: true });
