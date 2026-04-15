@@ -432,7 +432,7 @@ export default function HomePage() {
 
       <section className="table-panel home-explainer">
         <div className="home-explainer-head">
-          <h3>How to Use Matchup Market</h3>
+          <h3 className="home-explainer-title">How to Use Matchup Market</h3>
           <div className="home-explainer-actions">
             <button type="button" className="home-tutorial-open-btn" onClick={() => openHomeTutorial("tour")}>
               Take A Tour
@@ -519,7 +519,7 @@ export default function HomePage() {
                 {step.body
                   .split(/\n{2,}/)
                   .map((paragraph, paragraphIndex) => (
-                    <p className="subtle" key={`${index}-p-${paragraphIndex}`}>
+                    <p className="subtle home-step-body" key={`${index}-p-${paragraphIndex}`}>
                       {paragraph}
                     </p>
                   ))}

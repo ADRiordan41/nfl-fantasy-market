@@ -1480,6 +1480,21 @@ h1 {
   margin: 0;
 }
 
+.home-explainer-title {
+  display: inline-flex;
+  align-items: center;
+  font-size: clamp(1.42rem, 2.5vw, 1.95rem);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  background: linear-gradient(90deg, #ffab61 0%, #ffd38b 28%, #8fc4ff 62%, #5ba1ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  text-shadow: 0 0 14px rgba(91, 161, 255, 0.14), 0 0 12px rgba(255, 157, 74, 0.12);
+}
+
 .home-explainer-head {
   display: flex;
   align-items: center;
@@ -1525,6 +1540,19 @@ h1 {
 
 .home-step h4 {
   margin: 0 0 6px;
+  font-size: clamp(1.2rem, 1.9vw, 1.5rem);
+  line-height: 1.22;
+  background: linear-gradient(90deg, #ffb164 0%, #ffcd86 34%, #9acbff 68%, #6dafff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: 0 0 10px rgba(91, 161, 255, 0.12), 0 0 8px rgba(255, 157, 74, 0.1);
+}
+
+.home-step-body {
+  text-align: justify;
+  text-align-last: left;
 }
 
 .home-step-link {
