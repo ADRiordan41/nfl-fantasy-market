@@ -43,6 +43,9 @@ def build_argv() -> list[str]:
     mlb_allowed_game_types = env_value("LIVE_POLLER_MLB_ALLOWED_GAME_TYPES", "R,F,D,L,W,S")
     if mlb_allowed_game_types:
         argv.extend(["--mlb-allowed-game-types", mlb_allowed_game_types])
+    mlb_injury_lookback_days = env_value("LIVE_POLLER_MLB_INJURY_LOOKBACK_DAYS", "7")
+    if mlb_injury_lookback_days:
+        argv.extend(["--mlb-injury-lookback-days", mlb_injury_lookback_days])
 
     interval_seconds = env_value("LIVE_POLLER_INTERVAL_SECONDS", "30")
     if interval_seconds:

@@ -101,6 +101,7 @@ from .schemas import (
     AdminAuditTradeOut,
     AdminIpoActionOut,
     AdminIpoHideIn,
+    AdminInjuryAlertIn,
     AdminIpoLaunchIn,
     AdminIpoPlayerCreateIn,
     AdminIpoPlayerCreateOut,
@@ -3700,6 +3701,8 @@ def create_season_ending_injury_notifications(
     *,
     player: Player,
     matched_reason: str,
+    headline: str | None = None,
+    source: str | None = None,
 ) -> int:
     admin_rows = db.execute(
         select(User.id, User.username).where(func.lower(User.username).in_(sorted(ADMIN_USERNAMES)))
@@ -3730,7 +3733,9 @@ def create_season_ending_injury_notifications(
             notification_type=NOTIFICATION_TYPE_SEASON_ENDING_INJURY,
             message=(
                 f"Potential season-ending injury alert: {player.name} ({player.team} {player.position}) "
-                f"- {matched_reason}. Review and close out if needed."
+                f"- {(normalize_optional_profile_field(headline) or matched_reason)}"
+                + (f" [{normalize_optional_profile_field(source)}]" if normalize_optional_profile_field(source) else "")
+                + ". Review and close out if needed."
             ),
             entity_type=NOTIFICATION_ENTITY_TYPE_PLAYER,
             entity_id=int(player.id),
@@ -8064,6 +8069,43 @@ def admin_ipo_player_season_ending_closeout(
     )
 
 
+@app.post("/admin/injuries/alert", response_model=dict)
+def admin_injury_alert(
+    payload: AdminInjuryAlertIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    player = db.get(Player, int(payload.player_id))
+    if player is None:
+        raise HTTPException(404, "Player not found")
+
+    matched_reason = season_ending_injury_reason_from_text(
+        normalize_optional_profile_field(payload.headline),
+        normalize_optional_profile_field(payload.summary),
+    )
+    if matched_reason is None:
+        return {
+            "ok": True,
+            "alerted": False,
+            "alerts_created": 0,
+            "reason": "No season-ending injury signal found in supplied injury news.",
+        }
+
+    alerts_created = create_season_ending_injury_notifications(
+        db=db,
+        player=player,
+        matched_reason=matched_reason,
+        headline=normalize_optional_profile_field(payload.headline),
+        source=normalize_optional_profile_field(payload.source),
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "alerted": alerts_created > 0,
+        "alerts_created": int(alerts_created),
+    }
+
+
 @app.post("/admin/stats/clear-sport", response_model=AdminStatsClearSportOut)
 def admin_clear_sport_stats(
     payload: AdminStatsClearSportIn,
@@ -8900,19 +8942,7 @@ def upsert_weekly_stat(
         player=player,
         stat=stat,
     )
-    matched_injury_reason = season_ending_injury_reason_from_text(
-        normalize_optional_profile_field(stat.live_game_status),
-        normalize_optional_profile_field(stat.live_game_stat_line),
-        normalize_optional_profile_field(player.live_game_status),
-        normalize_optional_profile_field(player.live_game_stat_line),
-    )
     injury_notifications_created = 0
-    if matched_injury_reason:
-        injury_notifications_created = create_season_ending_injury_notifications(
-            db=db,
-            player=player,
-            matched_reason=matched_injury_reason,
-        )
 
     db.flush()
     if stat_changed or game_point_changed or team_changed:

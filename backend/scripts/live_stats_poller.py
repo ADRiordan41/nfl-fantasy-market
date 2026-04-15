@@ -2,6 +2,7 @@ import argparse
 import csv
 import io
 import json
+import re
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -14,10 +15,18 @@ from zoneinfo import ZoneInfo
 MLB_STATS_API_BASE = "https://statsapi.mlb.com"
 MLB_STATS_API_SCHEDULE_PATH = "/api/v1/schedule"
 MLB_STATS_API_LIVE_FEED_PATH = "/api/v1.1/game/{game_pk}/feed/live"
+MLB_STATS_API_TRANSACTIONS_PATH = "/api/v1/transactions"
 DEFAULT_MLB_ALLOWED_GAME_TYPES = {"R", "F", "D", "L", "W", "S"}
 CHICAGO_TZ = ZoneInfo("America/Chicago")
 MLB_SCHEDULE_TIMEZONE = ZoneInfo("America/New_York")
 STALE_LIVE_CLEAR_MINUTES = 15
+SEASON_ENDING_INJURY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bout for (the )?season\b", re.IGNORECASE),
+    re.compile(r"\bseason[- ]ending\b", re.IGNORECASE),
+    re.compile(r"\bmiss (the )?remainder of (the )?season\b", re.IGNORECASE),
+    re.compile(r"\b(torn|ruptured)\s+(acl|achilles|labrum|ucl)\b", re.IGNORECASE),
+    re.compile(r"\btommy john\b", re.IGNORECASE),
+)
 MLB_TEAM_ALIASES = {
     "SFG": "SF",
     "SFN": "SF",
@@ -62,6 +71,9 @@ class CycleCounts:
     invalid_rows: int = 0
     failed_posts: int = 0
     stale_live_clears: int = 0
+    injury_candidates: int = 0
+    injury_alert_posts: int = 0
+    injury_alert_failures: int = 0
 
 
 @dataclass
@@ -136,6 +148,21 @@ def normalize_optional_text(value: Any) -> str | None:
         return None
     cleaned = str(value).strip()
     return cleaned or None
+
+
+def season_ending_injury_reason_from_text(*texts: Any) -> str | None:
+    merged_text = " | ".join(
+        str(value).strip()
+        for value in texts
+        if value is not None and str(value).strip()
+    )
+    if not merged_text:
+        return None
+    for pattern in SEASON_ENDING_INJURY_PATTERNS:
+        match = pattern.search(merged_text)
+        if match:
+            return match.group(0)
+    return None
 
 
 def parse_mlb_allowed_game_types(raw_value: str | None) -> set[str]:
@@ -361,6 +388,52 @@ def fetch_players(api_base: str, sport: str | None, timeout: float) -> list[dict
     return [row for row in payload if isinstance(row, dict)]
 
 
+def fetch_mlb_season_ending_injury_events(*, timeout: float, lookback_days: int) -> list[dict[str, Any]]:
+    bounded_lookback = max(0, min(int(lookback_days), 60))
+    today_et = datetime.now(MLB_SCHEDULE_TIMEZONE).date()
+    start_date = (today_et - timedelta(days=bounded_lookback)).isoformat()
+    end_date = today_et.isoformat()
+    params = parse.urlencode(
+        {
+            "sportId": 1,
+            "startDate": start_date,
+            "endDate": end_date,
+        }
+    )
+    transactions_url = f"{MLB_STATS_API_BASE}{MLB_STATS_API_TRANSACTIONS_PATH}?{params}"
+    payload = http_get_json(url=transactions_url, timeout=timeout)
+    transactions = payload.get("transactions", []) if isinstance(payload, dict) else []
+    if not isinstance(transactions, list):
+        return []
+
+    events: list[dict[str, Any]] = []
+    for tx in transactions:
+        if not isinstance(tx, dict):
+            continue
+        person = tx.get("person", {}) if isinstance(tx.get("person"), dict) else {}
+        player_name = normalize_optional_text(person.get("fullName"))
+        if not player_name:
+            continue
+        description = normalize_optional_text(tx.get("description"))
+        type_desc = normalize_optional_text(tx.get("typeDesc"))
+        matched_reason = season_ending_injury_reason_from_text(description, type_desc)
+        if matched_reason is None:
+            continue
+        events.append(
+            {
+                "player_name": player_name,
+                "headline": description or type_desc or "Season-ending injury transaction",
+                "summary": type_desc,
+                "reason": matched_reason,
+                "source": "mlb-statsapi-transactions",
+                "external_id": normalize_optional_text(tx.get("id")),
+                "published_at": normalize_optional_text(tx.get("date"))
+                or normalize_optional_text(tx.get("effectiveDate")),
+            }
+        )
+    return events
+
+
 def post_stat(
     api_base: str,
     payload: dict[str, Any],
@@ -379,6 +452,50 @@ def post_stat(
     )
     with request.urlopen(req, timeout=timeout):
         return
+
+
+def post_injury_alert(
+    api_base: str,
+    payload: dict[str, Any],
+    token: str | None,
+    timeout: float,
+) -> None:
+    url = f"{api_base.rstrip('/')}/admin/injuries/alert"
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    _ = http_post_json(url=url, payload=payload, timeout=timeout, headers=headers)
+
+
+def post_injury_alert_with_retry(
+    api_base: str,
+    payload: dict[str, Any],
+    auth: ApiAuthContext | None,
+    timeout: float,
+    max_retries: int,
+    retry_backoff: float,
+) -> None:
+    attempts = max(1, max_retries)
+    for attempt in range(1, attempts + 1):
+        try:
+            token = auth.current_token() if auth else None
+            post_injury_alert(api_base=api_base, payload=payload, token=token, timeout=timeout)
+            return
+        except error.HTTPError as exc:
+            if exc.code == 401 and auth and auth.can_reauthenticate():
+                auth.invalidate_session()
+                if attempt < attempts:
+                    continue
+            if attempt >= attempts:
+                raise
+        except error.URLError:
+            if attempt >= attempts:
+                raise
+        except TimeoutError:
+            if attempt >= attempts:
+                raise
+        sleep_seconds = max(0.1, retry_backoff * attempt)
+        time.sleep(sleep_seconds)
 
 
 def load_source_text(source_url: str | None, source_file: str | None, timeout: float) -> str:
@@ -902,6 +1019,7 @@ def run_cycle(
     mlb_date: str | None,
     mlb_live_only: bool,
     mlb_allowed_game_types: set[str],
+    mlb_injury_lookback_days: int,
     week_override: int | None,
     timeout: float,
     max_post_retries: int,
@@ -925,6 +1043,14 @@ def run_cycle(
             allowed_game_types=mlb_allowed_game_types,
         )
         invalid_rows = 0
+        try:
+            injury_events = fetch_mlb_season_ending_injury_events(
+                timeout=timeout,
+                lookback_days=mlb_injury_lookback_days,
+            )
+        except Exception as exc:
+            injury_events = []
+            log(f"[warn] unable to fetch MLB injury transactions: {exc}")
     else:
         source_text = load_source_text(source_url=source_url, source_file=source_file, timeout=timeout)
         parsed_stats, invalid_rows, source_rows = parse_source_stats(
@@ -932,9 +1058,55 @@ def run_cycle(
             source_format=source_format,
             week_override=week_override,
         )
+        injury_events = []
     counts.source_rows = source_rows
     counts.invalid_rows = invalid_rows
     counts.parsed_rows = len(parsed_stats)
+    counts.injury_candidates = len(injury_events)
+
+    if injury_events:
+        alerted_player_ids: set[int] = set()
+        for event in injury_events:
+            ref = resolve_player(
+                name=str(event.get("player_name") or ""),
+                team="",
+                by_name_team=by_name_team,
+                by_name=by_name,
+            )
+            if not ref:
+                continue
+            if ref.player_id in alerted_player_ids:
+                continue
+            alerted_player_ids.add(ref.player_id)
+            payload = {
+                "player_id": int(ref.player_id),
+                "headline": str(event.get("headline") or "Potential season-ending injury"),
+                "summary": normalize_optional_text(event.get("summary")),
+                "source": normalize_optional_text(event.get("source")),
+                "published_at": normalize_optional_text(event.get("published_at")),
+                "external_id": normalize_optional_text(event.get("external_id")),
+            }
+            if dry_run:
+                log(
+                    f"[dry-run] post /admin/injuries/alert {ref.name} ({ref.team}) "
+                    f"headline={payload['headline']}"
+                )
+                counts.injury_alert_posts += 1
+                continue
+            try:
+                post_injury_alert_with_retry(
+                    api_base=api_base,
+                    payload=payload,
+                    auth=auth,
+                    timeout=timeout,
+                    max_retries=max_post_retries,
+                    retry_backoff=retry_backoff,
+                )
+                counts.injury_alert_posts += 1
+            except Exception as exc:
+                counts.injury_alert_failures += 1
+                log(f"[error] failed injury alert for {ref.name} ({ref.team}): {exc}")
+
     active_live_game_ids = {
         str(row.live_game_id).strip()
         for row in parsed_stats
@@ -1113,6 +1285,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mlb-date", default=None, help="Optional date (YYYY-MM-DD) for MLB StatsAPI provider")
     parser.add_argument("--mlb-live-only", action="store_true", help="When using MLB provider, include only games currently live")
     parser.add_argument(
+        "--mlb-injury-lookback-days",
+        type=int,
+        default=7,
+        help="When using MLB provider, lookback window in days for MLB transaction injury alerts.",
+    )
+    parser.add_argument(
         "--mlb-allowed-game-types",
         default="R,F,D,L,W,S",
         help="Comma-separated MLB gameType codes to ingest (default includes regular season, postseason, and spring training)",
@@ -1146,6 +1324,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.interval_seconds <= 0:
         print("[error] --interval-seconds must be > 0")
+        return 1
+    if args.mlb_injury_lookback_days < 0:
+        print("[error] --mlb-injury-lookback-days must be >= 0")
         return 1
     if args.max_post_retries <= 0:
         print("[error] --max-post-retries must be > 0")
@@ -1183,6 +1364,7 @@ def main(argv: list[str] | None = None) -> int:
                 mlb_date=args.mlb_date,
                 mlb_live_only=bool(args.mlb_live_only),
                 mlb_allowed_game_types=mlb_allowed_game_types,
+                mlb_injury_lookback_days=int(args.mlb_injury_lookback_days),
                 week_override=args.week,
                 timeout=float(args.timeout),
                 max_post_retries=int(args.max_post_retries),
@@ -1199,6 +1381,9 @@ def main(argv: list[str] | None = None) -> int:
                 + f" matched={counts.matched_rows}"
                 + f" posted={counts.posted_rows}"
                 + f" stale_clears={counts.stale_live_clears}"
+                + f" injury_candidates={counts.injury_candidates}"
+                + f" injury_alert_posts={counts.injury_alert_posts}"
+                + f" injury_alert_failures={counts.injury_alert_failures}"
                 + f" unchanged={counts.unchanged_rows}"
                 + f" unmatched={counts.unmatched_rows}"
                 + f" invalid={counts.invalid_rows}"

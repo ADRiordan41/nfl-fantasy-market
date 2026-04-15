@@ -1043,6 +1043,15 @@ class AdminSeasonEndingCloseoutIn(BaseModel):
     reason: str | None = Field(default="SEASON_ENDING_INJURY", max_length=64)
 
 
+class AdminInjuryAlertIn(BaseModel):
+    player_id: int = Field(ge=1)
+    headline: str = Field(min_length=3, max_length=512)
+    summary: str | None = Field(default=None, max_length=1024)
+    source: str | None = Field(default=None, max_length=64)
+    published_at: str | None = Field(default=None, max_length=64)
+    external_id: str | None = Field(default=None, max_length=128)
+
+
 class AdminSeasonEndingCloseoutOut(BaseModel):
     player_id: int
     sport: str
