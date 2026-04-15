@@ -3329,6 +3329,16 @@ NOTIFICATION_TYPE_FRIEND_REQUEST = "FRIEND_REQUEST"
 NOTIFICATION_TYPE_FRIEND_ACCEPTED = "FRIEND_ACCEPTED"
 NOTIFICATION_TYPE_DIRECT_MESSAGE = "DIRECT_MESSAGE"
 NOTIFICATION_TYPE_FORUM_REPLY = "FORUM_REPLY"
+NOTIFICATION_TYPE_SEASON_ENDING_INJURY = "SEASON_ENDING_INJURY"
+NOTIFICATION_ENTITY_TYPE_PLAYER = "PLAYER"
+SEASON_ENDING_INJURY_NOTIFICATION_DEDUPE_HOURS = 24
+SEASON_ENDING_INJURY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bout for (the )?season\b", re.IGNORECASE),
+    re.compile(r"\bseason[- ]ending\b", re.IGNORECASE),
+    re.compile(r"\bplaced on (the )?(60[- ]day|season[- ]ending)\b", re.IGNORECASE),
+    re.compile(r"\b(torn|ruptured)\s+(acl|achilles|labrum|ucl)\b", re.IGNORECASE),
+    re.compile(r"\btommy john\b", re.IGNORECASE),
+)
 
 
 def friendship_pair(user_a_id: int, user_b_id: int) -> tuple[int, int]:
@@ -3608,6 +3618,8 @@ def notification_href(notification_type: str, *, actor_username: str | None, ent
         return f"/inbox?thread={int(entity_id)}"
     if notification_type == NOTIFICATION_TYPE_FORUM_REPLY and entity_id is not None:
         return f"/community/{int(entity_id)}"
+    if notification_type == NOTIFICATION_TYPE_SEASON_ENDING_INJURY and entity_id is not None:
+        return f"/player/{int(entity_id)}"
     if notification_type in {NOTIFICATION_TYPE_FRIEND_REQUEST, NOTIFICATION_TYPE_FRIEND_ACCEPTED} and actor_username:
         return f"/profile/{actor_username}"
     return None
@@ -3661,6 +3673,70 @@ def create_notification(
     )
     db.add(notification)
     return notification
+
+
+def season_ending_injury_reason_from_text(*texts: str | None) -> str | None:
+    merged_text = " | ".join(
+        str(value).strip()
+        for value in texts
+        if value is not None and str(value).strip()
+    )
+    if not merged_text:
+        return None
+
+    # Suppress common non-season-ending statuses that include injury context.
+    if any(token in merged_text.lower() for token in ("day-to-day", "questionable", "probable", "game-time decision")):
+        return None
+
+    for pattern in SEASON_ENDING_INJURY_PATTERNS:
+        match = pattern.search(merged_text)
+        if match:
+            return match.group(0)
+    return None
+
+
+def create_season_ending_injury_notifications(
+    db: Session,
+    *,
+    player: Player,
+    matched_reason: str,
+) -> int:
+    admin_rows = db.execute(
+        select(User.id, User.username).where(func.lower(User.username).in_(sorted(ADMIN_USERNAMES)))
+    ).all()
+    if not admin_rows:
+        return 0
+
+    created_count = 0
+    dedupe_start = chicago_now() - timedelta(hours=SEASON_ENDING_INJURY_NOTIFICATION_DEDUPE_HOURS)
+    for admin_user_id, _admin_username in admin_rows:
+        existing = db.execute(
+            select(Notification.id)
+            .where(
+                Notification.user_id == int(admin_user_id),
+                Notification.type == NOTIFICATION_TYPE_SEASON_ENDING_INJURY,
+                Notification.entity_type == NOTIFICATION_ENTITY_TYPE_PLAYER,
+                Notification.entity_id == int(player.id),
+                Notification.created_at >= dedupe_start,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        if existing is not None:
+            continue
+
+        create_notification(
+            db=db,
+            user_id=int(admin_user_id),
+            notification_type=NOTIFICATION_TYPE_SEASON_ENDING_INJURY,
+            message=(
+                f"Potential season-ending injury alert: {player.name} ({player.team} {player.position}) "
+                f"- {matched_reason}. Review and close out if needed."
+            ),
+            entity_type=NOTIFICATION_ENTITY_TYPE_PLAYER,
+            entity_id=int(player.id),
+        )
+        created_count += 1
+    return created_count
 
 
 def watchlist_player_to_out(
@@ -8824,6 +8900,19 @@ def upsert_weekly_stat(
         player=player,
         stat=stat,
     )
+    matched_injury_reason = season_ending_injury_reason_from_text(
+        normalize_optional_profile_field(stat.live_game_status),
+        normalize_optional_profile_field(stat.live_game_stat_line),
+        normalize_optional_profile_field(player.live_game_status),
+        normalize_optional_profile_field(player.live_game_stat_line),
+    )
+    injury_notifications_created = 0
+    if matched_injury_reason:
+        injury_notifications_created = create_season_ending_injury_notifications(
+            db=db,
+            player=player,
+            matched_reason=matched_injury_reason,
+        )
 
     db.flush()
     if stat_changed or game_point_changed or team_changed:
@@ -8845,6 +8934,8 @@ def upsert_weekly_stat(
         "stats_updated": stat_changed,
         "live_updated": live_changed,
         "game_points_updated": game_point_changed,
+        "injury_alerted": injury_notifications_created > 0,
+        "injury_alerts_created": int(injury_notifications_created),
     }
 
 
