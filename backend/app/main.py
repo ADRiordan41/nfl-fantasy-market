@@ -106,6 +106,8 @@ from .schemas import (
     AdminIpoPlayerCreateOut,
     AdminIpoPlayerOut,
     AdminIpoPlayersOut,
+    AdminIpoSuggestionOut,
+    AdminIpoSuggestionsOut,
     AdminSeasonEndingCloseoutIn,
     AdminSeasonEndingCloseoutOut,
     AdminSiteResetIn,
@@ -7254,6 +7256,152 @@ def build_admin_ipo_summaries(players: list[Player]) -> list[AdminIpoSportOut]:
     return summaries
 
 
+def build_admin_ipo_suggestions(
+    *,
+    db: Session,
+    sport: str | None,
+    lookback_hours: int,
+    limit: int,
+) -> AdminIpoSuggestionsOut:
+    now = chicago_now()
+    lookback_start = now - timedelta(hours=lookback_hours)
+    normalized_sport = None if sport is None or sport == "ALL" else normalize_sport_code(sport)
+    resolved_sport = "ALL" if normalized_sport is None else normalized_sport
+
+    hidden_stmt = select(Player).where(Player.ipo_open.is_(False))
+    if normalized_sport is not None:
+        hidden_stmt = hidden_stmt.where(Player.sport == normalized_sport)
+    hidden_players = db.execute(
+        hidden_stmt.order_by(Player.sport.asc(), Player.name.asc())
+    ).scalars().all()
+    if not hidden_players:
+        return AdminIpoSuggestionsOut(
+            sport=resolved_sport,
+            lookback_hours=lookback_hours,
+            total_candidates=0,
+            suggestions=[],
+        )
+
+    player_ids = [int(player.id) for player in hidden_players]
+
+    latest_week_rows = db.execute(
+        select(WeeklyStat.player_id, func.max(WeeklyStat.week))
+        .where(WeeklyStat.player_id.in_(player_ids))
+        .group_by(WeeklyStat.player_id)
+    ).all()
+    latest_week_by_player_id = {
+        int(player_id): int(latest_week)
+        for player_id, latest_week in latest_week_rows
+        if latest_week is not None
+    }
+
+    last_game_rows = db.execute(
+        select(PlayerGamePoint.player_id, func.max(PlayerGamePoint.recorded_at))
+        .where(PlayerGamePoint.player_id.in_(player_ids))
+        .group_by(PlayerGamePoint.player_id)
+    ).all()
+    last_game_recorded_by_player_id = {
+        int(player_id): recorded_at
+        for player_id, recorded_at in last_game_rows
+        if recorded_at is not None
+    }
+
+    recent_game_rows = db.execute(
+        select(PlayerGamePoint.player_id, func.count(PlayerGamePoint.id))
+        .where(
+            PlayerGamePoint.player_id.in_(player_ids),
+            PlayerGamePoint.recorded_at >= lookback_start,
+        )
+        .group_by(PlayerGamePoint.player_id)
+    ).all()
+    recent_game_count_by_player_id = {
+        int(player_id): int(count or 0)
+        for player_id, count in recent_game_rows
+    }
+    total_game_rows = db.execute(
+        select(PlayerGamePoint.player_id, func.count(PlayerGamePoint.id))
+        .where(PlayerGamePoint.player_id.in_(player_ids))
+        .group_by(PlayerGamePoint.player_id)
+    ).all()
+    total_game_appearance_by_player_id = {
+        int(player_id): int(count or 0)
+        for player_id, count in total_game_rows
+    }
+
+    candidate_players: list[Player] = []
+    for player in hidden_players:
+        player_id = int(player.id)
+        has_recent_live = player.live_updated_at is not None and player.live_updated_at >= lookback_start
+        has_playing_time = total_game_appearance_by_player_id.get(player_id, 0) > 0
+        if has_recent_live or has_playing_time:
+            candidate_players.append(player)
+
+    if not candidate_players:
+        return AdminIpoSuggestionsOut(
+            sport=resolved_sport,
+            lookback_hours=lookback_hours,
+            total_candidates=0,
+            suggestions=[],
+        )
+
+    candidate_ids = [int(player.id) for player in candidate_players]
+    stats_snapshot = get_stats_snapshot_by_player(db, candidate_ids)
+    candidate_rows: list[tuple[tuple[int, float, float, str], AdminIpoSuggestionOut]] = []
+    for player in candidate_players:
+        player_id = int(player.id)
+        fundamental_price, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+        last_game_recorded_at = last_game_recorded_by_player_id.get(player_id)
+        live_updated_at = player.live_updated_at
+        recent_activity_at = max(
+            [value for value in [last_game_recorded_at, live_updated_at] if value is not None],
+            default=None,
+        )
+        recent_game_updates = recent_game_count_by_player_id.get(player_id, 0)
+        total_game_appearances = total_game_appearance_by_player_id.get(player_id, 0)
+        latest_week_value = latest_week_by_player_id.get(player_id, int(latest_week))
+
+        suggestion = AdminIpoSuggestionOut(
+            id=player_id,
+            sport=str(player.sport),
+            name=str(player.name),
+            team=str(player.team),
+            position=str(player.position),
+            base_price=float(player.base_price),
+            suggested_base_price=round(max(10.0, float(fundamental_price)), 2),
+            suggested_k=float(player.k),
+            points_to_date=float(points_to_date),
+            latest_week=max(0, int(latest_week_value)),
+            total_game_appearances=max(0, int(total_game_appearances)),
+            recent_game_updates=max(0, int(recent_game_updates)),
+            last_game_recorded_at=last_game_recorded_at,
+            live_updated_at=live_updated_at,
+            recent_activity_at=recent_activity_at,
+        )
+        recent_rank = 1 if (recent_game_updates > 0 or live_updated_at is not None) else 0
+        sort_timestamp = recent_activity_at.timestamp() if recent_activity_at is not None else -1.0
+        candidate_rows.append(
+            (
+                (
+                    recent_rank,
+                    float(total_game_appearances),
+                    sort_timestamp,
+                    float(recent_game_updates),
+                    str(player.name).lower(),
+                ),
+                suggestion,
+            )
+        )
+
+    candidate_rows.sort(key=lambda row: row[0], reverse=True)
+    suggestions = [row[1] for row in candidate_rows[:limit]]
+    return AdminIpoSuggestionsOut(
+        sport=resolved_sport,
+        lookback_hours=lookback_hours,
+        total_candidates=len(candidate_rows),
+        suggestions=suggestions,
+    )
+
+
 def close_out_single_player_holdings(
     *,
     db: Session,
@@ -7528,6 +7676,23 @@ def admin_ipo_players(
             )
             for player in rows
         ],
+    )
+
+
+@app.get("/admin/ipo/suggestions", response_model=AdminIpoSuggestionsOut)
+def admin_ipo_suggestions(
+    sport: str = Query(default="ALL", min_length=2, max_length=16),
+    lookback_hours: int = Query(default=72, ge=1, le=24 * 30),
+    limit: int = Query(default=25, ge=1, le=200),
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    normalized_sport = None if sport.strip().upper() == "ALL" else normalize_sport_code(sport)
+    return build_admin_ipo_suggestions(
+        db=db,
+        sport=normalized_sport,
+        lookback_hours=lookback_hours,
+        limit=limit,
     )
 
 

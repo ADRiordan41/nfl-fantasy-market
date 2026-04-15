@@ -966,6 +966,31 @@ class AdminIpoPlayersOut(BaseModel):
     players: list[AdminIpoPlayerOut]
 
 
+class AdminIpoSuggestionOut(BaseModel):
+    id: int
+    sport: str
+    name: str
+    team: str
+    position: str
+    base_price: float
+    suggested_base_price: float
+    suggested_k: float
+    points_to_date: float
+    latest_week: int
+    total_game_appearances: int
+    recent_game_updates: int
+    last_game_recorded_at: datetime | None = None
+    live_updated_at: datetime | None = None
+    recent_activity_at: datetime | None = None
+
+
+class AdminIpoSuggestionsOut(BaseModel):
+    sport: str
+    lookback_hours: int
+    total_candidates: int
+    suggestions: list[AdminIpoSuggestionOut]
+
+
 class AdminIpoLaunchIn(BaseModel):
     sport: str = Field(min_length=2, max_length=16)
     season: int = Field(ge=1900, le=2500)

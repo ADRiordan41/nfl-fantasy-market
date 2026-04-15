@@ -512,6 +512,31 @@ export type AdminIpoPlayers = {
   players: AdminIpoPlayer[];
 };
 
+export type AdminIpoSuggestion = {
+  id: number;
+  sport: string;
+  name: string;
+  team: string;
+  position: string;
+  base_price: number;
+  suggested_base_price: number;
+  suggested_k: number;
+  points_to_date: number;
+  latest_week: number;
+  total_game_appearances: number;
+  recent_game_updates: number;
+  last_game_recorded_at: string | null;
+  live_updated_at: string | null;
+  recent_activity_at: string | null;
+};
+
+export type AdminIpoSuggestions = {
+  sport: string;
+  lookback_hours: number;
+  total_candidates: number;
+  suggestions: AdminIpoSuggestion[];
+};
+
 export type AdminIpoActionResult = {
   sport: string;
   season: number | null;

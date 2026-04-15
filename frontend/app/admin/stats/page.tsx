@@ -19,6 +19,8 @@ import type {
   AdminFeedbackMessage,
   AdminIpoActionResult,
   AdminIpoPlayerCreateResult,
+  AdminIpoSuggestion,
+  AdminIpoSuggestions,
   AdminModerationReport,
   HomeHowToContent,
   HomeHowToStep,
@@ -73,6 +75,11 @@ export default function AdminStatsPage() {
   const [seiPayoutByPlayerId, setSeiPayoutByPlayerId] = useState<Record<number, string>>({});
   const [busyIpoAction, setBusyIpoAction] = useState("");
   const [ipoMessage, setIpoMessage] = useState("");
+  const [ipoSuggestions, setIpoSuggestions] = useState<AdminIpoSuggestion[]>([]);
+  const [ipoSuggestionsLookbackHours, setIpoSuggestionsLookbackHours] = useState("72");
+  const [ipoSuggestionsTotalCandidates, setIpoSuggestionsTotalCandidates] = useState(0);
+  const [busyIpoSuggestions, setBusyIpoSuggestions] = useState(false);
+  const [selectedSuggestionPlayerId, setSelectedSuggestionPlayerId] = useState<number | null>(null);
   const [newIpoSport, setNewIpoSport] = useState("NFL");
   const [newIpoName, setNewIpoName] = useState("");
   const [newIpoTeam, setNewIpoTeam] = useState("");
@@ -193,6 +200,35 @@ export default function AdminStatsPage() {
       }
     },
     [handleApiError],
+  );
+
+  const loadIpoSuggestions = useCallback(
+    async (sport: string, lookbackHoursRaw?: string) => {
+      if (!sport) {
+        setIpoSuggestions([]);
+        setIpoSuggestionsTotalCandidates(0);
+        return;
+      }
+      const parsedLookback = Number.parseInt((lookbackHoursRaw ?? ipoSuggestionsLookbackHours).trim(), 10);
+      if (!Number.isFinite(parsedLookback) || parsedLookback < 1 || parsedLookback > 24 * 30) {
+        setError("Suggestion lookback must be between 1 and 720 hours.");
+        notifyError("Invalid suggestion lookback.");
+        return;
+      }
+      setBusyIpoSuggestions(true);
+      try {
+        const result = await apiGet<AdminIpoSuggestions>(
+          `/admin/ipo/suggestions?sport=${encodeURIComponent(sport)}&lookback_hours=${String(parsedLookback)}&limit=25`,
+        );
+        setIpoSuggestions(result.suggestions);
+        setIpoSuggestionsTotalCandidates(result.total_candidates);
+      } catch (err: unknown) {
+        handleApiError(err);
+      } finally {
+        setBusyIpoSuggestions(false);
+      }
+    },
+    [handleApiError, ipoSuggestionsLookbackHours],
   );
 
   const applyTradingStatus = useCallback((status: TradingStatus) => {
@@ -366,6 +402,11 @@ export default function AdminStatsPage() {
   }, [newIpoSport, sportSummaries]);
 
   useEffect(() => {
+    if (!newIpoSport) return;
+    void loadIpoSuggestions(newIpoSport);
+  }, [loadIpoSuggestions, newIpoSport]);
+
+  useEffect(() => {
     void loadFeedback();
   }, [loadFeedback]);
 
@@ -531,6 +572,7 @@ export default function AdminStatsPage() {
       setReviewSport(sport);
       await loadIpoSports();
       await loadIpoReview(sport);
+      await loadIpoSuggestions(sport);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -549,6 +591,7 @@ export default function AdminStatsPage() {
       setReviewSport(sport);
       await loadIpoSports();
       await loadIpoReview(sport);
+      await loadIpoSuggestions(sport);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -582,6 +625,7 @@ export default function AdminStatsPage() {
       setIpoMessage(result.message);
       notifySuccess(result.message);
       await loadIpoReview(sport);
+      await loadIpoSuggestions(sport);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -623,6 +667,7 @@ export default function AdminStatsPage() {
       parsedSeason = parsed;
     }
 
+    const forceImmediateListing = selectedSuggestionPlayerId != null;
     setBusyIpoAction("create-player");
     setError("");
     setIpoMessage("");
@@ -634,17 +679,19 @@ export default function AdminStatsPage() {
         position,
         base_price: basePrice,
         k,
-        list_immediately: newIpoListImmediately,
+        list_immediately: forceImmediateListing ? true : newIpoListImmediately,
         season: parsedSeason,
       });
       setIpoMessage(result.message);
       notifySuccess(result.message);
+      setSelectedSuggestionPlayerId(null);
       setNewIpoName("");
       setNewIpoTeam("");
       setNewIpoPosition("");
       setReviewSport(result.sport);
       await loadIpoSports();
       await loadIpoReview(result.sport);
+      await loadIpoSuggestions(result.sport);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -694,6 +741,7 @@ export default function AdminStatsPage() {
       }));
       await loadIpoSports();
       await loadIpoReview(player.sport);
+      await loadIpoSuggestions(player.sport);
     } catch (err: unknown) {
       handleApiError(err);
     } finally {
@@ -1022,6 +1070,27 @@ export default function AdminStatsPage() {
       return null;
     }
     return parsed;
+  }
+
+  function formatAdminTimestamp(value: string | null): string {
+    if (!value) return "--";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "--";
+    return parsed.toLocaleString();
+  }
+
+  function useIpoSuggestion(suggestion: AdminIpoSuggestion) {
+    setSelectedSuggestionPlayerId(suggestion.id);
+    setNewIpoSport(suggestion.sport);
+    setNewIpoName(suggestion.name);
+    setNewIpoTeam(suggestion.team);
+    setNewIpoPosition(suggestion.position);
+    setNewIpoBasePrice(String(suggestion.suggested_base_price));
+    setNewIpoK(String(suggestion.suggested_k));
+    setNewIpoListImmediately(true);
+    setIpoMessage(
+      `Loaded suggestion for ${suggestion.name}. Suggested base price ${formatCurrency(suggestion.suggested_base_price)}.`,
+    );
   }
 
   function parseOptionalPayoutPrice(raw: string): number | null {
@@ -1371,9 +1440,13 @@ export default function AdminStatsPage() {
                   type="checkbox"
                   checked={newIpoListImmediately}
                   onChange={(event) => setNewIpoListImmediately(event.target.checked)}
+                  disabled={selectedSuggestionPlayerId != null}
                 />
                 List immediately
               </label>
+              {selectedSuggestionPlayerId != null ? (
+                <p className="subtle">Suggestion mode keeps listing on so worker-based stat updates can start.</p>
+              ) : null}
             </div>
           </div>
           <div className="admin-actions">
@@ -1386,6 +1459,92 @@ export default function AdminStatsPage() {
               {busyIpoAction === "create-player" ? "Adding..." : "Add Prospect + IPO"}
             </button>
           </div>
+        </div>
+        <div className="admin-ipo-create-panel">
+          <h4>Auto-Suggest From Stat Activity</h4>
+          <p className="subtle">
+            Suggests unlisted active players based on playing time (game appearances) so you can prefill the IPO form in one click.
+          </p>
+          <div className="admin-input-grid">
+            <div>
+              <label className="field-label" htmlFor="ipo-suggestions-sport">
+                Sport
+              </label>
+              <select
+                id="ipo-suggestions-sport"
+                value={newIpoSport}
+                onChange={(event) => setNewIpoSport(event.target.value)}
+              >
+                {activeSportOptions.map((sport) => (
+                  <option key={sport} value={sport}>
+                    {sport}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="ipo-suggestions-lookback">
+                Lookback Hours
+              </label>
+              <input
+                id="ipo-suggestions-lookback"
+                inputMode="numeric"
+                value={ipoSuggestionsLookbackHours}
+                onChange={(event) => setIpoSuggestionsLookbackHours(event.target.value)}
+                placeholder="72"
+              />
+            </div>
+          </div>
+          <div className="admin-actions">
+            <button
+              type="button"
+              onClick={() => void loadIpoSuggestions(newIpoSport)}
+              disabled={busyIpoSuggestions}
+            >
+              {busyIpoSuggestions ? "Refreshing..." : "Refresh Suggestions"}
+            </button>
+          </div>
+          <p className="subtle">
+            Showing {formatNumber(ipoSuggestions.length)} of {formatNumber(ipoSuggestionsTotalCandidates)} candidate(s).
+          </p>
+          {!ipoSuggestions.length ? (
+            <p className="subtle">No candidates found for this sport and lookback window yet.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Player</th>
+                    <th>Team</th>
+                    <th>Pos</th>
+                    <th>Appearances</th>
+                    <th>Recent Games</th>
+                    <th>Last Activity</th>
+                    <th>Suggested Base</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {ipoSuggestions.map((suggestion) => (
+                    <tr key={`${suggestion.sport}-${suggestion.id}`}>
+                      <td>{suggestion.name}</td>
+                      <td>{suggestion.team}</td>
+                      <td>{suggestion.position}</td>
+                      <td>{formatNumber(suggestion.total_game_appearances)}</td>
+                      <td>{formatNumber(suggestion.recent_game_updates)}</td>
+                      <td>{formatAdminTimestamp(suggestion.recent_activity_at)}</td>
+                      <td>{formatCurrency(suggestion.suggested_base_price)}</td>
+                      <td>
+                        <button type="button" onClick={() => useIpoSuggestion(suggestion)}>
+                          Use
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
         {!sportSummaries.length ? (
           <p className="subtle">No sports found in the current player catalog.</p>
