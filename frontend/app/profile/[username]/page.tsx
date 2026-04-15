@@ -54,6 +54,10 @@ type AccountMixSegment = AccountMixSlice & {
 };
 
 const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
+const ACCOUNT_MIX_INNER_RADIUS = 47;
+const ACCOUNT_MIX_OUTER_RADIUS = 76;
+const ACCOUNT_MIX_RING_WIDTH = ACCOUNT_MIX_OUTER_RADIUS - ACCOUNT_MIX_INNER_RADIUS;
+const ACCOUNT_MIX_TRACK_RADIUS = ACCOUNT_MIX_INNER_RADIUS + ACCOUNT_MIX_RING_WIDTH / 2;
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -190,9 +194,18 @@ export default function UserProfilePage() {
   );
   const unrealizedPnlPct = basisNotional > 0 ? (unrealizedPnl / basisNotional) * 100 : 0;
 
+  const rowsWithAllocation = useMemo(
+    () =>
+      rows.map((row) => ({
+        ...row,
+        allocationPct: grossExposure > 0 ? (Math.abs(row.marketValue) / grossExposure) * 100 : 0,
+      })),
+    [grossExposure, rows],
+  );
+
   const sportGroups = useMemo<SportGroup[]>(() => {
     const groups = new Map<string, HoldingRow[]>();
-    for (const row of rows) {
+    for (const row of rowsWithAllocation) {
       const existing = groups.get(row.sport);
       if (existing) {
         existing.push(row);
@@ -220,11 +233,11 @@ export default function UserProfilePage() {
         if (aIndex !== bIndex) return aIndex - bIndex;
         return a.sport.localeCompare(b.sport);
       });
-  }, [grossExposure, rows]);
+  }, [grossExposure, rowsWithAllocation]);
 
   const pieSlices = useMemo<AccountMixSlice[]>(() => {
     const cashValue = Math.max(0, profile?.cash_balance ?? 0);
-    const holdingSlices = rows
+    const holdingSlices = rowsWithAllocation
       .map((row) => ({
         key: `player-${row.id}`,
         label: `${row.shares < 0 ? "Short " : ""}${row.name} (${row.team})`,
@@ -247,7 +260,7 @@ export default function UserProfilePage() {
     }
     slices.push(...holdingSlices);
     return slices;
-  }, [profile?.cash_balance, rows]);
+  }, [profile?.cash_balance, rowsWithAllocation]);
 
   const pieTotal = useMemo(() => pieSlices.reduce((sum, slice) => sum + slice.value, 0), [pieSlices]);
 
@@ -467,9 +480,22 @@ export default function UserProfilePage() {
             <div className="account-mix-layout">
               <div className="account-mix-chart-wrap" onMouseLeave={() => setActiveAccountMixSliceKey(null)}>
                 <svg className="account-mix-donut" viewBox="0 0 200 200" role="img" aria-label="Donut chart showing account mix composition">
-                  <circle className="account-mix-donut-track" cx="100" cy="100" r="76" />
+                  <circle
+                    className="account-mix-donut-track"
+                    cx="100"
+                    cy="100"
+                    r={ACCOUNT_MIX_TRACK_RADIUS}
+                    strokeWidth={ACCOUNT_MIX_RING_WIDTH}
+                  />
                   {pieSegments.map((slice) => {
-                    const path = describeDonutSegment(100, 100, 47, 76, slice.startAngle, slice.endAngle);
+                    const path = describeDonutSegment(
+                      100,
+                      100,
+                      ACCOUNT_MIX_INNER_RADIUS,
+                      ACCOUNT_MIX_OUTER_RADIUS,
+                      slice.startAngle,
+                      slice.endAngle,
+                    );
                     const isActive = activeAccountMixSlice?.key === slice.key;
                     const isMuted = Boolean(activeAccountMixSlice) && !isActive;
                     return (
@@ -543,7 +569,7 @@ export default function UserProfilePage() {
           </section>
 
           <section className="mobile-holdings">
-            {rows.length === 0 ? (
+            {rowsWithAllocation.length === 0 ? (
               <section className="empty-panel">
                 <h3>No positions yet</h3>
                 <p className="subtle">This user has no open holdings right now.</p>
@@ -591,53 +617,67 @@ export default function UserProfilePage() {
             )}
           </section>
 
-          {rows.length > 0 ? (
-            <section className="desktop-only portfolio-holdings-groups">
-              {sportGroups.map((group) => (
-                <section key={group.sport} className="table-panel">
-                  <div className="portfolio-sport-group-head">
-                    <h3>{group.sport}</h3>
-                    <p className="subtle portfolio-sport-summary">
-                      {formatNumber(group.rows.length)} positions | Net {formatCurrency(group.netValue)} | Gross {formatCurrency(group.grossValue)} |{" "}
-                      {formatPercent(group.allocationPct, 1)} allocation
-                    </p>
-                  </div>
-                  <div className="table-wrap">
-                    <table className="portfolio-table">
-                      <thead>
-                        <tr>
-                          <th>Player</th>
-                          <th>Shares</th>
-                          <th>Purchase Price</th>
-                          <th>Current Price</th>
-                          <th>Market Value</th>
-                          <th>Unrealized P/L</th>
-                          <th>Allocation</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.rows.map((row) => (
-                          <tr key={row.id}>
-                            <td>
+          {rowsWithAllocation.length > 0 ? (
+            <section className="table-panel market-table-panel portfolio-market-table-panel">
+              <div className="table-wrap">
+                <table className="market-table portfolio-market-table">
+                  <colgroup>
+                    <col className="market-col-player" />
+                    <col className="market-col-price" />
+                    <col className="market-col-earnings" />
+                    <col className="market-col-change" />
+                    <col className="market-col-position" />
+                    <col className="portfolio-col-allocation" />
+                  </colgroup>
+                  <thead>
+                    <tr className="market-header-detail-row">
+                      <th className="market-sticky-player-cell market-header-corner">Player</th>
+                      <th>Price</th>
+                      <th>Cost</th>
+                      <th>Total Gain</th>
+                      <th>Position</th>
+                      <th>Allocation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rowsWithAllocation.map((row) => {
+                      const positionClass =
+                        row.shares > 0 ? "market-position-held" : row.shares < 0 ? "market-position-short" : "market-position-flat";
+                      const positionLabel =
+                        row.shares < 0 ? `S${formatNumber(Math.abs(row.shares), 0)}` : formatNumber(Math.abs(row.shares), 0);
+                      return (
+                        <tr key={row.id} className="market-data-row" data-market-row="true">
+                          <td className="market-sticky-player-cell">
+                            <div className="market-player-cell">
                               <Link href={`/player/${row.id}`} className="card-title">
                                 {row.name}
                               </Link>
-                            </td>
-                            <td>{formatNumber(row.shares, 0)}</td>
-                            <td>{formatCurrency(row.averageEntryPrice)}</td>
-                            <td>{formatCurrency(row.spot)}</td>
-                            <td>{formatCurrency(row.marketValue)}</td>
-                            <td className={row.pnl >= 0 ? "up" : "down"}>
-                              {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})
-                            </td>
-                            <td>{formatPercent(row.allocationPct, 1)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              ))}
+                              <span className="market-player-meta">
+                                {row.team} {row.position}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="market-cell-numeric market-price-cell market-mid-cell">{formatCurrency(row.spot)}</td>
+                          <td className="market-cell-numeric">{formatCurrency(row.averageEntryPrice)}</td>
+                          <td className={`market-cell-numeric ${row.pnl >= 0 ? "up" : "down"}`}>
+                            {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})
+                          </td>
+                          <td className="market-cell-numeric">
+                            <div className="market-position-stack">
+                              <span className={positionClass}>{positionLabel}</span>
+                              <span className="market-position-separator">/</span>
+                              <span className={`market-position-value ${row.marketValue >= 0 ? "up" : "down"}`}>
+                                {formatCurrency(row.marketValue)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="market-cell-numeric">{formatPercent(row.allocationPct, 1)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </section>
           ) : null}
 

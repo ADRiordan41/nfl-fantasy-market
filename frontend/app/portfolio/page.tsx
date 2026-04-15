@@ -72,6 +72,10 @@ type AccountMixSegment = AccountMixSlice & {
 const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
 const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
 const STARTING_ACCOUNT_BASELINE = 100000;
+const ACCOUNT_MIX_INNER_RADIUS = 47;
+const ACCOUNT_MIX_OUTER_RADIUS = 76;
+const ACCOUNT_MIX_RING_WIDTH = ACCOUNT_MIX_OUTER_RADIUS - ACCOUNT_MIX_INNER_RADIUS;
+const ACCOUNT_MIX_TRACK_RADIUS = ACCOUNT_MIX_INNER_RADIUS + ACCOUNT_MIX_RING_WIDTH / 2;
 const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   name: "asc",
   spot_price: "desc",
@@ -665,9 +669,22 @@ export default function PortfolioPage() {
                   role="img"
                   aria-label="Donut chart showing account mix composition"
                 >
-                  <circle className="account-mix-donut-track" cx="100" cy="100" r="76" />
+                  <circle
+                    className="account-mix-donut-track"
+                    cx="100"
+                    cy="100"
+                    r={ACCOUNT_MIX_TRACK_RADIUS}
+                    strokeWidth={ACCOUNT_MIX_RING_WIDTH}
+                  />
                   {pieSegments.map((slice) => {
-                    const path = describeDonutSegment(100, 100, 47, 76, slice.startAngle, slice.endAngle);
+                    const path = describeDonutSegment(
+                      100,
+                      100,
+                      ACCOUNT_MIX_INNER_RADIUS,
+                      ACCOUNT_MIX_OUTER_RADIUS,
+                      slice.startAngle,
+                      slice.endAngle,
+                    );
                     const isActive = activeAccountMixSlice?.key === slice.key;
                     const isMuted = Boolean(activeAccountMixSlice) && !isActive;
                     return (
