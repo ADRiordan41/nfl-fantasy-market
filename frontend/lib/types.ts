@@ -323,6 +323,7 @@ export type UserProfile = {
   return_pct: number;
   leaderboard_rank: number | null;
   holdings: UserProfileHolding[];
+  community_posts: ForumPostSummary[];
   friendship: FriendshipStatus;
 };
 

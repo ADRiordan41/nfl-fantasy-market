@@ -453,6 +453,7 @@ class UserProfileOut(BaseModel):
     return_pct: float = 0
     leaderboard_rank: int | None = None
     holdings: list[UserProfileHoldingOut]
+    community_posts: list[ForumPostSummaryOut] = Field(default_factory=list)
     friendship: FriendshipStatusOut = Field(default_factory=lambda: FriendshipStatusOut(status="SELF", can_message=False))
 
 

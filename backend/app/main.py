@@ -3260,6 +3260,7 @@ def user_profile_to_out(
     *,
     friendship: FriendshipStatusOut | None = None,
     leaderboard_rank: int | None = None,
+    community_posts: list[ForumPostSummaryOut] | None = None,
 ) -> UserProfileOut:
     holdings = sorted(snapshot.positions, key=lambda position: abs(position.market_value), reverse=True)
     baseline_cash = float(REGISTER_STARTING_CASH)
@@ -3300,8 +3301,54 @@ def user_profile_to_out(
             )
             for position in holdings
         ],
+        community_posts=community_posts or [],
         friendship=friendship or FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False),
     )
+
+
+def forum_post_summaries_for_user(
+    db: Session,
+    *,
+    user_id: int,
+    author_username: str,
+    limit: int = 10,
+) -> list[ForumPostSummaryOut]:
+    posts = db.execute(
+        select(ForumPost)
+        .where(ForumPost.user_id == int(user_id))
+        .order_by(ForumPost.updated_at.desc(), ForumPost.id.desc())
+        .limit(max(1, min(int(limit), 50)))
+    ).scalars().all()
+    if not posts:
+        return []
+
+    fetched_post_ids = [int(post.id) for post in posts]
+    hidden_post_ids = hidden_content_id_set(db, MODERATION_CONTENT_FORUM_POST, fetched_post_ids)
+    visible_posts = [post for post in posts if int(post.id) not in hidden_post_ids]
+    if not visible_posts:
+        return []
+
+    visible_post_ids = [int(post.id) for post in visible_posts]
+    comment_records = db.execute(
+        select(ForumComment.id, ForumComment.post_id)
+        .where(ForumComment.post_id.in_(visible_post_ids))
+    ).all()
+    comment_ids = [int(comment_id) for comment_id, _ in comment_records]
+    hidden_comment_ids = hidden_content_id_set(db, MODERATION_CONTENT_FORUM_COMMENT, comment_ids)
+    comment_count_by_post_id: dict[int, int] = {post_id: 0 for post_id in visible_post_ids}
+    for comment_id, post_id in comment_records:
+        if int(comment_id) in hidden_comment_ids:
+            continue
+        comment_count_by_post_id[int(post_id)] = comment_count_by_post_id.get(int(post_id), 0) + 1
+
+    return [
+        forum_post_summary_to_out(
+            post=post,
+            author_username=author_username,
+            comment_count=comment_count_by_post_id.get(int(post.id), 0),
+        )
+        for post in visible_posts
+    ]
 
 
 def position_display_basis_amount(position: PositionRisk) -> Decimal:
@@ -4327,6 +4374,11 @@ def users_me_profile(
         snapshot=snapshot,
         friendship=FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False),
         leaderboard_rank=leaderboard_rank_for_user(db, user_id=int(user.id)),
+        community_posts=forum_post_summaries_for_user(
+            db,
+            user_id=int(user.id),
+            author_username=str(user.username),
+        ),
     )
 
 
@@ -4355,6 +4407,11 @@ def users_me_profile_update(
         snapshot=snapshot,
         friendship=FriendshipStatusOut(status=FRIENDSHIP_STATUS_SELF, can_message=False),
         leaderboard_rank=leaderboard_rank_for_user(db, user_id=int(user.id)),
+        community_posts=forum_post_summaries_for_user(
+            db,
+            user_id=int(user.id),
+            author_username=str(user.username),
+        ),
     )
     db.commit()
     return out
@@ -4383,6 +4440,11 @@ def users_profile_by_username(
         snapshot=snapshot,
         friendship=friendship,
         leaderboard_rank=leaderboard_rank_for_user(db, user_id=int(user.id)),
+        community_posts=forum_post_summaries_for_user(
+            db,
+            user_id=int(user.id),
+            author_username=str(user.username),
+        ),
     )
 
 

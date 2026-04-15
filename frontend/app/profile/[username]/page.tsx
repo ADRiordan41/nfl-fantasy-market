@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AccountMixPanel, { type AccountMixSegment as SharedAccountMixSegment } from "@/components/account-mix-panel";
+import CommunityPostsPanel from "@/components/community-posts-panel";
 import { apiGet, apiPost, clearAuthToken, isUnauthorizedError } from "@/lib/api";
 import {
   formatCurrency,
   formatNumber,
   formatPercent,
   formatSignedCurrency,
-  formatSignedPercent,
 } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
@@ -47,17 +48,7 @@ type AccountMixSlice = {
   gainLossPct: number | null;
 };
 
-type AccountMixSegment = AccountMixSlice & {
-  pct: number;
-  startAngle: number;
-  endAngle: number;
-};
-
 const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
-const ACCOUNT_MIX_INNER_RADIUS = 47;
-const ACCOUNT_MIX_OUTER_RADIUS = 76;
-const ACCOUNT_MIX_RING_WIDTH = ACCOUNT_MIX_OUTER_RADIUS - ACCOUNT_MIX_INNER_RADIUS;
-const ACCOUNT_MIX_TRACK_RADIUS = ACCOUNT_MIX_INNER_RADIUS + ACCOUNT_MIX_RING_WIDTH / 2;
 
 function toMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -67,38 +58,6 @@ function initialLetter(value: string): string {
   const normalized = (value || "").trim();
   if (!normalized) return "?";
   return normalized[0].toUpperCase();
-}
-
-function polarToCartesian(cx: number, cy: number, radius: number, angleDeg: number) {
-  const angleRad = ((angleDeg - 90) * Math.PI) / 180;
-  return {
-    x: cx + radius * Math.cos(angleRad),
-    y: cy + radius * Math.sin(angleRad),
-  };
-}
-
-function describeDonutSegment(
-  cx: number,
-  cy: number,
-  innerRadius: number,
-  outerRadius: number,
-  startAngle: number,
-  endAngle: number,
-): string {
-  if (endAngle <= startAngle) return "";
-  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
-  const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle);
-  const outerEnd = polarToCartesian(cx, cy, outerRadius, endAngle);
-  const innerStart = polarToCartesian(cx, cy, innerRadius, endAngle);
-  const innerEnd = polarToCartesian(cx, cy, innerRadius, startAngle);
-
-  return [
-    `M ${outerStart.x} ${outerStart.y}`,
-    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
-    `L ${innerStart.x} ${innerStart.y}`,
-    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerEnd.x} ${innerEnd.y}`,
-    "Z",
-  ].join(" ");
 }
 
 export default function UserProfilePage() {
@@ -264,7 +223,7 @@ export default function UserProfilePage() {
 
   const pieTotal = useMemo(() => pieSlices.reduce((sum, slice) => sum + slice.value, 0), [pieSlices]);
 
-  const pieSegments = useMemo<AccountMixSegment[]>(() => {
+  const pieSegments = useMemo<SharedAccountMixSegment[]>(() => {
     if (pieTotal <= 0) return [];
     const sliceGapDeg = pieSlices.length > 1 ? 1.3 : 0;
     let cursor = -90;
@@ -284,12 +243,6 @@ export default function UserProfilePage() {
       })
       .filter((slice) => slice.endAngle > slice.startAngle);
   }, [pieSlices, pieTotal]);
-
-  const activeAccountMixSlice = useMemo(() => {
-    if (!pieSegments.length) return null;
-    if (!activeAccountMixSliceKey) return pieSegments[0];
-    return pieSegments.find((slice) => slice.key === activeAccountMixSliceKey) ?? pieSegments[0];
-  }, [activeAccountMixSliceKey, pieSegments]);
 
   function applyFriendship(nextFriendship: FriendshipStatus) {
     setProfile((previous) => (previous ? { ...previous, friendship: nextFriendship } : previous));
@@ -470,103 +423,12 @@ export default function UserProfilePage() {
             </article>
           </section>
 
-          <section className="table-panel account-mix-panel">
-            <div className="portfolio-sport-group-head">
-              <h3>Account Mix</h3>
-              <p className="subtle portfolio-sport-summary">
-                Cash and all open holdings.
-              </p>
-            </div>
-            <div className="account-mix-layout">
-              <div className="account-mix-chart-wrap" onMouseLeave={() => setActiveAccountMixSliceKey(null)}>
-                <svg className="account-mix-donut" viewBox="0 0 200 200" role="img" aria-label="Donut chart showing account mix composition">
-                  <circle
-                    className="account-mix-donut-track"
-                    cx="100"
-                    cy="100"
-                    r={ACCOUNT_MIX_TRACK_RADIUS}
-                    strokeWidth={ACCOUNT_MIX_RING_WIDTH}
-                  />
-                  {pieSegments.map((slice) => {
-                    const path = describeDonutSegment(
-                      100,
-                      100,
-                      ACCOUNT_MIX_INNER_RADIUS,
-                      ACCOUNT_MIX_OUTER_RADIUS,
-                      slice.startAngle,
-                      slice.endAngle,
-                    );
-                    const isActive = activeAccountMixSlice?.key === slice.key;
-                    const isMuted = Boolean(activeAccountMixSlice) && !isActive;
-                    return (
-                      <path
-                        key={slice.key}
-                        d={path}
-                        fill={slice.color}
-                        className={`account-mix-segment${isActive ? " active" : ""}${isMuted ? " muted" : ""}`}
-                        tabIndex={0}
-                        onMouseEnter={() => setActiveAccountMixSliceKey(slice.key)}
-                        onFocus={() => setActiveAccountMixSliceKey(slice.key)}
-                        aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)} allocation)${
-                          slice.gainLossPct == null ? "" : `, ${formatSignedPercent(slice.gainLossPct, 2)} gain/loss`
-                        }`}
-                      />
-                    );
-                  })}
-                </svg>
-                {activeAccountMixSlice && (
-                  <div className="account-mix-tooltip" role="status">
-                    <strong>{activeAccountMixSlice.label}</strong>
-                    <span>
-                      {formatCurrency(activeAccountMixSlice.value)} ({formatPercent(activeAccountMixSlice.pct, 1)})
-                    </span>
-                  </div>
-                )}
-                <div className="account-mix-center">
-                  <span>{activeAccountMixSlice ? activeAccountMixSlice.label : "Total Account"}</span>
-                  <strong>{formatCurrency(activeAccountMixSlice ? activeAccountMixSlice.value : profile.equity)}</strong>
-                  <span>{activeAccountMixSlice ? `${formatPercent(activeAccountMixSlice.pct, 1)} allocation` : "Hover slices for details"}</span>
-                </div>
-              </div>
-
-              <div className="account-mix-legend" onMouseLeave={() => setActiveAccountMixSliceKey(null)}>
-                {pieSegments.map((slice) => {
-                  const isActive = activeAccountMixSlice?.key === slice.key;
-                  const isMuted = Boolean(activeAccountMixSlice) && !isActive;
-                  return (
-                    <div
-                      className={`account-mix-row${isActive ? " active" : ""}${isMuted ? " muted" : ""}`}
-                      key={slice.key}
-                      tabIndex={0}
-                      onMouseEnter={() => setActiveAccountMixSliceKey(slice.key)}
-                      onFocus={() => setActiveAccountMixSliceKey(slice.key)}
-                      aria-label={`${slice.label}: ${formatCurrency(slice.value)} (${formatPercent(slice.pct, 1)} allocation)${
-                        slice.gainLossPct == null ? "" : `, ${formatSignedPercent(slice.gainLossPct, 2)} gain/loss`
-                      }`}
-                    >
-                      <span className="account-mix-label">
-                        <span className="account-mix-swatch" style={{ background: slice.color }} />
-                        <span className="account-mix-name" title={slice.label}>
-                          {slice.label}
-                        </span>
-                      </span>
-                      <strong>{formatCurrency(slice.value)}</strong>
-                      <span>{formatPercent(slice.pct, 1)}</span>
-                      <span
-                        className={
-                          slice.gainLossPct == null
-                            ? "account-mix-gl"
-                            : `account-mix-gl ${slice.gainLossPct >= 0 ? "up" : "down"}`
-                        }
-                      >
-                        {slice.gainLossPct == null ? "--" : formatSignedPercent(slice.gainLossPct, 2)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
+          <AccountMixPanel
+            totalValue={profile.equity}
+            pieSegments={pieSegments}
+            activeSliceKey={activeAccountMixSliceKey}
+            onActiveSliceKeyChange={setActiveAccountMixSliceKey}
+          />
 
           <section className="mobile-holdings">
             {rowsWithAllocation.length === 0 ? (
@@ -680,6 +542,11 @@ export default function UserProfilePage() {
               </div>
             </section>
           ) : null}
+
+          <CommunityPostsPanel
+            posts={profile.community_posts}
+            emptyMessage="This user hasn't published any community posts yet."
+          />
 
           {isOwnProfile ? (
             <section className="table-panel">
