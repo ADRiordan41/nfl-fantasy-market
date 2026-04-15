@@ -925,6 +925,19 @@ class AdminPricingConfigUpdateIn(BaseModel):
     price_impact_multiplier: float = Field(ge=0.000001, le=5.0)
 
 
+class HomeHowToStepOut(BaseModel):
+    title: str
+    body: str
+
+
+class HomeHowToContentOut(BaseModel):
+    steps: list[HomeHowToStepOut]
+
+
+class AdminHomeHowToContentUpdateIn(BaseModel):
+    steps: list[HomeHowToStepOut] = Field(min_length=1, max_length=24)
+
+
 class AdminIpoSportOut(BaseModel):
     sport: str
     total_players: int

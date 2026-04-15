@@ -20,6 +20,8 @@ import type {
   AdminIpoActionResult,
   AdminIpoPlayerCreateResult,
   AdminModerationReport,
+  HomeHowToContent,
+  HomeHowToStep,
   AdminIpoPlayers,
   AdminIpoSport,
   AdminSeasonEndingCloseoutResult,
@@ -118,6 +120,9 @@ export default function AdminStatsPage() {
   const [pricingConfig, setPricingConfig] = useState<AdminPricingConfig | null>(null);
   const [priceImpactInput, setPriceImpactInput] = useState("0.40");
   const [busyPricingConfig, setBusyPricingConfig] = useState(false);
+  const [homeHowToSteps, setHomeHowToSteps] = useState<HomeHowToStep[]>([]);
+  const [homeHowToJson, setHomeHowToJson] = useState("[]");
+  const [busyHomeHowToContent, setBusyHomeHowToContent] = useState(false);
   const [equityLookupUsername, setEquityLookupUsername] = useState("foreverhopeful");
   const [adminUsers, setAdminUsers] = useState<AdminUserListItem[]>([]);
   const [userPickerQuery, setUserPickerQuery] = useState("");
@@ -243,6 +248,20 @@ export default function AdminStatsPage() {
     }
   }, [handleApiError]);
 
+  const loadHomeHowToContent = useCallback(async () => {
+    setBusyHomeHowToContent(true);
+    try {
+      const result = await apiGet<HomeHowToContent>("/admin/home/how-to-use");
+      const steps = result.steps ?? [];
+      setHomeHowToSteps(steps);
+      setHomeHowToJson(JSON.stringify(steps, null, 2));
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyHomeHowToContent(false);
+    }
+  }, [handleApiError]);
+
   const loadFeedback = useCallback(async () => {
     setBusyFeedback(true);
     try {
@@ -326,6 +345,10 @@ export default function AdminStatsPage() {
   useEffect(() => {
     void loadPricingConfig();
   }, [loadPricingConfig]);
+
+  useEffect(() => {
+    void loadHomeHowToContent();
+  }, [loadHomeHowToContent]);
 
   useEffect(() => {
     void loadAdminUsers();
@@ -772,6 +795,37 @@ export default function AdminStatsPage() {
     }
   }
 
+  async function saveHomeHowToContent() {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(homeHowToJson);
+    } catch {
+      setError("Home Page Content JSON is invalid.");
+      notifyError("Home Page Content JSON is invalid.");
+      return;
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      setError("Home Page Content must be a non-empty JSON array.");
+      notifyError("Home Page Content must be a non-empty JSON array.");
+      return;
+    }
+
+    setBusyHomeHowToContent(true);
+    setError("");
+    try {
+      const result = await apiPost<HomeHowToContent>("/admin/home/how-to-use", {
+        steps: parsed,
+      });
+      setHomeHowToSteps(result.steps ?? []);
+      setHomeHowToJson(JSON.stringify(result.steps ?? [], null, 2));
+      notifySuccess("Home page How to Use content updated.");
+    } catch (err: unknown) {
+      handleApiError(err);
+    } finally {
+      setBusyHomeHowToContent(false);
+    }
+  }
+
   function jumpToSection(sectionId: string) {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -1182,6 +1236,35 @@ export default function AdminStatsPage() {
             </div>
             <p className="subtle">
               {pricingConfig?.message ?? "Use this to tune trade responsiveness without redeploying."}
+            </p>
+          </article>
+          <article className="admin-setting-card">
+            <div className="admin-setting-head">
+              <strong>Home Page How-To Content</strong>
+              <span className="admin-status ready">Live</span>
+            </div>
+            <p className="subtle">
+              Edit the "How to Use Matchup Market" cards on the home page. Use a JSON array of objects with
+              <code> title</code> and <code>body</code>.
+            </p>
+            <label className="field-label" htmlFor="home-how-to-json">Home How-To JSON</label>
+            <textarea
+              id="home-how-to-json"
+              className="admin-textarea"
+              value={homeHowToJson}
+              onChange={(event) => setHomeHowToJson(event.target.value)}
+              placeholder='[{"title":"Step title","body":"Step body"}]'
+            />
+            <div className="admin-actions">
+              <button className="primary-btn" onClick={() => void saveHomeHowToContent()} disabled={busyHomeHowToContent}>
+                {busyHomeHowToContent ? "Saving..." : "Save Home Content"}
+              </button>
+              <button onClick={() => void loadHomeHowToContent()} disabled={busyHomeHowToContent}>
+                {busyHomeHowToContent ? "Refreshing..." : "Reload Home Content"}
+              </button>
+            </div>
+            <p className="subtle">
+              Loaded steps: {formatNumber(homeHowToSteps.length)}
             </p>
           </article>
         </div>

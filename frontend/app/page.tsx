@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet, getAuthToken } from "@/lib/api";
+import { apiGet, apiPost, getAuthToken } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type {
   AdminAuditTrade,
   ForumPostSummary,
+  HomeHowToContent,
+  HomeHowToStep,
   LeaderboardResponse,
   MarketMovers,
   Player,
@@ -62,6 +64,39 @@ const HOME_TOUR_SHORT_STEPS: HomeTutorialStep[] = [
   },
 ];
 
+const HOME_HOW_TO_DEFAULT_STEPS: HomeHowToStep[] = [
+  {
+    title: "What Is Matchup Market?",
+    body: "Matchup Market is a sports market game where you can buy and short shares of players based on how you think their fantasy value will change. If you believe a player's value is going to rise, you can buy shares. If you think a player's value may fall, you can short shares and benefit if the price drops. It is a simple and competitive game where you can use your sports knowledge.",
+  },
+  {
+    title: "Browse Players in the Market",
+    body: "Start by exploring the players available on the market. Each player has a price that can move up or down over time.",
+  },
+  {
+    title: "Buy or Short Players",
+    body: "Use stats, recent performance, news, and your own instincts to decide which players you think are undervalued or overvalued.",
+  },
+  {
+    title: "Manage Your Portfolio",
+    body: "You can sell your positions to lock in gains, reduce risk, or free up space for new opportunities. Your portfolio shows how your decisions are performing over time.",
+  },
+  {
+    title: "Grow Your Portfolio",
+    body: "The goal of Matchup Market is to grow your portfolio over time. As your portfolio value increases, you can invest in more players, build a stronger strategy, and take advantage of more opportunities across the market.\n\nThe more value you build, the higher you can climb on the leaderboard and the closer you get to the top.",
+  },
+  {
+    title: "Why People Use Matchup Market",
+    body: "Matchup Market gives fans a fun way to do more than just watch the games. You can make predictions, act on your opinions, and compete against other users in a fun and competitive game. Whether you are new to fantasy sports or already know the players well, Matchup Market makes it easy to get started.",
+  },
+];
+
+const HOME_HOW_TO_ACTIONS_BY_INDEX: Record<number, { href: string; label: string }> = {
+  1: { href: "/market", label: "Open Market" },
+  2: { href: "/market", label: "Trade In Market" },
+  3: { href: "/portfolio", label: "Open Portfolio" },
+};
+
 function homeTutorialStorageKey(userId: number): string {
   return `${HOME_TUTORIAL_STORAGE_PREFIX}:${HOME_TUTORIAL_VERSION}:${userId}`;
 }
@@ -90,6 +125,10 @@ export default function HomePage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [weeklyMovers, setWeeklyMovers] = useState<MarketMovers | null>(null);
   const [posts, setPosts] = useState<ForumPostSummary[]>([]);
+  const [homeHowToSteps, setHomeHowToSteps] = useState<HomeHowToStep[]>(HOME_HOW_TO_DEFAULT_STEPS);
+  const [homeHowToEditOpen, setHomeHowToEditOpen] = useState(false);
+  const [homeHowToDraftSteps, setHomeHowToDraftSteps] = useState<HomeHowToStep[]>(HOME_HOW_TO_DEFAULT_STEPS);
+  const [savingHomeHowTo, setSavingHomeHowTo] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [communityLocked, setCommunityLocked] = useState(false);
@@ -106,7 +145,7 @@ export default function HomePage() {
     setError("");
     try {
       let locked = false;
-      const [nextPlayers, nextPosts, nextLeaderboard, nextWeeklyMovers] = await Promise.all([
+      const [nextPlayers, nextPosts, nextLeaderboard, nextWeeklyMovers, nextHomeHowTo] = await Promise.all([
         apiGet<Player[]>("/players"),
         apiGet<ForumPostSummary[]>("/forum/posts?limit=4").catch((err: unknown) => {
           const message = toMessage(err);
@@ -118,11 +157,13 @@ export default function HomePage() {
         }),
         apiGet<LeaderboardResponse>("/leaderboard?scope=global&sport=ALL&limit=5").catch(() => null),
         apiGet<MarketMovers>("/market/movers?limit=100&window_hours=168").catch(() => null),
+        apiGet<HomeHowToContent>("/home/how-to-use").catch(() => null),
       ]);
       setPlayers(nextPlayers);
       setPosts(nextPosts);
       setLeaderboard(nextLeaderboard);
       setWeeklyMovers(nextWeeklyMovers);
+      setHomeHowToSteps(nextHomeHowTo?.steps?.length ? nextHomeHowTo.steps : HOME_HOW_TO_DEFAULT_STEPS);
       setCommunityLocked(locked);
     } catch (err: unknown) {
       setError(toMessage(err));
@@ -222,6 +263,55 @@ export default function HomePage() {
     setHomeTutorialMode(mode);
     setHomeTutorialOpen(true);
   }, []);
+
+  const openHomeHowToEditor = useCallback(() => {
+    setHomeHowToDraftSteps(homeHowToSteps.length ? homeHowToSteps : HOME_HOW_TO_DEFAULT_STEPS);
+    setHomeHowToEditOpen(true);
+  }, [homeHowToSteps]);
+
+  const closeHomeHowToEditor = useCallback(() => {
+    setHomeHowToEditOpen(false);
+  }, []);
+
+  const updateHomeHowToDraftStep = useCallback((index: number, field: "title" | "body", value: string) => {
+    setHomeHowToDraftSteps((previous) =>
+      previous.map((step, stepIndex) => (stepIndex === index ? { ...step, [field]: value } : step)),
+    );
+  }, []);
+
+  const addHomeHowToDraftStep = useCallback(() => {
+    setHomeHowToDraftSteps((previous) => [...previous, { title: "New Step", body: "Describe this step." }]);
+  }, []);
+
+  const removeHomeHowToDraftStep = useCallback((index: number) => {
+    setHomeHowToDraftSteps((previous) => previous.filter((_, stepIndex) => stepIndex !== index));
+  }, []);
+
+  const saveHomeHowToChanges = useCallback(async () => {
+    const normalizedSteps = homeHowToDraftSteps
+      .map((step) => ({ title: step.title.trim(), body: step.body.trim() }))
+      .filter((step) => step.title && step.body);
+    if (!normalizedSteps.length) {
+      setError("Add at least one step with both a title and body.");
+      return;
+    }
+
+    setSavingHomeHowTo(true);
+    setError("");
+    try {
+      const result = await apiPost<HomeHowToContent>("/admin/home/how-to-use", {
+        steps: normalizedSteps,
+      });
+      const nextSteps = result.steps?.length ? result.steps : HOME_HOW_TO_DEFAULT_STEPS;
+      setHomeHowToSteps(nextSteps);
+      setHomeHowToDraftSteps(nextSteps);
+      setHomeHowToEditOpen(false);
+    } catch (err: unknown) {
+      setError(toMessage(err));
+    } finally {
+      setSavingHomeHowTo(false);
+    }
+  }, [homeHowToDraftSteps]);
 
   const marketLeaders = useMemo(() => {
     const weekGainByPlayerId = new Map<number, number>();
@@ -354,67 +444,93 @@ export default function HomePage() {
             >
               {isLoggedIn && isNewUser ? "Continue Full Tutorial" : "Open Full Tutorial"}
             </button>
+            {currentUser?.is_admin && (
+              <button
+                type="button"
+                className="home-tutorial-open-btn home-tutorial-open-btn-secondary"
+                onClick={openHomeHowToEditor}
+              >
+                Edit
+              </button>
+            )}
           </div>
         </div>
+        {homeHowToEditOpen && currentUser?.is_admin && (
+          <div className="table-panel home-how-to-editor">
+            <div className="home-snapshot-head">
+              <h3>Edit How-To Content</h3>
+              <p className="subtle">Admin-only. Changes are saved live.</p>
+            </div>
+            <div className="home-steps">
+              {homeHowToDraftSteps.map((step, index) => (
+                <article className="home-step" key={`draft-step-${index}`}>
+                  <label className="field-label" htmlFor={`home-how-to-title-${index}`}>
+                    Step {index + 1} Title
+                  </label>
+                  <input
+                    className="home-how-to-editor-input"
+                    id={`home-how-to-title-${index}`}
+                    value={step.title}
+                    onChange={(event) => updateHomeHowToDraftStep(index, "title", event.target.value)}
+                    placeholder="Step title"
+                  />
+                  <label className="field-label" htmlFor={`home-how-to-body-${index}`}>
+                    Step {index + 1} Body
+                  </label>
+                  <textarea
+                    id={`home-how-to-body-${index}`}
+                    className="home-how-to-editor-textarea"
+                    value={step.body}
+                    onChange={(event) => updateHomeHowToDraftStep(index, "body", event.target.value)}
+                    placeholder="Step body"
+                  />
+                  <div className="admin-actions">
+                    <button
+                      type="button"
+                      className="danger-btn"
+                      onClick={() => removeHomeHowToDraftStep(index)}
+                      disabled={homeHowToDraftSteps.length <= 1 || savingHomeHowTo}
+                    >
+                      Remove Step
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="admin-actions">
+              <button type="button" onClick={addHomeHowToDraftStep} disabled={savingHomeHowTo}>
+                Add Step
+              </button>
+              <button type="button" className="primary-btn" onClick={() => void saveHomeHowToChanges()} disabled={savingHomeHowTo}>
+                {savingHomeHowTo ? "Saving..." : "Save Changes"}
+              </button>
+              <button type="button" onClick={closeHomeHowToEditor} disabled={savingHomeHowTo}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <div className="home-steps">
-          <article className="home-step">
-            <h4>What Is Matchup Market?</h4>
-            <p className="subtle">
-              Matchup Market is a sports market game where you can buy and short shares of players based on how you
-              think their fantasy value will change. If you believe a player&apos;s value is going to rise, you can buy
-              shares. If you think a player&apos;s value may fall, you can short shares and benefit if the price drops.
-              It is a simple and competitive game where you can use your sports knowledge.
-            </p>
-          </article>
-          <article className="home-step">
-            <h4>Browse Players in the Market</h4>
-            <p className="subtle">
-              Start by exploring the players available on the market. Each player has a price that can move up or down
-              over time.
-            </p>
-            <Link href="/market" className="ghost-link home-step-link">
-              Open Market
-            </Link>
-          </article>
-          <article className="home-step">
-            <h4>Buy or Short Players</h4>
-            <p className="subtle">
-              Use stats, recent performance, news, and your own instincts to decide which players you think are
-              undervalued or overvalued.
-            </p>
-            <Link href="/market" className="ghost-link home-step-link">
-              Trade In Market
-            </Link>
-          </article>
-          <article className="home-step">
-            <h4>Manage Your Portfolio</h4>
-            <p className="subtle">
-              You can sell your positions to lock in gains, reduce risk, or free up space for new opportunities. Your
-              portfolio shows how your decisions are performing over time.
-            </p>
-            <Link href="/portfolio" className="ghost-link home-step-link">
-              Open Portfolio
-            </Link>
-          </article>
-          <article className="home-step">
-            <h4>Grow Your Portfolio</h4>
-            <p className="subtle">
-              The goal of Matchup Market is to grow your portfolio over time. As your portfolio value increases, you
-              can invest in more players, build a stronger strategy, and take advantage of more opportunities across
-              the market.
-            </p>
-            <p className="subtle">
-              The more value you build, the higher you can climb on the leaderboard and the closer you get to the top.
-            </p>
-          </article>
-          <article className="home-step">
-            <h4>Why People Use Matchup Market</h4>
-            <p className="subtle">
-              Matchup Market gives fans a fun way to do more than just watch the games. You can make predictions, act
-              on your opinions, and compete against other users in a fun and competitive game. Whether you are new to
-              fantasy sports or already know the players well, Matchup Market makes it easy to get started.
-            </p>
-          </article>
+          {homeHowToSteps.map((step, index) => {
+            const action = HOME_HOW_TO_ACTIONS_BY_INDEX[index];
+            return (
+              <article className="home-step" key={`${index}-${step.title}`}>
+                <h4>{step.title}</h4>
+                {step.body
+                  .split(/\n{2,}/)
+                  .map((paragraph, paragraphIndex) => (
+                    <p className="subtle" key={`${index}-p-${paragraphIndex}`}>
+                      {paragraph}
+                    </p>
+                  ))}
+                {action ? (
+                  <Link href={action.href} className="ghost-link home-step-link">
+                    {action.label}
+                  </Link>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       </section>
 

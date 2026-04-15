@@ -217,6 +217,15 @@ export type ForumPostDetail = {
   comments: ForumComment[];
 };
 
+export type HomeHowToStep = {
+  title: string;
+  body: string;
+};
+
+export type HomeHowToContent = {
+  steps: HomeHowToStep[];
+};
+
 export type DirectMessage = {
   id: number;
   thread_id: number;

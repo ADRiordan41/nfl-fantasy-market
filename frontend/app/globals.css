@@ -1532,6 +1532,43 @@ h1 {
   display: inline-flex;
 }
 
+.home-how-to-editor {
+  border-color: rgba(95, 123, 170, 0.42);
+  background: linear-gradient(180deg, rgba(16, 26, 43, 0.96) 0%, rgba(10, 18, 32, 0.95) 100%);
+}
+
+.home-how-to-editor-input,
+.home-how-to-editor-textarea {
+  width: 100%;
+  border: 1px solid rgba(108, 139, 189, 0.44);
+  border-radius: 12px;
+  background: rgba(9, 16, 28, 0.96);
+  color: #eaf2ff;
+}
+
+.home-how-to-editor-input {
+  height: 42px;
+  padding: 0 12px;
+}
+
+.home-how-to-editor-textarea {
+  min-height: 170px;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.home-how-to-editor-input::placeholder,
+.home-how-to-editor-textarea::placeholder {
+  color: #8ca2c6;
+}
+
+.home-how-to-editor-input:focus,
+.home-how-to-editor-textarea:focus {
+  border-color: rgba(126, 173, 248, 0.85);
+  box-shadow: 0 0 0 2px rgba(91, 161, 255, 0.24);
+}
+
 .home-snapshot-grid {
   display: grid;
   gap: 12px;

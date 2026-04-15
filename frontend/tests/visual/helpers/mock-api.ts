@@ -455,6 +455,27 @@ const RECENT_TRANSACTIONS = [
   },
 ];
 
+const HOME_HOW_TO_USE = {
+  steps: [
+    {
+      title: "What Is Matchup Market?",
+      body: "Matchup Market is a sports market game where you can buy and short shares based on expected fantasy value changes.",
+    },
+    {
+      title: "Browse Players in the Market",
+      body: "Start by exploring listed players and current prices to identify your setup.",
+    },
+    {
+      title: "Buy or Short Players",
+      body: "Go long when you expect upside and short when you expect downside.",
+    },
+    {
+      title: "Manage Your Portfolio",
+      body: "Monitor position sizing, unrealized P/L, and concentration risk.",
+    },
+  ],
+};
+
 const TRADING_STATUS = {
   global_halt: {
     sport: "ALL",
@@ -502,6 +523,7 @@ async function mockApi(page: Page, authEnabled: boolean): Promise<void> {
     if (pathname === "/trading/status") return json(route, TRADING_STATUS);
     if (pathname === "/live/games") return authEnabled ? json(route, LIVE_GAMES) : json(route, { detail: "Authentication required." }, 401);
     if (pathname === "/forum/posts") return json(route, FORUM_POSTS);
+    if (pathname === "/home/how-to-use") return json(route, HOME_HOW_TO_USE);
     if (pathname === "/users/me/profile") {
       if (!authEnabled) return json(route, { detail: "Authentication required." }, 401);
       return json(route, {

@@ -131,6 +131,7 @@ from .schemas import (
     AdminDeleteUserOut,
     AdminFlattenUserEquityIn,
     AdminFlattenUserEquityOut,
+    AdminHomeHowToContentUpdateIn,
     AdminPricingConfigOut,
     AdminPricingConfigUpdateIn,
     AdminSportTradingHaltUpdateIn,
@@ -167,6 +168,8 @@ from .schemas import (
     FriendSummaryOut,
     FriendshipRequestCreateIn,
     FriendshipStatusOut,
+    HomeHowToContentOut,
+    HomeHowToStepOut,
     LiveGameAtBatOut,
     LiveGameOut,
     LiveGamePlayerOut,
@@ -1370,6 +1373,56 @@ def get_admin_context(auth: AuthContext = Depends(get_auth_context)) -> AuthCont
 
 
 PRICE_IMPACT_SETTING_KEY = "price_impact_multiplier"
+HOME_HOW_TO_USE_SETTING_KEY = "home_how_to_use_steps_json"
+DEFAULT_HOME_HOW_TO_USE_STEPS: tuple[dict[str, str], ...] = (
+    {
+        "title": "What Is Matchup Market?",
+        "body": (
+            "Matchup Market is a sports market game where you can buy and short shares of players based on how you "
+            "think their fantasy value will change. If you believe a player's value is going to rise, you can buy "
+            "shares. If you think a player's value may fall, you can short shares and benefit if the price drops. "
+            "It is a simple and competitive game where you can use your sports knowledge."
+        ),
+    },
+    {
+        "title": "Browse Players in the Market",
+        "body": (
+            "Start by exploring the players available on the market. Each player has a price that can move up or down "
+            "over time."
+        ),
+    },
+    {
+        "title": "Buy or Short Players",
+        "body": (
+            "Use stats, recent performance, news, and your own instincts to decide which players you think are "
+            "undervalued or overvalued."
+        ),
+    },
+    {
+        "title": "Manage Your Portfolio",
+        "body": (
+            "You can sell your positions to lock in gains, reduce risk, or free up space for new opportunities. Your "
+            "portfolio shows how your decisions are performing over time."
+        ),
+    },
+    {
+        "title": "Grow Your Portfolio",
+        "body": (
+            "The goal of Matchup Market is to grow your portfolio over time. As your portfolio value increases, you "
+            "can invest in more players, build a stronger strategy, and take advantage of more opportunities across "
+            "the market.\n\nThe more value you build, the higher you can climb on the leaderboard and the closer you "
+            "get to the top."
+        ),
+    },
+    {
+        "title": "Why People Use Matchup Market",
+        "body": (
+            "Matchup Market gives fans a fun way to do more than just watch the games. You can make predictions, act "
+            "on your opinions, and compete against other users in a fun and competitive game. Whether you are new to "
+            "fantasy sports or already know the players well, Matchup Market makes it easy to get started."
+        ),
+    },
+)
 
 
 def load_decimal_system_setting(
@@ -1405,6 +1458,83 @@ def upsert_decimal_system_setting(
     else:
         row.value = str(normalized_value)
     return normalized_value
+
+
+def load_text_system_setting(
+    db: Session,
+    *,
+    key: str,
+) -> str | None:
+    row = db.execute(
+        select(SystemSetting).where(SystemSetting.key == key)
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return str(row.value or "")
+
+
+def upsert_text_system_setting(
+    db: Session,
+    *,
+    key: str,
+    value: str,
+) -> str:
+    normalized_value = str(value)
+    row = db.execute(
+        select(SystemSetting).where(SystemSetting.key == key).with_for_update()
+    ).scalar_one_or_none()
+    if row is None:
+        row = SystemSetting(key=key, value=normalized_value)
+        db.add(row)
+    else:
+        row.value = normalized_value
+    return normalized_value
+
+
+def home_how_to_default_steps() -> list[HomeHowToStepOut]:
+    return [
+        HomeHowToStepOut(title=str(step["title"]), body=str(step["body"]))
+        for step in DEFAULT_HOME_HOW_TO_USE_STEPS
+    ]
+
+
+def normalize_home_how_to_steps(raw_steps: object) -> list[HomeHowToStepOut]:
+    if not isinstance(raw_steps, list):
+        return []
+    normalized: list[HomeHowToStepOut] = []
+    for item in raw_steps:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title", "")).strip()
+        body = str(item.get("body", "")).strip()
+        if not title or not body:
+            continue
+        normalized.append(HomeHowToStepOut(title=title[:120], body=body[:5000]))
+    return normalized[:24]
+
+
+def load_home_how_to_steps(db: Session) -> list[HomeHowToStepOut]:
+    stored_value = load_text_system_setting(db, key=HOME_HOW_TO_USE_SETTING_KEY)
+    if stored_value is None or not stored_value.strip():
+        return home_how_to_default_steps()
+    try:
+        payload = json.loads(stored_value)
+    except Exception:
+        return home_how_to_default_steps()
+    normalized = normalize_home_how_to_steps(payload)
+    return normalized if normalized else home_how_to_default_steps()
+
+
+def save_home_how_to_steps(db: Session, steps: list[HomeHowToStepOut]) -> list[HomeHowToStepOut]:
+    normalized = normalize_home_how_to_steps([step.model_dump() for step in steps])
+    if not normalized:
+        raise HTTPException(400, "At least one valid step is required.")
+    upsert_text_system_setting(
+        db,
+        key=HOME_HOW_TO_USE_SETTING_KEY,
+        value=json.dumps([step.model_dump() for step in normalized], ensure_ascii=True),
+    )
+    return normalized
 
 
 def normalize_text(value: str | None) -> str:
@@ -8046,6 +8176,32 @@ def admin_update_pricing_config(
         default_price_impact_multiplier=float(DEFAULT_PRICE_IMPACT_MULTIPLIER),
         message=f"Trade impact multiplier updated to {float(runtime_value):.2f}.",
     )
+
+
+@app.get("/home/how-to-use", response_model=HomeHowToContentOut)
+def home_how_to_use_content(
+    db: Session = Depends(get_db),
+):
+    return HomeHowToContentOut(steps=load_home_how_to_steps(db))
+
+
+@app.get("/admin/home/how-to-use", response_model=HomeHowToContentOut)
+def admin_get_home_how_to_use_content(
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    return HomeHowToContentOut(steps=load_home_how_to_steps(db))
+
+
+@app.post("/admin/home/how-to-use", response_model=HomeHowToContentOut)
+def admin_update_home_how_to_use_content(
+    payload: AdminHomeHowToContentUpdateIn,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
+    normalized = save_home_how_to_steps(db, payload.steps)
+    db.commit()
+    return HomeHowToContentOut(steps=normalized)
 
 
 @app.get("/admin/users/{username}/equity", response_model=AdminUserEquityOut)
