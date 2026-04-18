@@ -6254,6 +6254,16 @@ td {
   .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-quick-action-stack {
     width: max-content;
     margin-inline: auto;
+    gap: 3px;
+  }
+
+  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-max-btn {
+    flex: 0 0 54px;
+    width: 54px;
+    min-width: 54px;
+    max-width: 54px;
+    min-height: 31px;
+    height: 31px;
   }
 }
 
