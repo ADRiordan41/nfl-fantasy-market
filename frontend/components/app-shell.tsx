@@ -60,12 +60,12 @@ function MarketIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
     >
       <DockIconGradient id={gradientId} />
       <path d="M4 20V10" />
@@ -83,12 +83,12 @@ function LiveIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
     >
       <DockIconGradient id={gradientId} />
       <path d="M8.6 4 12 7" />
@@ -107,12 +107,12 @@ function PortfolioIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
     >
       <DockIconGradient id={gradientId} />
       <path d="M12 3v9h9" />
@@ -128,12 +128,12 @@ function CommunityIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
     >
       <DockIconGradient id={gradientId} />
       <path d="M5 6.5h14a2 2 0 0 1 2 2v6.5a2 2 0 0 1-2 2h-6l-3.6 3V17H5a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2Z" />
@@ -149,12 +149,12 @@ function InboxIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
     >
       <DockIconGradient id={gradientId} />
       <rect x="3.5" y="5.5" width="17" height="13" rx="2.4" />
@@ -171,12 +171,12 @@ function AdminIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
     >
       <DockIconGradient id={gradientId} />
       <path d="M4 7h10" />
@@ -193,12 +193,12 @@ function SettingsIcon(props: SVGProps<SVGSVGElement>) {
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
     >
       <DockIconGradient id={gradientId} />
       <circle cx="12" cy="12" r="3.2" />
