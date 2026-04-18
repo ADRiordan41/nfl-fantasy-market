@@ -735,14 +735,16 @@ export default function MarketPage() {
                     <th className="market-mobile-player-head market-sticky-player-cell market-header-corner">
                       {renderSortButton("name", "Player")}
                     </th>
-                    <th>{renderSortButton("spot_price", "Price")}</th>
+                    <th className="market-mobile-price-head">{renderSortButton("spot_price", "Price")}</th>
                     {(!isCompactMobile || mobileTableExpanded) && (
                       <>
                         <th>{renderSortButton("change_pct", "Δ")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
                       </>
                     )}
-                    <th className="market-header-single">Quick Actions</th>
+                    <th className="market-header-single">
+                      {isCompactMobile && !mobileTableExpanded ? "Quick" : "Quick Actions"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -773,7 +775,7 @@ export default function MarketPage() {
                             {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
                           </div>
                         </td>
-                        <td className="market-cell-numeric">{formatCurrency(row.player.spot_price)}</td>
+                        <td className="market-cell-numeric market-mobile-price-cell">{formatCurrency(row.player.spot_price)}</td>
                         {(!isCompactMobile || mobileTableExpanded) && (
                           <>
                             <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>

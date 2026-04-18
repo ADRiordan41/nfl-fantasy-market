@@ -6178,6 +6178,10 @@ td {
     font-size: 13px;
   }
 
+  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-table {
+    table-layout: auto;
+  }
+
   .market-mobile-list .market-mobile-col-player {
     width: 30%;
   }
@@ -6212,6 +6216,20 @@ td {
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-actions {
     width: 28%;
+  }
+
+  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-col-player {
+    width: auto;
+  }
+
+  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-col-price,
+  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-col-actions {
+    width: 1%;
+  }
+
+  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-price-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .market-mobile-list.market-mobile-list-expanded .table-wrap {
