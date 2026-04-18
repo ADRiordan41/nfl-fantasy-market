@@ -6179,7 +6179,7 @@ td {
   }
 
   .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-table {
-    table-layout: auto;
+    table-layout: fixed;
   }
 
   .market-mobile-list .market-mobile-col-player {
@@ -6207,27 +6207,19 @@ td {
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
-    width: 52%;
+    width: 44%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-price {
-    width: 20%;
+    width: 24%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-actions {
-    width: 28%;
-  }
-
-  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-col-player {
-    width: auto;
-  }
-
-  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-col-price,
-  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-col-actions {
-    width: 1%;
+    width: 32%;
   }
 
   .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-price-cell {
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -6585,15 +6577,15 @@ td {
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
-    width: 52%;
+    width: 44%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-price {
-    width: 20%;
+    width: 24%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-actions {
-    width: 28%;
+    width: 32%;
   }
 
   .market-mobile-list .market-mobile-col-delta {
