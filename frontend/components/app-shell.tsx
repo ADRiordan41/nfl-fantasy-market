@@ -47,7 +47,8 @@ function DockIconGradient({ id }: { id: string }) {
     <defs>
       <linearGradient id={id} x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
         <stop offset="0" stopColor="#ffad58" />
-        <stop offset="0.52" stopColor="#ff8f2f" />
+        <stop offset="0.34" stopColor="#ff8f2f" />
+        <stop offset="0.62" stopColor="#66a9ff" />
         <stop offset="1" stopColor="#3f8cff" />
       </linearGradient>
     </defs>
