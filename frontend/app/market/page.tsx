@@ -730,23 +730,6 @@ export default function MarketPage() {
                   )}
                   <col className="market-mobile-col-actions" />
                 </colgroup>
-                <thead>
-                  <tr>
-                    <th className="market-mobile-player-head market-sticky-player-cell market-header-corner">
-                      {renderSortButton("name", "Player")}
-                    </th>
-                    <th className="market-mobile-price-head">{renderSortButton("spot_price", "Price")}</th>
-                    {(!isCompactMobile || mobileTableExpanded) && (
-                      <>
-                        <th>{renderSortButton("change_pct", "Δ")}</th>
-                        <th>{renderSortButton("earnings", "Earnings")}</th>
-                      </>
-                    )}
-                    <th className="market-header-single">
-                      {isCompactMobile && !mobileTableExpanded ? "Quick" : "Quick Actions"}
-                    </th>
-                  </tr>
-                </thead>
                 <tbody>
                   {visibleRows.map((row) => {
                     const quickActionBusy = Boolean(mobileQuickAction);
