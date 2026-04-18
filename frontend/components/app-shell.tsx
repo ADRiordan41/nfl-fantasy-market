@@ -207,8 +207,8 @@ function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
           <stop offset="1" stopColor="#0d59de" />
         </linearGradient>
       </defs>
-      <path d="M2 6H42V12H20L31.5 23L20 34H42L38 40H2L24.5 23L2 6Z" fill={`url(#${sigmaId})`} />
-      <path d="M2 6H42V12H20L31.5 23L20 34H42L38 40H2L24.5 23L2 6Z" fill="#fff4e4" fillOpacity="0.16" />
+      <path d="M2 6H42L38 12H20L31.5 23L20 34H42L38 40H2L24.5 23L2 6Z" fill={`url(#${sigmaId})`} />
+      <path d="M2 6H42L38 12H20L31.5 23L20 34H42L38 40H2L24.5 23L2 6Z" fill="#fff4e4" fillOpacity="0.16" />
       <path fillRule="evenodd" clipRule="evenodd" d="M62 6L86 40H38L62 6ZM62 17L72 34H52L62 17Z" fill={`url(#${deltaId})`} />
       <path fillRule="evenodd" clipRule="evenodd" d="M62 6L86 40H38L62 6ZM62 17L72 34H52L62 17Z" fill="#ecf8ff" fillOpacity="0.14" />
     </svg>
