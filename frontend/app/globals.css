@@ -7756,6 +7756,26 @@ thead th {
     box-shadow 140ms ease;
 }
 
+.mobile-nav .nav-icon {
+  width: clamp(24px, 6.8vw, 34px) !important;
+  height: clamp(24px, 6.8vw, 34px) !important;
+  stroke-width: 2.3 !important;
+  transform: translateY(-5px);
+  filter: drop-shadow(0 2px 4px rgba(2, 9, 20, 0.42));
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.mobile-nav .nav-logo-icon {
+  width: 94% !important;
+  max-height: 72% !important;
+  transform: translateY(-4px);
+}
+
+.mobile-nav .mobile-link-label {
+  bottom: 3px;
+  letter-spacing: 0.02em;
+}
+
 .mobile-link:hover,
 .mobile-link:focus-visible {
   color: var(--ink) !important;
@@ -7777,7 +7797,8 @@ thead th {
 
 .mobile-link.active .nav-icon,
 .mobile-home-trigger.open .nav-icon {
-  filter: drop-shadow(0 0 8px rgba(108, 201, 255, 0.36));
+  transform: translateY(-5px) scale(1.06);
+  filter: drop-shadow(0 0 10px rgba(108, 201, 255, 0.44));
 }
 
 /* Final page-by-page utility cleanup */
