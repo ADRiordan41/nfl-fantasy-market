@@ -4714,7 +4714,7 @@ button.segment.danger-segment.danger-active {
   font-variant-numeric: tabular-nums;
 }
 
-.market-mobile-actions-cell,
+.market-mobile-table td.market-mobile-actions-cell,
 .market-mobile-table th:last-child {
   text-align: center;
   font-variant-numeric: normal;
@@ -4866,6 +4866,18 @@ button.segment.danger-segment.danger-active {
   border-color: transparent;
 }
 
+.market-quick-buy-btn {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #1f5fa4 0%, #2f7ccf 100%);
+}
+
+.market-quick-short-btn {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
+}
+
 .market-mobile-max-btn.market-quick-buy-btn {
   background: linear-gradient(135deg, #1f5fa4 0%, #2f7ccf 100%);
   box-shadow: 0 8px 16px rgba(31, 95, 164, 0.22);
@@ -4877,7 +4889,7 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-mobile-quick-action-stack {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
@@ -6191,15 +6203,15 @@ td {
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
-    width: 56%;
+    width: 52%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-price {
-    width: 18%;
+    width: 20%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-actions {
-    width: 26%;
+    width: 28%;
   }
 
   .market-mobile-list.market-mobile-list-expanded .table-wrap {
@@ -6555,15 +6567,15 @@ td {
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
-    width: 56%;
+    width: 52%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-price {
-    width: 18%;
+    width: 20%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-actions {
-    width: 26%;
+    width: 28%;
   }
 
   .market-mobile-list .market-mobile-col-delta {
