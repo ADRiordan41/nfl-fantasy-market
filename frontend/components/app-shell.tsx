@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useId,
   type CSSProperties,
   type FormEvent,
   type ReactElement,
@@ -41,18 +42,32 @@ type ToastItem = {
   tone: "success" | "error" | "info";
 };
 
+function DockIconGradient({ id }: { id: string }) {
+  return (
+    <defs>
+      <linearGradient id={id} x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stopColor="#ffad58" />
+        <stop offset="0.52" stopColor="#ff8f2f" />
+        <stop offset="1" stopColor="#3f8cff" />
+      </linearGradient>
+    </defs>
+  );
+}
+
 function MarketIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
+      <DockIconGradient id={gradientId} />
       <path d="M4 20V10" />
       <path d="M9 20V6" />
       <path d="M14 20v-4" />
@@ -63,17 +78,19 @@ function MarketIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function LiveIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
+      <DockIconGradient id={gradientId} />
       <path d="M8.6 4 12 7" />
       <path d="M15.4 4 12 7" />
       <rect x="2.6" y="7" width="18.8" height="11.6" rx="2.6" />
@@ -85,17 +102,19 @@ function LiveIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function PortfolioIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
+      <DockIconGradient id={gradientId} />
       <path d="M12 3v9h9" />
       <path d="M12 3a9 9 0 1 0 9 9" />
       <path d="M12 12 5.8 18.2" />
@@ -104,17 +123,19 @@ function PortfolioIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function CommunityIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
+      <DockIconGradient id={gradientId} />
       <path d="M5 6.5h14a2 2 0 0 1 2 2v6.5a2 2 0 0 1-2 2h-6l-3.6 3V17H5a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2Z" />
       <path d="M8 10h8" />
       <path d="M8 13h5.5" />
@@ -123,17 +144,19 @@ function CommunityIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function InboxIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
+      <DockIconGradient id={gradientId} />
       <rect x="3.5" y="5.5" width="17" height="13" rx="2.4" />
       <path d="m4.5 7.5 7.5 6 7.5-6" />
       <path d="M9.5 12.6 4.8 17.4" />
@@ -143,17 +166,19 @@ function InboxIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function AdminIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
+      <DockIconGradient id={gradientId} />
       <path d="M4 7h10" />
       <path d="M4 17h16" />
       <path d="M14 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0Z" />
@@ -163,17 +188,19 @@ function AdminIcon(props: SVGProps<SVGSVGElement>) {
 }
 
 function SettingsIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={`url(#${gradientId})`}
       strokeWidth="1.9"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       {...props}
     >
+      <DockIconGradient id={gradientId} />
       <circle cx="12" cy="12" r="3.2" />
       <path d="M19 12a7 7 0 0 0-.08-1l2.03-1.58-1.7-2.95-2.45 1a7.1 7.1 0 0 0-1.73-1l-.37-2.62h-3.4L10.92 6.5a7.1 7.1 0 0 0-1.73 1l-2.45-1-1.7 2.95L7.07 11a7 7 0 0 0 0 2l-2.03 1.58 1.7 2.95 2.45-1a7.1 7.1 0 0 0 1.73 1l.37 2.62h3.4l.37-2.62a7.1 7.1 0 0 0 1.73-1l2.45 1 1.7-2.95L18.92 13c.05-.33.08-.66.08-1Z" />
     </svg>

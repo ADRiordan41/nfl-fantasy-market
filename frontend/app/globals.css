@@ -7761,7 +7761,6 @@ thead th {
 .mobile-nav .nav-icon {
   width: clamp(24px, 6.8vw, 34px) !important;
   height: clamp(24px, 6.8vw, 34px) !important;
-  color: #ff9f43 !important;
   stroke-width: 2.3 !important;
   transform: translateY(-5px);
   filter: drop-shadow(0 2px 4px rgba(2, 9, 20, 0.42));
@@ -7805,8 +7804,7 @@ thead th {
 .mobile-link.active .nav-icon,
 .mobile-home-trigger.open .nav-icon {
   transform: translateY(-5px) scale(1.06);
-  color: #ffc68a !important;
-  filter: drop-shadow(0 0 10px rgba(255, 159, 67, 0.5));
+  filter: drop-shadow(0 0 10px rgba(95, 153, 255, 0.5));
 }
 
 .mobile-home-trigger.open .nav-logo-icon {
