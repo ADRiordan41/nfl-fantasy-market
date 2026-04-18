@@ -74,11 +74,13 @@ function LiveIcon(props: SVGProps<SVGSVGElement>) {
       aria-hidden="true"
       {...props}
     >
-      <rect x="3.5" y="4.5" width="17" height="15" rx="2.4" />
-      <path d="M7 16.5h2.6" />
-      <path d="M7 12.8h4.2" />
-      <path d="m15.3 13.2 1.2 1.4 2-2.5" />
-      <circle cx="16.8" cy="10" r="2.8" />
+      <path d="M9 4.4 12 7" />
+      <path d="M15 4.4 12 7" />
+      <rect x="3.5" y="7" width="17" height="11" rx="2.3" />
+      <path d="M7.4 11h9.2v4.2H7.4z" />
+      <path d="M9.2 20h5.6" />
+      <path d="M7.3 18.3 6.3 20" />
+      <path d="m17.7 18.3 1 1.7" />
     </svg>
   );
 }
