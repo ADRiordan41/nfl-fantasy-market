@@ -6190,6 +6190,18 @@ td {
     width: 33%;
   }
 
+  .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
+    width: 56%;
+  }
+
+  .market-mobile-list.market-mobile-list-compact .market-mobile-col-price {
+    width: 18%;
+  }
+
+  .market-mobile-list.market-mobile-list-compact .market-mobile-col-actions {
+    width: 26%;
+  }
+
   .market-mobile-list.market-mobile-list-expanded .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -6217,8 +6229,9 @@ td {
     font-size: 10px;
   }
 
-  .market-mobile-list:not(.market-mobile-list-expanded) .market-mobile-quick-action-stack {
-    width: 100%;
+  .market-mobile-list.market-mobile-list-compact:not(.market-mobile-list-expanded) .market-mobile-quick-action-stack {
+    width: max-content;
+    margin-inline: auto;
   }
 }
 
@@ -6541,6 +6554,18 @@ td {
     width: 14%;
   }
 
+  .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
+    width: 56%;
+  }
+
+  .market-mobile-list.market-mobile-list-compact .market-mobile-col-price {
+    width: 18%;
+  }
+
+  .market-mobile-list.market-mobile-list-compact .market-mobile-col-actions {
+    width: 26%;
+  }
+
   .market-mobile-list .market-mobile-col-delta {
     width: 9%;
   }
@@ -6575,7 +6600,7 @@ td {
   }
 
   .market-mobile-max-btn {
-    max-width: 52px;
+    max-width: 56px;
     min-height: 30px;
     height: 30px;
     font-size: 11px;

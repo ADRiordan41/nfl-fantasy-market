@@ -700,6 +700,8 @@ export default function MarketPage() {
         <>
           <section
             className={`table-panel market-table-panel market-mobile-list${
+              isCompactMobile ? " market-mobile-list-compact" : ""
+            }${
               mobileTableExpanded ? " market-mobile-list-expanded" : ""
             }`}
           >
