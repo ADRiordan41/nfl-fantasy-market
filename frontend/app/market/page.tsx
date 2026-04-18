@@ -98,6 +98,16 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+function formatCompactPlayerName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  const firstInitial = parts[0][0]?.toUpperCase() ?? "";
+  const lastName = parts[parts.length - 1];
+  return `${firstInitial}. ${lastName}`;
+}
+
 export default function MarketPage() {
   const router = useRouter();
   const marketShellRef = useRef<HTMLElement | null>(null);
@@ -129,6 +139,8 @@ export default function MarketPage() {
   });
   const [error, setError] = useState("");
   const [mobileQuickAction, setMobileQuickAction] = useState<MobileQuickActionState | null>(null);
+  const [isCompactMobile, setIsCompactMobile] = useState(false);
+  const [mobileTableExpanded, setMobileTableExpanded] = useState(false);
 
   const handleRequestError = useCallback(
     (err: unknown) => {
@@ -276,6 +288,20 @@ export default function MarketPage() {
       }
       flashTimeoutsRef.current = {};
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const query = "(max-width: 640px)";
+    const media = window.matchMedia(query);
+    const updateCompactState = (matches: boolean) => {
+      setIsCompactMobile(matches);
+      if (!matches) setMobileTableExpanded(false);
+    };
+    updateCompactState(media.matches);
+    const listener = (event: MediaQueryListEvent) => updateCompactState(event.matches);
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
   }, []);
 
   const sortStorageKey = useMemo(
@@ -672,16 +698,35 @@ export default function MarketPage() {
         />
       ) : (
         <>
-          <section className="table-panel market-table-panel market-mobile-list">
+          <section
+            className={`table-panel market-table-panel market-mobile-list${
+              mobileTableExpanded ? " market-mobile-list-expanded" : ""
+            }`}
+          >
+            {isCompactMobile && (
+              <div className="market-mobile-density-toggle">
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setMobileTableExpanded((current) => !current)}
+                  aria-pressed={mobileTableExpanded}
+                >
+                  {mobileTableExpanded ? "Show compact view" : "Expand table"}
+                </button>
+              </div>
+            )}
             <div className="table-wrap">
               <table className="market-mobile-table" aria-label="Mobile market table">
                 <colgroup>
                   <col className="market-mobile-col-player" />
                   <col className="market-mobile-col-price" />
-                  <col className="market-mobile-col-delta" />
-                  <col className="market-mobile-col-earnings" />
-                  <col className="market-mobile-col-max" />
-                  <col className="market-mobile-col-max" />
+                  {(!isCompactMobile || mobileTableExpanded) && (
+                    <>
+                      <col className="market-mobile-col-delta" />
+                      <col className="market-mobile-col-earnings" />
+                    </>
+                  )}
+                  <col className="market-mobile-col-actions" />
                 </colgroup>
                 <thead>
                   <tr>
@@ -689,10 +734,13 @@ export default function MarketPage() {
                       {renderSortButton("name", "Player")}
                     </th>
                     <th>{renderSortButton("spot_price", "Price")}</th>
-                    <th>{renderSortButton("change_pct", "Δ")}</th>
-                    <th>{renderSortButton("earnings", "Earnings")}</th>
-                    <th className="market-header-single">Max Buy</th>
-                    <th className="market-header-single">Max Short</th>
+                    {(!isCompactMobile || mobileTableExpanded) && (
+                      <>
+                        <th>{renderSortButton("change_pct", "Δ")}</th>
+                        <th>{renderSortButton("earnings", "Earnings")}</th>
+                      </>
+                    )}
+                    <th className="market-header-single">Quick Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -708,7 +756,11 @@ export default function MarketPage() {
                         <td className="market-sticky-player-cell">
                           <div className="market-mobile-player-cell">
                             <div className="market-mobile-player-line">
-                              <span className="market-mobile-player-name card-title">{row.player.name}</span>
+                              <span className="market-mobile-player-name card-title">
+                                {isCompactMobile && !mobileTableExpanded
+                                  ? formatCompactPlayerName(row.player.name)
+                                  : row.player.name}
+                              </span>
                               <span className="market-mobile-team-text" style={teamTextStyle}>
                                 {teamCode}
                               </span>
@@ -720,31 +772,35 @@ export default function MarketPage() {
                           </div>
                         </td>
                         <td className="market-cell-numeric">{formatCurrency(row.player.spot_price)}</td>
-                        <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
-                          {formatSignedPercentCompact(row.totalChangePct)}
-                        </td>
-                        <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
-                        <td className="market-cell-control">
-                          <button
-                            type="button"
-                            className="market-mobile-max-btn market-quick-buy-btn"
-                            onClick={() => void executeMobileMaxTrade(row, "BUY", row.buyRemaining)}
-                            disabled={activeSportTradingHalted || row.buyRemaining <= 0 || quickActionBusy}
-                            aria-label={`Buy max ${row.buyRemaining} shares of ${row.player.name}`}
-                          >
-                            Buy
-                          </button>
-                        </td>
-                        <td className="market-cell-control">
-                          <button
-                            type="button"
-                            className="market-mobile-max-btn market-quick-short-btn"
-                            onClick={() => void executeMobileMaxTrade(row, "SHORT", row.shortRemaining)}
-                            disabled={activeSportTradingHalted || row.shortRemaining <= 0 || quickActionBusy}
-                            aria-label={`Short max ${row.shortRemaining} shares of ${row.player.name}`}
-                          >
-                            Short
-                          </button>
+                        {(!isCompactMobile || mobileTableExpanded) && (
+                          <>
+                            <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
+                              {formatSignedPercentCompact(row.totalChangePct)}
+                            </td>
+                            <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+                          </>
+                        )}
+                        <td className="market-cell-control market-mobile-actions-cell">
+                          <div className="market-mobile-quick-action-stack">
+                            <button
+                              type="button"
+                              className="market-mobile-max-btn market-quick-buy-btn"
+                              onClick={() => void executeMobileMaxTrade(row, "BUY", row.buyRemaining)}
+                              disabled={activeSportTradingHalted || row.buyRemaining <= 0 || quickActionBusy}
+                              aria-label={`Buy max ${row.buyRemaining} shares of ${row.player.name}`}
+                            >
+                              Buy
+                            </button>
+                            <button
+                              type="button"
+                              className="market-mobile-max-btn market-quick-short-btn"
+                              onClick={() => void executeMobileMaxTrade(row, "SHORT", row.shortRemaining)}
+                              disabled={activeSportTradingHalted || row.shortRemaining <= 0 || quickActionBusy}
+                              aria-label={`Short max ${row.shortRemaining} shares of ${row.player.name}`}
+                            >
+                              Short
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -821,5 +877,3 @@ export default function MarketPage() {
     </main>
   );
 }
-
-

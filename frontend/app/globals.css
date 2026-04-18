@@ -4595,6 +4595,16 @@ button.segment.danger-segment.danger-active {
   gap: 10px;
 }
 
+.market-mobile-density-toggle {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.market-mobile-density-toggle .chip {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
 .market-mobile-controls {
   display: grid;
   gap: 6px;
@@ -4687,6 +4697,10 @@ button.segment.danger-segment.danger-active {
   width: 15%;
 }
 
+.market-mobile-col-actions {
+  width: 28%;
+}
+
 .market-mobile-table th:first-child,
 .market-mobile-table td:first-child {
   white-space: normal;
@@ -4700,10 +4714,8 @@ button.segment.danger-segment.danger-active {
   font-variant-numeric: tabular-nums;
 }
 
-.market-mobile-table th:nth-child(5),
-.market-mobile-table th:nth-child(6),
-.market-mobile-table td:nth-child(5),
-.market-mobile-table td:nth-child(6) {
+.market-mobile-actions-cell,
+.market-mobile-table th:last-child {
   text-align: center;
   font-variant-numeric: normal;
   padding-left: 3px;
@@ -4862,6 +4874,13 @@ button.segment.danger-segment.danger-active {
 .market-mobile-max-btn.market-quick-short-btn {
   background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
   box-shadow: 0 8px 16px rgba(212, 108, 16, 0.22);
+}
+
+.market-mobile-quick-action-stack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .market-mobile-card {
@@ -6092,7 +6111,7 @@ td {
   }
 }
 
-@media (max-width: 959px) and (hover: none) and (pointer: coarse) {
+@media (max-width: 959px) {
   .market-page-shell {
     width: 100%;
     max-width: 100%;
@@ -6167,6 +6186,19 @@ td {
     width: 15%;
   }
 
+  .market-mobile-list .market-mobile-col-actions {
+    width: 33%;
+  }
+
+  .market-mobile-list.market-mobile-list-expanded .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .market-mobile-list.market-mobile-list-expanded .market-mobile-table {
+    min-width: 560px;
+  }
+
   .market-mobile-list .market-mobile-table th,
   .market-mobile-list .market-mobile-table td {
     padding: 6px 5px;
@@ -6183,6 +6215,10 @@ td {
 
   .market-mobile-list .market-header-single {
     font-size: 10px;
+  }
+
+  .market-mobile-list:not(.market-mobile-list-expanded) .market-mobile-quick-action-stack {
+    width: 100%;
   }
 }
 
