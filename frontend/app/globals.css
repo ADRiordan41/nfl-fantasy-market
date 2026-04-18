@@ -7768,7 +7768,11 @@ thead th {
 .mobile-nav .nav-logo-icon {
   width: 94% !important;
   max-height: 72% !important;
-  transform: translateY(-4px);
+  transform: translate(1.5px, -4px);
+}
+
+.mobile-home-trigger .nav-logo-icon {
+  transform: translate(1.5px, -4px);
 }
 
 .mobile-nav .mobile-link-label {
@@ -7799,6 +7803,10 @@ thead th {
 .mobile-home-trigger.open .nav-icon {
   transform: translateY(-5px) scale(1.06);
   filter: drop-shadow(0 0 10px rgba(108, 201, 255, 0.44));
+}
+
+.mobile-home-trigger.open .nav-logo-icon {
+  transform: translate(1.5px, -5px) scale(1.06);
 }
 
 /* Final page-by-page utility cleanup */
