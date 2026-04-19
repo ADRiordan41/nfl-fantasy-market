@@ -570,29 +570,42 @@ function estimateAwayWinProbability(
   if (inningHalf === "MIDDLE") outsElapsed = baseOuts + 3;
   if (inningHalf === "END") outsElapsed = baseOuts + 6;
 
-  const progress = clamp(outsElapsed / 54, 0, 1.3);
+  const progress = clamp(outsElapsed / 54, 0, 1.2);
+  const progressCurve = Math.pow(clamp(progress, 0, 1), 1.35);
   const runDiff = awayScore - homeScore;
-  const runInfluencePerRun = 4 + progress * 8.5;
-  let awayProbability = 50 + runDiff * runInfluencePerRun;
+  const runLogitWeight = 0.68 + 2.7 * progressCurve;
+  let awayLogit = runDiff * runLogitWeight;
 
-  const runnerPressure =
-    (context.runnerOnFirst ? 1.0 : 0) +
-    (context.runnerOnSecond ? 1.6 : 0) +
-    (context.runnerOnThird ? 2.2 : 0);
-  const outsLeverage = context.outs == null ? 0.7 : clamp((3 - context.outs) / 3, 0, 1);
-  const pressurePhase = 0.5 + 0.5 * (1 - clamp(progress, 0, 1));
-  const countEdge = ((context.balls ?? 0) - (context.strikes ?? 0)) * 0.9;
-  const situationEdge = runnerPressure * outsLeverage * pressurePhase + countEdge;
-  if (sameTeam(context.offenseTeam, awayTeam)) awayProbability += situationEdge;
-  if (sameTeam(context.offenseTeam, homeTeam)) awayProbability -= situationEdge;
+  // Home teams win slightly more often in MLB at neutral score/state.
+  awayLogit -= 0.12;
 
-  if (inning >= 9 && inningHalf === "BOTTOM" && homeScore >= awayScore) {
-    awayProbability -= 6 + (homeScore - awayScore) * 3;
+  const runnerThreat =
+    (context.runnerOnFirst ? 0.18 : 0) +
+    (context.runnerOnSecond ? 0.32 : 0) +
+    (context.runnerOnThird ? 0.46 : 0);
+  const outsThreatMultiplier = context.outs == null ? 0.78 : context.outs >= 2 ? 0.52 : context.outs === 1 ? 0.74 : 1;
+  const countEdge = ((context.balls ?? 0) - (context.strikes ?? 0)) * 0.04;
+  const situationLogit = (runnerThreat * outsThreatMultiplier + countEdge) * (0.5 + 0.95 * progressCurve);
+  if (sameTeam(context.offenseTeam, awayTeam)) awayLogit += situationLogit;
+  if (sameTeam(context.offenseTeam, homeTeam)) awayLogit -= situationLogit;
+
+  // Late-inning and walk-off asymmetry: in bottom 9+ ties, home offense has a large edge.
+  if (inning >= 9) {
+    if (inningHalf === "BOTTOM" && runDiff === 0) awayLogit -= 0.65;
+    if (inningHalf === "TOP" && runDiff === 0) awayLogit += 0.08;
+    if (inningHalf === "BOTTOM" && runDiff > 0) awayLogit -= 0.22;
   }
-  if (inning >= 9 && inningHalf === "TOP" && awayScore > homeScore) {
-    awayProbability += 2.5 + (awayScore - homeScore) * 0.7;
+
+  // Bottom 9+ with home already ahead is effectively near-final.
+  if (inning >= 9 && inningHalf === "BOTTOM" && homeScore > awayScore) {
+    return 0.5;
+  }
+  if (inning >= 9 && inningHalf === "BOTTOM" && awayScore > homeScore && outs >= 2) {
+    awayLogit += 0.3;
   }
 
+  awayLogit = clamp(awayLogit, -6, 6);
+  const awayProbability = 100 / (1 + Math.exp(-awayLogit));
   return clamp(awayProbability, 1, 99);
 }
 
