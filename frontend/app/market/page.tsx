@@ -740,7 +740,18 @@ export default function MarketPage() {
                     };
                     return (
                       <tr key={row.player.id} className="market-mobile-table-row">
-                        <td className="market-sticky-player-cell">
+                        <td
+                          className="market-sticky-player-cell market-mobile-sort-cell"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Sort by player name${sortColumn === "name" ? `, ${sortDirection}` : ""}`}
+                          onClick={() => toggleSort("name")}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            toggleSort("name");
+                          }}
+                        >
                           <div className="market-mobile-player-cell">
                             <div className="market-mobile-player-line">
                               <span className="market-mobile-player-name card-title">
@@ -758,13 +769,50 @@ export default function MarketPage() {
                             {row.player.live?.live_now && <span className="market-live-chip">LIVE</span>}
                           </div>
                         </td>
-                        <td className="market-cell-numeric market-mobile-price-cell">{formatCurrency(row.player.spot_price)}</td>
+                        <td
+                          className="market-cell-numeric market-mobile-price-cell market-mobile-sort-cell"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Sort by price${sortColumn === "spot_price" ? `, ${sortDirection}` : ""}`}
+                          onClick={() => toggleSort("spot_price")}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            toggleSort("spot_price");
+                          }}
+                        >
+                          {formatCurrency(row.player.spot_price)}
+                        </td>
                         {(!isCompactMobile || mobileTableExpanded) && (
                           <>
-                            <td className={`market-cell-numeric ${row.totalChangePct >= 0 ? "up" : "down"}`}>
+                            <td
+                              className={`market-cell-numeric market-mobile-sort-cell ${row.totalChangePct >= 0 ? "up" : "down"}`}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Sort by delta${sortColumn === "change_pct" ? `, ${sortDirection}` : ""}`}
+                              onClick={() => toggleSort("change_pct")}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return;
+                                event.preventDefault();
+                                toggleSort("change_pct");
+                              }}
+                            >
                               {formatSignedPercentCompact(row.totalChangePct)}
                             </td>
-                            <td className="market-cell-numeric">{formatCurrency(row.seasonEarnings)}</td>
+                            <td
+                              className="market-cell-numeric market-mobile-sort-cell"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Sort by earnings${sortColumn === "earnings" ? `, ${sortDirection}` : ""}`}
+                              onClick={() => toggleSort("earnings")}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return;
+                                event.preventDefault();
+                                toggleSort("earnings");
+                              }}
+                            >
+                              {formatCurrency(row.seasonEarnings)}
+                            </td>
                           </>
                         )}
                         <td className="market-cell-control market-mobile-actions-cell">
