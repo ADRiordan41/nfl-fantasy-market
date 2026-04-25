@@ -77,6 +77,25 @@ export type LiveGameAtBat = {
   occurred_at: string | null;
 };
 
+export type LiveGameWinProbabilityPoint = {
+  captured_at: string | null;
+  away_probability: number;
+  home_probability: number;
+  away_score: number | null;
+  home_score: number | null;
+  inning: number | null;
+  inning_half: string | null;
+  outs: number | null;
+  balls: number | null;
+  strikes: number | null;
+  runner_on_first: boolean | null;
+  runner_on_second: boolean | null;
+  runner_on_third: boolean | null;
+  offense_team: string | null;
+  defense_team: string | null;
+  at_bat_index: number | null;
+};
+
 export type LiveGame = {
   game_id: string;
   sport: string;
@@ -88,6 +107,8 @@ export type LiveGame = {
   game_fantasy_points_total: number;
   state: LiveGameState | null;
   at_bats: LiveGameAtBat[];
+  win_probability: LiveGameWinProbabilityPoint | null;
+  win_probability_series: LiveGameWinProbabilityPoint[];
   updated_at: string | null;
   players: LiveGamePlayer[];
 };

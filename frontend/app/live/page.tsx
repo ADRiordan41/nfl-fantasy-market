@@ -9,7 +9,7 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { teamPrimaryColor, teamReadableColor } from "@/lib/teamColors";
 import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
-import type { LiveGame, LiveGamePlayer, LiveGames } from "@/lib/types";
+import type { LiveGame, LiveGamePlayer, LiveGames, LiveGameWinProbabilityPoint } from "@/lib/types";
 
 type TeamGroup = {
   team: string;
@@ -275,15 +275,6 @@ function pickWinProbabilityTeams(teams: TeamGroup[]): [TeamGroup, TeamGroup] | n
   return [ranked[0], ranked[1]];
 }
 
-function estimateWinProbabilityFromPoints(teamPoints: number, opponentPoints: number): number {
-  const baseWeight = 10;
-  const team = Math.max(0, teamPoints);
-  const opponent = Math.max(0, opponentPoints);
-  const denominator = team + opponent + baseWeight * 2;
-  if (denominator <= 0) return 50;
-  return clamp(((team + baseWeight) / denominator) * 100, 1, 99);
-}
-
 function parseTeamsFromLabel(gameLabel: string): { awayTeam: string; homeTeam: string } | null {
   const trimmed = gameLabel.trim();
   if (!trimmed) return null;
@@ -323,11 +314,6 @@ function resolveAwayHomeTeams(game: LiveGame, teams: TeamGroup[]): { awayTeam: s
   }
 
   return { awayTeam, homeTeam };
-}
-
-function totalPointsForTeam(teams: TeamGroup[], teamCode: string): number {
-  const found = teams.find((team) => sameTeam(team.team, teamCode));
-  return found?.gameFantasyPointsTotal ?? 0;
 }
 
 function naturalBaseState(runnerOnFirst: boolean, runnerOnSecond: boolean, runnerOnThird: boolean): string {
@@ -534,311 +520,99 @@ function isSettledGame(game: Pick<LiveGame, "is_live" | "game_status">): boolean
   return isCompletedGameStatus(game.game_status);
 }
 
-function finalProbabilityFromScores(
-  awayScore: number | null | undefined,
-  homeScore: number | null | undefined,
-): { awayProbability: number; homeProbability: number } | null {
-  if (awayScore == null || homeScore == null) return null;
-  if (awayScore > homeScore) return { awayProbability: 100, homeProbability: 0 };
-  if (homeScore > awayScore) return { awayProbability: 0, homeProbability: 100 };
-  return null;
-}
-
-function estimateAwayWinProbability(
-  context: WinProbabilityContext,
-  args: {
-    awayTeam: string;
-    homeTeam: string;
-    fallbackAwayPoints: number;
-    fallbackHomePoints: number;
-  },
-): number {
-  const { awayTeam, homeTeam, fallbackAwayPoints, fallbackHomePoints } = args;
-  const awayScore = context.awayScore;
-  const homeScore = context.homeScore;
-  const hasScore = awayScore != null && homeScore != null;
-  if (!hasScore) {
-    return estimateWinProbabilityFromPoints(fallbackAwayPoints, fallbackHomePoints);
-  }
-
-  const inning = context.inning ?? 1;
-  const outs = context.outs == null ? 0 : clamp(context.outs, 0, 3);
-  const inningHalf = (context.inningHalf ?? "").trim().toUpperCase();
-  const baseOuts = Math.max(0, inning - 1) * 6;
-  let outsElapsed = baseOuts + outs;
-  if (inningHalf === "BOTTOM") outsElapsed = baseOuts + 3 + outs;
-  if (inningHalf === "MIDDLE") outsElapsed = baseOuts + 3;
-  if (inningHalf === "END") outsElapsed = baseOuts + 6;
-
-  const progress = clamp(outsElapsed / 54, 0, 1.2);
-  const progressCurve = Math.pow(clamp(progress, 0, 1), 1.35);
-  const runDiff = awayScore - homeScore;
-  const runLogitWeight = 0.68 + 2.7 * progressCurve;
-  let awayLogit = runDiff * runLogitWeight;
-
-  // Home teams win slightly more often in MLB at neutral score/state.
-  awayLogit -= 0.12;
-
-  const runnerThreat =
-    (context.runnerOnFirst ? 0.18 : 0) +
-    (context.runnerOnSecond ? 0.32 : 0) +
-    (context.runnerOnThird ? 0.46 : 0);
-  const outsThreatMultiplier = context.outs == null ? 0.78 : context.outs >= 2 ? 0.52 : context.outs === 1 ? 0.74 : 1;
-  const countEdge = ((context.balls ?? 0) - (context.strikes ?? 0)) * 0.04;
-  const situationLogit = (runnerThreat * outsThreatMultiplier + countEdge) * (0.5 + 0.95 * progressCurve);
-  if (sameTeam(context.offenseTeam, awayTeam)) awayLogit += situationLogit;
-  if (sameTeam(context.offenseTeam, homeTeam)) awayLogit -= situationLogit;
-
-  // Late-inning and walk-off asymmetry: in bottom 9+ ties, home offense has a large edge.
-  if (inning >= 9) {
-    if (inningHalf === "BOTTOM" && runDiff === 0) awayLogit -= 0.65;
-    if (inningHalf === "TOP" && runDiff === 0) awayLogit += 0.08;
-    if (inningHalf === "BOTTOM" && runDiff > 0) awayLogit -= 0.22;
-  }
-
-  // Bottom 9+ with home already ahead is effectively near-final.
-  if (inning >= 9 && inningHalf === "BOTTOM" && homeScore > awayScore) {
-    return 0.5;
-  }
-  if (inning >= 9 && inningHalf === "BOTTOM" && awayScore > homeScore && outs >= 2) {
-    awayLogit += 0.3;
-  }
-
-  awayLogit = clamp(awayLogit, -6, 6);
-  const awayProbability = 100 / (1 + Math.exp(-awayLogit));
-  return clamp(awayProbability, 1, 99);
-}
-
-function contextFromLiveState(game: LiveGame): WinProbabilityContext {
-  const state = game.state;
+function contextFromWinProbabilityPoint(point: LiveGameWinProbabilityPoint): WinProbabilityContext {
   return {
-    awayScore: state?.away_score ?? null,
-    homeScore: state?.home_score ?? null,
-    inning: state?.inning ?? null,
-    inningHalf: state?.inning_half ?? null,
-    outs: state?.outs ?? null,
-    balls: state?.balls ?? null,
-    strikes: state?.strikes ?? null,
-    runnerOnFirst: state?.runner_on_first ?? null,
-    runnerOnSecond: state?.runner_on_second ?? null,
-    runnerOnThird: state?.runner_on_third ?? null,
-    offenseTeam: state?.offense_team ?? null,
-    defenseTeam: state?.defense_team ?? null,
+    awayScore: point.away_score,
+    homeScore: point.home_score,
+    inning: point.inning,
+    inningHalf: point.inning_half,
+    outs: point.outs,
+    balls: point.balls,
+    strikes: point.strikes,
+    runnerOnFirst: point.runner_on_first,
+    runnerOnSecond: point.runner_on_second,
+    runnerOnThird: point.runner_on_third,
+    offenseTeam: point.offense_team,
+    defenseTeam: point.defense_team,
   };
 }
 
-function contextFromAtBat(
-  atBat: LiveGame["at_bats"][number],
-  awayTeam: string,
-  homeTeam: string,
-): WinProbabilityContext {
-  const half = (atBat.inning_half ?? "").trim().toUpperCase();
-  const offenseTeam = half === "TOP" ? awayTeam : half === "BOTTOM" ? homeTeam : null;
-  const defenseTeam =
-    half === "TOP"
-      ? homeTeam
-      : half === "BOTTOM"
-        ? awayTeam
-        : offenseTeam && sameTeam(offenseTeam, awayTeam)
-          ? homeTeam
-          : offenseTeam && sameTeam(offenseTeam, homeTeam)
-            ? awayTeam
-            : null;
-  return {
-    awayScore: atBat.away_score,
-    homeScore: atBat.home_score,
-    inning: atBat.inning,
-    inningHalf: atBat.inning_half,
-    outs: atBat.outs_after_play,
-    balls: atBat.balls,
-    strikes: atBat.strikes,
-    runnerOnFirst: atBat.runner_on_first,
-    runnerOnSecond: atBat.runner_on_second,
-    runnerOnThird: atBat.runner_on_third,
-    offenseTeam,
-    defenseTeam,
-  };
-}
-
-function buildAtBatWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint[] {
+function winProbabilityPointFromApi(
+  game: LiveGame,
+  teams: TeamGroup[],
+  apiPoint: LiveGameWinProbabilityPoint,
+  generatedAt: string,
+): WinProbabilityPoint {
   const teamsForGame = resolveAwayHomeTeams(game, teams);
-  const atBats = game.at_bats ?? [];
-  if (atBats.length === 0) return [];
+  const awayTeam = teamsForGame.awayTeam;
+  const homeTeam = teamsForGame.homeTeam;
+  const context = contextFromWinProbabilityPoint(apiPoint);
+  const atBat =
+    apiPoint.at_bat_index == null
+      ? null
+      : (game.at_bats ?? []).find((row) => row.at_bat_index === apiPoint.at_bat_index) ?? null;
   const playerLookup = buildLivePlayerLookup(game.players);
-  const awayTeam = teamsForGame.awayTeam;
-  const homeTeam = teamsForGame.homeTeam;
-  const fallbackAwayPoints = totalPointsForTeam(teams, awayTeam);
-  const fallbackHomePoints = totalPointsForTeam(teams, homeTeam);
-  const rows = [...atBats].sort((a, b) => a.at_bat_index - b.at_bat_index);
-
-  const series = rows.map((atBat, index) => {
-    const previousAtBat = index > 0 ? rows[index - 1] : null;
-    let runsScored = 0;
-    if (
-      previousAtBat &&
-      previousAtBat.away_score != null &&
-      previousAtBat.home_score != null &&
-      atBat.away_score != null &&
-      atBat.home_score != null
-    ) {
-      const awayDelta = atBat.away_score - previousAtBat.away_score;
-      const homeDelta = atBat.home_score - previousAtBat.home_score;
-      runsScored = Math.max(0, awayDelta + homeDelta);
-    }
-    const scoringHint = /(?:\bscored\b|\bscores\b|\bhome run\b|\bhomered\b|\bgrand slam\b|\bsacrifice fly\b)/i.test(
-      `${atBat.event ?? ""} ${atBat.description ?? ""}`,
-    );
-    const scoringPlay = runsScored > 0 || scoringHint;
-    if (runsScored === 0 && scoringHint) runsScored = 1;
-
-    const context = contextFromAtBat(atBat, awayTeam, homeTeam);
-    const awayProbability = roundTo(
-      estimateAwayWinProbability(context, {
-        awayTeam,
-        homeTeam,
-        fallbackAwayPoints,
-        fallbackHomePoints,
-      }),
-      1,
-    );
-    const homeProbability = roundTo(100 - awayProbability, 1);
-    const scoreLabel =
-      atBat.away_score != null && atBat.home_score != null
-        ? `${awayTeam} ${formatNumber(atBat.away_score, 0)} - ${formatNumber(atBat.home_score, 0)} ${homeTeam}`
-        : `${awayTeam} vs ${homeTeam}`;
-    const inningLabel = formatInningState(context);
-    const outsLabel =
-      atBat.outs_after_play == null ? "Outs --" : `${atBat.outs_after_play} out${atBat.outs_after_play === 1 ? "" : "s"}`;
-    const countLabel = formatCountState(atBat.balls, atBat.strikes);
-    const baseStateLabel = formatBaseState(context);
-    const eventLabel = atBat.event ?? "At-bat result";
-    const playDescription = atBat.description ?? null;
-    const batterPlayerId = resolveLivePlayerId(atBat.batter_name, playerLookup);
-    const pitcherPlayerId = resolveLivePlayerId(atBat.pitcher_name, playerLookup);
-    return {
-      capturedAt: atBat.occurred_at ?? game.updated_at ?? generatedAt,
-      awayTeam,
-      homeTeam,
-      sport: game.sport ?? "",
-      awayScore: atBat.away_score,
-      homeScore: atBat.home_score,
-      awayProbability,
-      homeProbability,
-      inningNumber: context.inning,
-      inningHalfCode: context.inningHalf,
-      outsCount: atBat.outs_after_play,
-      inningLabel,
-      outsLabel,
-      countLabel,
-      baseStateLabel,
-      eventLabel,
-      playDescription,
-      scoringPlay,
-      runsScored,
-      battingTeam: context.offenseTeam ?? null,
-      fieldingTeam: context.defenseTeam ?? null,
-      batterName: atBat.batter_name ?? null,
-      batterPlayerId,
-      batterTeam: context.offenseTeam ?? null,
-      pitcherName: atBat.pitcher_name ?? null,
-      pitcherPlayerId,
-      pitcherTeam: context.defenseTeam ?? null,
-      runnerOnFirst: Boolean(context.runnerOnFirst),
-      runnerOnSecond: Boolean(context.runnerOnSecond),
-      runnerOnThird: Boolean(context.runnerOnThird),
-      scoreLabel,
-      situationLabel: `${inningLabel} | ${outsLabel} | ${baseStateLabel} | ${countLabel} | ${eventLabel}`,
-      markerLabel: eventLabel,
-      atBatIndex: atBat.at_bat_index,
-    };
-  });
-  const gameSettled = isSettledGame(game);
-  if (gameSettled && series.length > 0) {
-    const lastAtBat = rows[rows.length - 1];
-    const finalProbabilities =
-      finalProbabilityFromScores(lastAtBat.away_score, lastAtBat.home_score) ??
-      finalProbabilityFromScores(game.state?.away_score, game.state?.home_score);
-    if (finalProbabilities) {
-      const lastIndex = series.length - 1;
-      const lastPoint = series[lastIndex];
-      series[lastIndex] = {
-        ...lastPoint,
-        awayProbability: finalProbabilities.awayProbability,
-        homeProbability: finalProbabilities.homeProbability,
-      };
-    }
-  }
-  return series;
-}
-
-function nextWinProbabilityPoint(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint {
-  const teamsForGame = resolveAwayHomeTeams(game, teams);
-  const awayTeam = teamsForGame.awayTeam;
-  const homeTeam = teamsForGame.homeTeam;
-  const context = contextFromLiveState(game);
-  let awayProbability = roundTo(
-    estimateAwayWinProbability(context, {
-      awayTeam,
-      homeTeam,
-      fallbackAwayPoints: totalPointsForTeam(teams, awayTeam),
-      fallbackHomePoints: totalPointsForTeam(teams, homeTeam),
-    }),
-    1,
-  );
-  let homeProbability = roundTo(100 - awayProbability, 1);
-  if (isSettledGame(game)) {
-    const finalProbabilities = finalProbabilityFromScores(context.awayScore, context.homeScore);
-    if (finalProbabilities) {
-      awayProbability = finalProbabilities.awayProbability;
-      homeProbability = finalProbabilities.homeProbability;
-    }
-  }
-  const hasScore = context.awayScore != null && context.homeScore != null;
-  const scoreLabel = hasScore
-    ? `${awayTeam} ${formatNumber(context.awayScore ?? 0, 0)} - ${formatNumber(context.homeScore ?? 0, 0)} ${homeTeam}`
-    : `${awayTeam} vs ${homeTeam}`;
+  const awayProbability = roundTo(apiPoint.away_probability, 1);
+  const homeProbability = roundTo(apiPoint.home_probability, 1);
+  const scoreLabel =
+    apiPoint.away_score != null && apiPoint.home_score != null
+      ? `${awayTeam} ${formatNumber(apiPoint.away_score, 0)} - ${formatNumber(apiPoint.home_score, 0)} ${homeTeam}`
+      : `${awayTeam} vs ${homeTeam}`;
   const inningLabel = formatInningState(context);
-  const outsLabel = context.outs == null ? "Outs --" : `${context.outs} out${context.outs === 1 ? "" : "s"}`;
-  const countLabel = formatCountState(context.balls, context.strikes);
+  const outsLabel = apiPoint.outs == null ? "Outs --" : `${apiPoint.outs} out${apiPoint.outs === 1 ? "" : "s"}`;
+  const countLabel = formatCountState(apiPoint.balls, apiPoint.strikes);
   const baseStateLabel = formatBaseState(context);
-  const eventLabel = "Live snapshot";
-  const battingLabel = context.offenseTeam ? ` | Batting ${context.offenseTeam}` : "";
+  const eventLabel = atBat?.event ?? "Live snapshot";
+  const playDescription = atBat?.description ?? null;
+  const batterPlayerId = resolveLivePlayerId(atBat?.batter_name, playerLookup);
+  const pitcherPlayerId = resolveLivePlayerId(atBat?.pitcher_name, playerLookup);
   return {
-    capturedAt: game.updated_at ?? generatedAt,
+    capturedAt: apiPoint.captured_at ?? game.updated_at ?? generatedAt,
     awayTeam,
     homeTeam,
     sport: game.sport ?? "",
-    awayScore: context.awayScore,
-    homeScore: context.homeScore,
+    awayScore: apiPoint.away_score,
+    homeScore: apiPoint.home_score,
     awayProbability,
     homeProbability,
-    inningNumber: context.inning,
-    inningHalfCode: context.inningHalf,
-    outsCount: context.outs,
+    inningNumber: apiPoint.inning,
+    inningHalfCode: apiPoint.inning_half,
+    outsCount: apiPoint.outs,
     inningLabel,
     outsLabel,
     countLabel,
     baseStateLabel,
     eventLabel,
-    playDescription: null,
+    playDescription,
     scoringPlay: false,
     runsScored: 0,
-    battingTeam: context.offenseTeam ?? null,
-    fieldingTeam: context.defenseTeam ?? null,
-    batterName: null,
-    batterPlayerId: null,
-    batterTeam: context.offenseTeam ?? null,
-    pitcherName: null,
-    pitcherPlayerId: null,
-    pitcherTeam: context.defenseTeam ?? null,
-    runnerOnFirst: Boolean(context.runnerOnFirst),
-    runnerOnSecond: Boolean(context.runnerOnSecond),
-    runnerOnThird: Boolean(context.runnerOnThird),
+    battingTeam: apiPoint.offense_team,
+    fieldingTeam: apiPoint.defense_team,
+    batterName: atBat?.batter_name ?? null,
+    batterPlayerId,
+    batterTeam: apiPoint.offense_team,
+    pitcherName: atBat?.pitcher_name ?? null,
+    pitcherPlayerId,
+    pitcherTeam: apiPoint.defense_team,
+    runnerOnFirst: Boolean(apiPoint.runner_on_first),
+    runnerOnSecond: Boolean(apiPoint.runner_on_second),
+    runnerOnThird: Boolean(apiPoint.runner_on_third),
     scoreLabel,
-    situationLabel: `${inningLabel} | ${outsLabel} | ${baseStateLabel} | ${countLabel}${battingLabel}`,
+    situationLabel: `${inningLabel} | ${outsLabel} | ${baseStateLabel} | ${countLabel} | ${eventLabel}`,
     markerLabel: eventLabel,
-    atBatIndex: null,
+    atBatIndex: apiPoint.at_bat_index,
   };
+}
+
+function backendWinProbabilityPoints(game: LiveGame, teams: TeamGroup[], generatedAt: string): WinProbabilityPoint[] {
+  const series = (game.win_probability_series ?? []).map((point) => winProbabilityPointFromApi(game, teams, point, generatedAt));
+  const current = game.win_probability ? winProbabilityPointFromApi(game, teams, game.win_probability, generatedAt) : null;
+  if (!current) return series;
+  const last = series[series.length - 1];
+  if (last && last.atBatIndex === current.atBatIndex && last.awayProbability === current.awayProbability) {
+    return series;
+  }
+  return [...series, current];
 }
 
 function WinProbabilityChart({
@@ -1403,56 +1177,13 @@ export default function LivePage() {
 
       for (const game of payload.games) {
         const teams = groupTeams(game);
-        const atBatSeries = buildAtBatWinProbabilityPoints(game, teams, generatedAt);
-        if (atBatSeries.length > 0) {
-          next[game.game_id] = atBatSeries.slice(-180);
+        const backendSeries = backendWinProbabilityPoints(game, teams, generatedAt);
+        if (backendSeries.length > 0) {
+          next[game.game_id] = backendSeries.slice(-180);
           continue;
         }
-
-        const point = nextWinProbabilityPoint(game, teams, generatedAt);
         const previousSeries = previous[game.game_id] ?? [];
-        const lastPoint = previousSeries[previousSeries.length - 1];
-        const sameTeams = !lastPoint || (lastPoint.awayTeam === point.awayTeam && lastPoint.homeTeam === point.homeTeam);
-        const unchanged =
-          Boolean(lastPoint) &&
-          sameTeams &&
-          lastPoint.awayScore === point.awayScore &&
-          lastPoint.homeScore === point.homeScore &&
-          lastPoint.awayProbability === point.awayProbability &&
-          lastPoint.homeProbability === point.homeProbability &&
-          lastPoint.inningNumber === point.inningNumber &&
-          lastPoint.inningHalfCode === point.inningHalfCode &&
-          lastPoint.outsCount === point.outsCount &&
-          lastPoint.inningLabel === point.inningLabel &&
-          lastPoint.outsLabel === point.outsLabel &&
-          lastPoint.countLabel === point.countLabel &&
-          lastPoint.baseStateLabel === point.baseStateLabel &&
-          lastPoint.eventLabel === point.eventLabel &&
-          lastPoint.playDescription === point.playDescription &&
-          lastPoint.scoringPlay === point.scoringPlay &&
-          lastPoint.runsScored === point.runsScored &&
-          lastPoint.battingTeam === point.battingTeam &&
-          lastPoint.fieldingTeam === point.fieldingTeam &&
-          lastPoint.batterName === point.batterName &&
-          lastPoint.batterPlayerId === point.batterPlayerId &&
-          lastPoint.batterTeam === point.batterTeam &&
-          lastPoint.pitcherName === point.pitcherName &&
-          lastPoint.pitcherPlayerId === point.pitcherPlayerId &&
-          lastPoint.pitcherTeam === point.pitcherTeam &&
-          lastPoint.runnerOnFirst === point.runnerOnFirst &&
-          lastPoint.runnerOnSecond === point.runnerOnSecond &&
-          lastPoint.runnerOnThird === point.runnerOnThird &&
-          lastPoint.scoreLabel === point.scoreLabel &&
-          lastPoint.situationLabel === point.situationLabel &&
-          lastPoint.capturedAt === point.capturedAt;
-
-        if (unchanged) {
-          next[game.game_id] = previousSeries.slice(-40);
-          continue;
-        }
-
-        const series = sameTeams ? [...previousSeries, point] : [point];
-        next[game.game_id] = series.slice(-40);
+        if (previousSeries.length > 0) next[game.game_id] = previousSeries.slice(-40);
       }
 
       return next;

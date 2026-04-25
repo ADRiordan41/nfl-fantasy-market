@@ -86,6 +86,7 @@ from .pricing import (
 )
 from .site_reset import execute_site_reset
 from .time_utils import chicago_now, chicago_rollover_start
+from .win_probability import build_mlb_current_win_probability, build_mlb_win_probability_series
 from .schemas import (
     AdminActivityAuditOut,
     AdminBotPersonaOut,
@@ -177,6 +178,7 @@ from .schemas import (
     LiveGameOut,
     LiveGamePlayerOut,
     LiveGameStateOut,
+    LiveGameWinProbabilityPointOut,
     LiveGamesOut,
     MarketMoverOut,
     MarketMoversOut,
@@ -2709,6 +2711,40 @@ def market_movers(
     return set_cached_json(cache_key, result, ttl_seconds=30)
 
 
+def live_game_player_points_for_team(players: list[LiveGamePlayerOut], team_code: str | None) -> float:
+    normalized_team = str(team_code or "").strip().upper()
+    if not normalized_team:
+        return 0.0
+    return float(
+        sum(
+            float(player.game_fantasy_points)
+            for player in players
+            if str(player.team or "").strip().upper() == normalized_team
+        )
+    )
+
+
+def win_probability_point_to_out(point) -> LiveGameWinProbabilityPointOut:
+    return LiveGameWinProbabilityPointOut(
+        captured_at=point.captured_at,
+        away_probability=float(point.away_probability),
+        home_probability=float(point.home_probability),
+        away_score=point.away_score,
+        home_score=point.home_score,
+        inning=point.inning,
+        inning_half=point.inning_half,
+        outs=point.outs,
+        balls=point.balls,
+        strikes=point.strikes,
+        runner_on_first=point.runner_on_first,
+        runner_on_second=point.runner_on_second,
+        runner_on_third=point.runner_on_third,
+        offense_team=point.offense_team,
+        defense_team=point.defense_team,
+        at_bat_index=point.at_bat_index,
+    )
+
+
 @app.get("/live/games", response_model=LiveGamesOut)
 def list_live_games(
     sport: str | None = Query(default=None),
@@ -3055,6 +3091,8 @@ def list_live_games(
         game_is_live = bool(group["is_live"])
         game_state_out: LiveGameStateOut | None = None
         at_bats_out: list[LiveGameAtBatOut] = []
+        win_probability_out: LiveGameWinProbabilityPointOut | None = None
+        win_probability_series_out: list[LiveGameWinProbabilityPointOut] = []
         if str(group["sport"]).upper() == "MLB":
             raw_game_id = (str(group["raw_game_id"]).strip() if group.get("raw_game_id") else "") or ""
             group_game_id = (str(group["game_id"]).strip() if group.get("game_id") else "") or ""
@@ -3088,6 +3126,10 @@ def list_live_games(
                     or game_status_is_terminal(mlb_state.detailed_state)
                 ):
                     game_is_live = False
+                mlb_game_final = not game_is_live and (
+                    (mlb_state.abstract_state or "") in {"FINAL", "COMPLETED"}
+                    or game_status_is_terminal(mlb_state.detailed_state)
+                )
                 game_state_out = LiveGameStateOut(
                     home_team=mlb_state.home_team,
                     away_team=mlb_state.away_team,
@@ -3131,6 +3173,25 @@ def list_live_games(
                     )
                     for at_bat in mlb_state.at_bats
                 ]
+                fallback_away_points = live_game_player_points_for_team(sorted_players, mlb_state.away_team)
+                fallback_home_points = live_game_player_points_for_team(sorted_players, mlb_state.home_team)
+                current_win_probability = build_mlb_current_win_probability(
+                    mlb_state,
+                    fallback_away_points=fallback_away_points,
+                    fallback_home_points=fallback_home_points,
+                    final=mlb_game_final,
+                )
+                if current_win_probability is not None:
+                    win_probability_out = win_probability_point_to_out(current_win_probability)
+                win_probability_series_out = [
+                    win_probability_point_to_out(point)
+                    for point in build_mlb_win_probability_series(
+                        mlb_state,
+                        fallback_away_points=fallback_away_points,
+                        fallback_home_points=fallback_home_points,
+                        final=mlb_game_final,
+                    )
+                ]
         if game_status_is_terminal(game_status_value):
             game_is_live = False
         games.append(
@@ -3145,6 +3206,8 @@ def list_live_games(
                 game_fantasy_points_total=total_game_points,
                 state=game_state_out,
                 at_bats=at_bats_out,
+                win_probability=win_probability_out,
+                win_probability_series=win_probability_series_out,
                 updated_at=group["updated_at"],
                 players=sorted_players,
             )

@@ -257,6 +257,98 @@ const LIVE_GAMES = {
           occurred_at: "2026-02-25T01:26:00Z",
         },
       ],
+      win_probability: {
+        captured_at: "2026-02-25T01:29:00Z",
+        away_probability: 76.6,
+        home_probability: 23.4,
+        away_score: 5,
+        home_score: 3,
+        inning: 7,
+        inning_half: "TOP",
+        outs: 1,
+        balls: 2,
+        strikes: 1,
+        runner_on_first: true,
+        runner_on_second: false,
+        runner_on_third: true,
+        offense_team: "NYY",
+        defense_team: "BOS",
+        at_bat_index: null,
+      },
+      win_probability_series: [
+        {
+          captured_at: "2026-02-25T01:20:00Z",
+          away_probability: 64.9,
+          home_probability: 35.1,
+          away_score: 4,
+          home_score: 3,
+          inning: 6,
+          inning_half: "BOTTOM",
+          outs: 3,
+          balls: 1,
+          strikes: 3,
+          runner_on_first: false,
+          runner_on_second: false,
+          runner_on_third: false,
+          offense_team: "BOS",
+          defense_team: "NYY",
+          at_bat_index: 38,
+        },
+        {
+          captured_at: "2026-02-25T01:23:00Z",
+          away_probability: 66.8,
+          home_probability: 33.2,
+          away_score: 4,
+          home_score: 3,
+          inning: 7,
+          inning_half: "TOP",
+          outs: 0,
+          balls: 3,
+          strikes: 2,
+          runner_on_first: true,
+          runner_on_second: false,
+          runner_on_third: false,
+          offense_team: "NYY",
+          defense_team: "BOS",
+          at_bat_index: 39,
+        },
+        {
+          captured_at: "2026-02-25T01:24:00Z",
+          away_probability: 65.3,
+          home_probability: 34.7,
+          away_score: 4,
+          home_score: 3,
+          inning: 7,
+          inning_half: "TOP",
+          outs: 1,
+          balls: 1,
+          strikes: 2,
+          runner_on_first: false,
+          runner_on_second: true,
+          runner_on_third: false,
+          offense_team: "NYY",
+          defense_team: "BOS",
+          at_bat_index: 40,
+        },
+        {
+          captured_at: "2026-02-25T01:26:00Z",
+          away_probability: 76.6,
+          home_probability: 23.4,
+          away_score: 5,
+          home_score: 3,
+          inning: 7,
+          inning_half: "TOP",
+          outs: 1,
+          balls: 2,
+          strikes: 1,
+          runner_on_first: false,
+          runner_on_second: true,
+          runner_on_third: false,
+          offense_team: "NYY",
+          defense_team: "BOS",
+          at_bat_index: 41,
+        },
+      ],
       updated_at: "2026-02-25T01:29:00Z",
       players: [
         {
@@ -294,6 +386,8 @@ const LIVE_GAMES = {
       game_fantasy_points_total: 40.5,
       state: null,
       at_bats: [],
+      win_probability: null,
+      win_probability_series: [],
       updated_at: "2026-02-25T01:29:00Z",
       players: [
         {
@@ -494,7 +588,12 @@ function json(route: Route, payload: unknown, status = 200): Promise<void> {
   });
 }
 
-async function mockApi(page: Page, authEnabled: boolean): Promise<void> {
+type MockApiOptions = {
+  liveGames?: unknown;
+};
+
+async function mockApi(page: Page, authEnabled: boolean, options: MockApiOptions = {}): Promise<void> {
+  const liveGames = options.liveGames ?? LIVE_GAMES;
   await page.route(`${API_ORIGIN}/**`, async (route) => {
     const { pathname } = new URL(route.request().url());
 
@@ -521,7 +620,7 @@ async function mockApi(page: Page, authEnabled: boolean): Promise<void> {
     if (pathname === "/transactions/me") return authEnabled ? json(route, RECENT_TRANSACTIONS) : json(route, { detail: "Authentication required." }, 401);
     if (pathname === "/market/movers") return json(route, MARKET_MOVERS);
     if (pathname === "/trading/status") return json(route, TRADING_STATUS);
-    if (pathname === "/live/games") return authEnabled ? json(route, LIVE_GAMES) : json(route, { detail: "Authentication required." }, 401);
+    if (pathname === "/live/games") return authEnabled ? json(route, liveGames) : json(route, { detail: "Authentication required." }, 401);
     if (pathname === "/forum/posts") return json(route, FORUM_POSTS);
     if (pathname === "/home/how-to-use") return json(route, HOME_HOW_TO_USE);
     if (pathname === "/users/me/profile") {
@@ -575,15 +674,15 @@ async function mockApi(page: Page, authEnabled: boolean): Promise<void> {
   });
 }
 
-export async function mockGuestApi(page: Page): Promise<void> {
-  await mockApi(page, false);
+export async function mockGuestApi(page: Page, options: MockApiOptions = {}): Promise<void> {
+  await mockApi(page, false, options);
 }
 
-export async function mockAuthedApi(page: Page): Promise<void> {
+export async function mockAuthedApi(page: Page, options: MockApiOptions = {}): Promise<void> {
   await page.addInitScript((token) => {
     window.localStorage.setItem("fsm_access_token", token);
   }, VISUAL_TOKEN);
-  await mockApi(page, true);
+  await mockApi(page, true, options);
 }
 
 export async function stabilizeUi(page: Page): Promise<void> {
