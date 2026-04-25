@@ -3013,7 +3013,7 @@ h1 {
 .live-mini-team-prob {
   font-size: 9.5px;
   font-weight: 800;
-  color: #355878;
+  color: #5a7695;
   letter-spacing: 0.03em;
   font-variant-numeric: tabular-nums;
 }
@@ -3021,7 +3021,7 @@ h1 {
 .live-mini-score {
   font-size: 16px;
   line-height: 0.95;
-  color: #12385e;
+  color: #5a7695;
   font-variant-numeric: tabular-nums;
 }
 
@@ -8151,6 +8151,8 @@ thead th {
 .live-mini-badge.muted,
 .live-mini-status,
 .live-mini-state,
+.live-mini-score,
+.live-mini-team-prob,
 .live-mini-team-box,
 .live-mini-winprob-pill,
 .live-winprob-context-label,

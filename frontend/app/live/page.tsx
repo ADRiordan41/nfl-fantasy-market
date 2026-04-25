@@ -561,6 +561,17 @@ function winProbabilityPointFromApi(
     apiPoint.at_bat_index == null
       ? null
       : (game.at_bats ?? []).find((row) => row.at_bat_index === apiPoint.at_bat_index) ?? null;
+  const matchupAtBat =
+    atBat ??
+    [...(game.at_bats ?? [])]
+      .reverse()
+      .find((row) => {
+        if (row.batter_name == null && row.pitcher_name == null) return false;
+        if (apiPoint.inning != null && row.inning !== apiPoint.inning) return false;
+        if (apiPoint.inning_half && row.inning_half && row.inning_half !== apiPoint.inning_half) return false;
+        return true;
+      }) ??
+    null;
   const playerLookup = buildLivePlayerLookup(game.players);
   const awayProbability = roundTo(apiPoint.away_probability, 1);
   const homeProbability = roundTo(apiPoint.home_probability, 1);
@@ -574,8 +585,8 @@ function winProbabilityPointFromApi(
   const baseStateLabel = formatBaseState(context);
   const eventLabel = atBat?.event ?? "Live snapshot";
   const playDescription = atBat?.description ?? null;
-  const batterPlayerId = resolveLivePlayerId(atBat?.batter_name, playerLookup);
-  const pitcherPlayerId = resolveLivePlayerId(atBat?.pitcher_name, playerLookup);
+  const batterPlayerId = resolveLivePlayerId(matchupAtBat?.batter_name, playerLookup);
+  const pitcherPlayerId = resolveLivePlayerId(matchupAtBat?.pitcher_name, playerLookup);
   return {
     capturedAt: apiPoint.captured_at ?? game.updated_at ?? generatedAt,
     awayTeam,
@@ -598,10 +609,10 @@ function winProbabilityPointFromApi(
     runsScored: 0,
     battingTeam: apiPoint.offense_team,
     fieldingTeam: apiPoint.defense_team,
-    batterName: atBat?.batter_name ?? null,
+    batterName: matchupAtBat?.batter_name ?? null,
     batterPlayerId,
     batterTeam: apiPoint.offense_team,
-    pitcherName: atBat?.pitcher_name ?? null,
+    pitcherName: matchupAtBat?.pitcher_name ?? null,
     pitcherPlayerId,
     pitcherTeam: apiPoint.defense_team,
     runnerOnFirst: Boolean(apiPoint.runner_on_first),
@@ -661,6 +672,10 @@ function WinProbabilityChart({
   const topSwingIndexSet = new Set(topSwingLeaders.map((entry) => entry.index));
   const activeIndex = hoveredIndex == null ? points.length - 1 : clamp(hoveredIndex, 0, points.length - 1);
   const activePoint = points[activeIndex];
+  const latestPlayPoint =
+    hoveredIndex == null
+      ? [...points].reverse().find((point) => point.atBatIndex != null && (point.playDescription || point.eventLabel !== "Live snapshot")) ?? activePoint
+      : activePoint;
   const showMatchupRow =
     activePoint.atBatIndex != null &&
     Boolean(activePoint.batterName || activePoint.pitcherName || activePoint.batterTeam || activePoint.pitcherTeam);
@@ -687,7 +702,7 @@ function WinProbabilityChart({
   const homeTeamReadableColor = teamReadableColor(activePoint.homeTeam, activePoint.sport);
   const batterNameStyle = { "--live-scorebug-detail-color": teamReadableColor(batterTeamValue, activePoint.sport) } as CSSProperties;
   const pitcherNameStyle = { "--live-scorebug-detail-color": teamReadableColor(pitcherTeamValue, activePoint.sport) } as CSSProperties;
-  const highlightedPlaySummary = formatHighlightedPlay(activePoint);
+  const highlightedPlaySummary = formatHighlightedPlay(latestPlayPoint);
   const width = 340;
   const height = 124;
   const left = 10;
@@ -866,7 +881,7 @@ function WinProbabilityChart({
         <span className="live-winprob-play-inline" aria-live="polite" title={highlightedPlaySummary}>
           <span className="live-winprob-play-inline-text">
             {renderPlaySummaryTextWithLinks(
-              activePoint,
+              latestPlayPoint,
               highlightedPlaySummary,
               "live-winprob-play-link",
               playTextPlayerLookup,
