@@ -3255,7 +3255,7 @@ h1 {
 .live-scorebug-detail-row {
   margin: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   color: #21486e;
@@ -3270,6 +3270,7 @@ h1 {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 700;
+  color: var(--live-scorebug-detail-color, #21486e);
 }
 
 .live-scorebug-detail-name-link {
@@ -6045,6 +6046,7 @@ td {
 
   .live-scorebug-detail-name {
     font-size: 11px;
+    text-overflow: clip;
   }
 
   .live-scorebug-detail-team {
@@ -8220,9 +8222,12 @@ thead th {
 }
 
 .live-scorebug-detail-row,
-.live-scorebug-detail-team,
-.live-scorebug-detail-name {
+.live-scorebug-detail-team {
   color: #d7e4f8 !important;
+}
+
+.live-scorebug-detail-name {
+  color: var(--live-scorebug-detail-color, #d7e4f8) !important;
 }
 
 .live-scorebug-detail-tag,

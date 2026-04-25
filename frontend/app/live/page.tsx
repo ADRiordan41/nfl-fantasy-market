@@ -102,6 +102,16 @@ function chicagoDateKey(value: Date): string {
   });
 }
 
+function formatCompactMatchupName(name: string | null | undefined, fallback: string): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return fallback;
+  const withoutSuffix = trimmed.replace(/\s+(?:jr|sr|ii|iii|iv|v)\.?$/i, "").trim();
+  const parts = withoutSuffix.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return withoutSuffix || trimmed;
+  const firstInitial = parts[0][0]?.toUpperCase() ?? "";
+  return `${firstInitial}. ${parts[parts.length - 1]}`;
+}
+
 function sortPlayersByPerformance(players: LiveGamePlayer[]): LiveGamePlayer[] {
   return [...players].sort((a, b) => {
     if (b.game_fantasy_points !== a.game_fantasy_points) {
@@ -654,8 +664,8 @@ function WinProbabilityChart({
   const showMatchupRow =
     activePoint.atBatIndex != null &&
     Boolean(activePoint.batterName || activePoint.pitcherName || activePoint.batterTeam || activePoint.pitcherTeam);
-  const batterLabel = activePoint.batterName ?? "Unknown hitter";
-  const pitcherLabel = activePoint.pitcherName ?? "Unknown pitcher";
+  const batterLabel = formatCompactMatchupName(activePoint.batterName, "Unknown hitter");
+  const pitcherLabel = formatCompactMatchupName(activePoint.pitcherName, "Unknown pitcher");
   const awayScoreValue = activePoint.awayScore == null ? "--" : formatNumber(activePoint.awayScore, 0);
   const homeScoreValue = activePoint.homeScore == null ? "--" : formatNumber(activePoint.homeScore, 0);
   const battingTeamLabel = activePoint.battingTeam ?? "TBD";
@@ -669,12 +679,14 @@ function WinProbabilityChart({
   const countBugLabel = activePoint.countLabel.toUpperCase();
   const batterTeamValue = activePoint.batterTeam ?? battingTeamLabel;
   const pitcherTeamValue = activePoint.pitcherTeam ?? fieldingTeamLabel;
-  const batterNameValue = showMatchupRow ? batterLabel : "Current batter pending";
-  const pitcherNameValue = showMatchupRow ? pitcherLabel : "Current pitcher pending";
+  const batterNameValue = showMatchupRow ? batterLabel : "Batter pending";
+  const pitcherNameValue = showMatchupRow ? pitcherLabel : "Pitcher pending";
   const batterPlayerHref = activePoint.batterPlayerId != null ? `/player/${activePoint.batterPlayerId}` : null;
   const pitcherPlayerHref = activePoint.pitcherPlayerId != null ? `/player/${activePoint.pitcherPlayerId}` : null;
   const awayTeamReadableColor = teamReadableColor(activePoint.awayTeam, activePoint.sport);
   const homeTeamReadableColor = teamReadableColor(activePoint.homeTeam, activePoint.sport);
+  const batterNameStyle = { "--live-scorebug-detail-color": teamReadableColor(batterTeamValue, activePoint.sport) } as CSSProperties;
+  const pitcherNameStyle = { "--live-scorebug-detail-color": teamReadableColor(pitcherTeamValue, activePoint.sport) } as CSSProperties;
   const highlightedPlaySummary = formatHighlightedPlay(activePoint);
   const width = 340;
   const height = 124;
@@ -812,14 +824,16 @@ function WinProbabilityChart({
                   <Link
                     href={pitcherPlayerHref}
                     className="live-scorebug-detail-name live-scorebug-detail-name-link"
+                    style={pitcherNameStyle}
                     onClick={(event) => event.stopPropagation()}
                   >
                     {pitcherNameValue}
                   </Link>
                 ) : (
-                  <strong className="live-scorebug-detail-name">{pitcherNameValue}</strong>
+                  <strong className="live-scorebug-detail-name" style={pitcherNameStyle}>
+                    {pitcherNameValue}
+                  </strong>
                 )}
-                <span className="live-scorebug-detail-team">{pitcherTeamValue}</span>
               </p>
               <p className="live-scorebug-detail-row">
                 <span className="live-scorebug-detail-tag">B</span>
@@ -827,14 +841,16 @@ function WinProbabilityChart({
                   <Link
                     href={batterPlayerHref}
                     className="live-scorebug-detail-name live-scorebug-detail-name-link"
+                    style={batterNameStyle}
                     onClick={(event) => event.stopPropagation()}
                   >
                     {batterNameValue}
                   </Link>
                 ) : (
-                  <strong className="live-scorebug-detail-name">{batterNameValue}</strong>
+                  <strong className="live-scorebug-detail-name" style={batterNameStyle}>
+                    {batterNameValue}
+                  </strong>
                 )}
-                <span className="live-scorebug-detail-team">{batterTeamValue}</span>
               </p>
             </div>
           </div>
