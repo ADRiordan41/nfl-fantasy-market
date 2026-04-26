@@ -223,11 +223,11 @@ function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
       stroke="none"
       preserveAspectRatio="xMidYMid meet"
     >
-      <path d={sigmaPath} fill="#ff961a" />
+      <path d={sigmaPath} fill="#ffad3d" />
       <path
         d={deltaPath}
         fill="none"
-        stroke="#2799ff"
+        stroke="#4db8ff"
         strokeWidth="6"
         strokeLinejoin="miter"
       />
