@@ -213,7 +213,6 @@ type SigmaDeltaIconProps = SVGProps<SVGSVGElement> & {
 };
 
 function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
-  const deltaId = `${gradientPrefix}Delta`;
   const sigmaPath = "M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z";
   const deltaPath = "M62 10L81 37H43Z";
   return (
@@ -224,26 +223,11 @@ function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
       stroke="none"
       preserveAspectRatio="xMidYMid meet"
     >
-      <defs>
-        <linearGradient id={deltaId} x1="38" y1="6" x2="86" y2="41" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#70d3ff" />
-          <stop offset="0.56" stopColor="#2799ff" />
-          <stop offset="1" stopColor="#0d59de" />
-        </linearGradient>
-      </defs>
       <path d={sigmaPath} fill="#ff961a" />
       <path
         d={deltaPath}
         fill="none"
-        stroke={`url(#${deltaId})`}
-        strokeWidth="6"
-        strokeLinejoin="miter"
-      />
-      <path
-        d={deltaPath}
-        fill="none"
-        stroke="#ecf8ff"
-        strokeOpacity="0.14"
+        stroke="#2799ff"
         strokeWidth="6"
         strokeLinejoin="miter"
       />
