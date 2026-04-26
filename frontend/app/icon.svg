@@ -11,8 +11,8 @@
       <stop offset="1" stop-color="#0d59de" />
     </linearGradient>
   </defs>
-  <path d="M2 6H42V12H20L31.5 23L20 34H42L38 40H2L24.5 23L2 6Z" fill="url(#mmIconSigma)" />
-  <path d="M2 6H42V12H20L31.5 23L20 34H42L38 40H2L24.5 23L2 6Z" fill="#fff4e4" fill-opacity="0.16" />
-  <path fill-rule="evenodd" clip-rule="evenodd" d="M62 6L86 40H38L62 6ZM62 17L72 34H52L62 17Z" fill="url(#mmIconDelta)" />
-  <path fill-rule="evenodd" clip-rule="evenodd" d="M62 6L86 40H38L62 6ZM62 17L72 34H52L62 17Z" fill="#ecf8ff" fill-opacity="0.14" />
+  <path d="M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z" fill="url(#mmIconSigma)" />
+  <path d="M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z" fill="#fff4e4" fill-opacity="0.16" />
+  <path d="M62 10L81 37H43Z" fill="none" stroke="url(#mmIconDelta)" stroke-width="6" stroke-linejoin="miter" />
+  <path d="M62 10L81 37H43Z" fill="none" stroke="#ecf8ff" stroke-opacity="0.14" stroke-width="6" stroke-linejoin="miter" />
 </svg>
