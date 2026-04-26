@@ -21,6 +21,8 @@ class WinProbabilityContext:
     runner_on_third: bool | None = None
     offense_team: str | None = None
     defense_team: str | None = None
+    batter_name: str | None = None
+    pitcher_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,8 @@ class WinProbabilityPoint:
     runner_on_third: bool | None = None
     offense_team: str | None = None
     defense_team: str | None = None
+    batter_name: str | None = None
+    pitcher_name: str | None = None
     at_bat_index: int | None = None
 
 
@@ -191,6 +195,8 @@ def context_from_mlb_state(state: MlbGameState) -> WinProbabilityContext:
         runner_on_third=state.runner_on_third,
         offense_team=state.offense_team,
         defense_team=state.defense_team,
+        batter_name=state.batter_name,
+        pitcher_name=state.pitcher_name,
     )
 
 
@@ -211,6 +217,8 @@ def context_from_mlb_at_bat(at_bat: MlbGameAtBat, *, away_team: str, home_team: 
         runner_on_third=at_bat.runner_on_third,
         offense_team=offense_team,
         defense_team=defense_team,
+        batter_name=at_bat.batter_name,
+        pitcher_name=at_bat.pitcher_name,
     )
 
 
@@ -250,6 +258,8 @@ def point_from_context(
         runner_on_third=context.runner_on_third,
         offense_team=context.offense_team,
         defense_team=context.defense_team,
+        batter_name=context.batter_name,
+        pitcher_name=context.pitcher_name,
         at_bat_index=at_bat_index,
     )
 
@@ -316,6 +326,8 @@ def build_mlb_current_win_probability(
                 runner_on_third=context.runner_on_third,
                 offense_team=context.offense_team,
                 defense_team=context.defense_team,
+                batter_name=context.batter_name,
+                pitcher_name=context.pitcher_name,
             )
     return point_from_context(
         context_from_mlb_state(state),

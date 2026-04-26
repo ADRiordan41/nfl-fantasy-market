@@ -2741,6 +2741,8 @@ def win_probability_point_to_out(point) -> LiveGameWinProbabilityPointOut:
         runner_on_third=point.runner_on_third,
         offense_team=point.offense_team,
         defense_team=point.defense_team,
+        batter_name=point.batter_name,
+        pitcher_name=point.pitcher_name,
         at_bat_index=point.at_bat_index,
     )
 

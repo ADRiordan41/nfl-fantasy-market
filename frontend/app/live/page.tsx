@@ -585,8 +585,10 @@ function winProbabilityPointFromApi(
   const baseStateLabel = formatBaseState(context);
   const eventLabel = atBat?.event ?? "Live snapshot";
   const playDescription = atBat?.description ?? null;
-  const batterPlayerId = resolveLivePlayerId(matchupAtBat?.batter_name, playerLookup);
-  const pitcherPlayerId = resolveLivePlayerId(matchupAtBat?.pitcher_name, playerLookup);
+  const batterName = apiPoint.batter_name ?? matchupAtBat?.batter_name ?? null;
+  const pitcherName = apiPoint.pitcher_name ?? matchupAtBat?.pitcher_name ?? null;
+  const batterPlayerId = resolveLivePlayerId(batterName, playerLookup);
+  const pitcherPlayerId = resolveLivePlayerId(pitcherName, playerLookup);
   return {
     capturedAt: apiPoint.captured_at ?? game.updated_at ?? generatedAt,
     awayTeam,
@@ -609,10 +611,10 @@ function winProbabilityPointFromApi(
     runsScored: 0,
     battingTeam: apiPoint.offense_team,
     fieldingTeam: apiPoint.defense_team,
-    batterName: matchupAtBat?.batter_name ?? null,
+    batterName,
     batterPlayerId,
     batterTeam: apiPoint.offense_team,
-    pitcherName: matchupAtBat?.pitcher_name ?? null,
+    pitcherName,
     pitcherPlayerId,
     pitcherTeam: apiPoint.defense_team,
     runnerOnFirst: Boolean(apiPoint.runner_on_first),
@@ -677,8 +679,7 @@ function WinProbabilityChart({
       ? [...points].reverse().find((point) => point.atBatIndex != null && (point.playDescription || point.eventLabel !== "Live snapshot")) ?? activePoint
       : activePoint;
   const showMatchupRow =
-    activePoint.atBatIndex != null &&
-    Boolean(activePoint.batterName || activePoint.pitcherName || activePoint.batterTeam || activePoint.pitcherTeam);
+    Boolean(activePoint.batterName || activePoint.pitcherName);
   const batterLabel = formatCompactMatchupName(activePoint.batterName, "Unknown hitter");
   const pitcherLabel = formatCompactMatchupName(activePoint.pitcherName, "Unknown pitcher");
   const awayScoreValue = activePoint.awayScore == null ? "--" : formatNumber(activePoint.awayScore, 0);

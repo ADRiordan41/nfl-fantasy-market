@@ -79,6 +79,8 @@ class MlbGameState:
     runner_on_third: bool | None = None
     offense_team: str | None = None
     defense_team: str | None = None
+    batter_name: str | None = None
+    pitcher_name: str | None = None
     at_bats: list[MlbGameAtBat] = field(default_factory=list)
 
 
@@ -518,6 +520,21 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
         if defense_team is None and inning_half in {"TOP", "BOTTOM"}:
             defense_team = home_team if inning_half == "TOP" else away_team
 
+        current_play_payload = (live_data.get("plays") or {}).get("currentPlay")
+        current_matchup = (
+            current_play_payload.get("matchup", {})
+            if isinstance(current_play_payload, dict) and isinstance(current_play_payload.get("matchup"), dict)
+            else {}
+        )
+        current_batter_payload = (
+            current_matchup.get("batter", {}) if isinstance(current_matchup.get("batter"), dict) else {}
+        )
+        current_pitcher_payload = (
+            current_matchup.get("pitcher", {}) if isinstance(current_matchup.get("pitcher"), dict) else {}
+        )
+        current_batter_name = (str(current_batter_payload.get("fullName") or "").strip() or None)
+        current_pitcher_name = (str(current_pitcher_payload.get("fullName") or "").strip() or None)
+
         at_bats: list[MlbGameAtBat] = []
         seen_at_bat_indexes: set[int] = set()
         active_inning: int | None = None
@@ -637,6 +654,8 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
             runner_on_third=isinstance(offense_payload.get("third"), dict),
             offense_team=offense_team,
             defense_team=defense_team,
+            batter_name=current_batter_name,
+            pitcher_name=current_pitcher_name,
             at_bats=at_bats[-180:],
         )
         states[game_pk] = state

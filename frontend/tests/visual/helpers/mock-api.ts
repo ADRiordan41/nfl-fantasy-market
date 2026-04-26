@@ -273,6 +273,8 @@ const LIVE_GAMES = {
         runner_on_third: true,
         offense_team: "NYY",
         defense_team: "BOS",
+        batter_name: "Aaron Judge",
+        pitcher_name: "Garrett Whitlock",
         at_bat_index: null,
       },
       win_probability_series: [

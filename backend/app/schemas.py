@@ -683,6 +683,8 @@ class LiveGameWinProbabilityPointOut(BaseModel):
     runner_on_third: bool | None = None
     offense_team: str | None = None
     defense_team: str | None = None
+    batter_name: str | None = None
+    pitcher_name: str | None = None
     at_bat_index: int | None = None
 
 

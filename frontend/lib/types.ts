@@ -93,6 +93,8 @@ export type LiveGameWinProbabilityPoint = {
   runner_on_third: boolean | null;
   offense_team: string | null;
   defense_team: string | null;
+  batter_name: string | null;
+  pitcher_name: string | null;
   at_bat_index: number | null;
 };
 
