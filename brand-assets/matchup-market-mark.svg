@@ -1,18 +1,12 @@
 <svg width="4096" height="2003" viewBox="0 0 94 46" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="sigmaGradient" x1="2" y1="6" x2="40" y2="41" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffc862"/>
-      <stop offset="0.56" stop-color="#ff961a"/>
-      <stop offset="1" stop-color="#e96800"/>
-    </linearGradient>
     <linearGradient id="deltaGradient" x1="38" y1="6" x2="86" y2="41" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#70d3ff"/>
       <stop offset="0.56" stop-color="#2799ff"/>
       <stop offset="1" stop-color="#0d59de"/>
     </linearGradient>
   </defs>
-  <path d="M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z" fill="url(#sigmaGradient)"/>
-  <path d="M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z" fill="#fff4e4" fill-opacity="0.16"/>
+  <path d="M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z" fill="#ff961a"/>
   <path d="M62 10L81 37H43Z" fill="none" stroke="url(#deltaGradient)" stroke-width="6" stroke-linejoin="miter"/>
   <path d="M62 10L81 37H43Z" fill="none" stroke="#ecf8ff" stroke-opacity="0.14" stroke-width="6" stroke-linejoin="miter"/>
 </svg>

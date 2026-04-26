@@ -213,7 +213,6 @@ type SigmaDeltaIconProps = SVGProps<SVGSVGElement> & {
 };
 
 function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
-  const sigmaId = `${gradientPrefix}Sigma`;
   const deltaId = `${gradientPrefix}Delta`;
   const sigmaPath = "M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z";
   const deltaPath = "M62 10L81 37H43Z";
@@ -226,19 +225,13 @@ function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
       preserveAspectRatio="xMidYMid meet"
     >
       <defs>
-        <linearGradient id={sigmaId} x1="2" y1="6" x2="40" y2="41" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#ffc862" />
-          <stop offset="0.56" stopColor="#ff961a" />
-          <stop offset="1" stopColor="#e96800" />
-        </linearGradient>
         <linearGradient id={deltaId} x1="38" y1="6" x2="86" y2="41" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#70d3ff" />
           <stop offset="0.56" stopColor="#2799ff" />
           <stop offset="1" stopColor="#0d59de" />
         </linearGradient>
       </defs>
-      <path d={sigmaPath} fill={`url(#${sigmaId})`} />
-      <path d={sigmaPath} fill="#fff4e4" fillOpacity="0.16" />
+      <path d={sigmaPath} fill="#ff961a" />
       <path
         d={deltaPath}
         fill="none"
