@@ -7,9 +7,10 @@ import MarketTableRow, {
   type MarketTableRowModel,
   type MarketTradeSide,
 } from "@/components/market-table-row";
+import { tradeActionClass } from "@/components/trade-confirmation";
 import AccountMixPanel, { type AccountMixSegment as SharedAccountMixSegment } from "@/components/account-mix-panel";
 import CommunityPostsPanel from "@/components/community-posts-panel";
-import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
+import { apiGet, apiPost, friendlyApiError, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
@@ -88,10 +89,6 @@ const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   position: "desc",
 };
 
-function toMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 function formatStamp(value: string | null): string {
   if (!value) return "--";
   const parsed = new Date(value);
@@ -148,7 +145,7 @@ export default function PortfolioPage() {
         router.replace("/auth");
         return;
       }
-      setError(toMessage(err));
+      setError(friendlyApiError(err));
     },
     [router],
   );
@@ -696,7 +693,7 @@ export default function PortfolioPage() {
                             {quoteById[row.id] ? (
                               <button
                                 type="button"
-                                className={sideForRow(row) === "SELL" ? "primary-btn short-btn market-quote-action-btn" : "primary-btn market-quote-action-btn"}
+                                className={`primary-btn market-quote-action-btn ${tradeActionClass(sideForRow(row))}`}
                                 disabled={Boolean(haltedForRow(row)) || placingId === row.id}
                                 onClick={() => void placeTrade(row)}
                               >

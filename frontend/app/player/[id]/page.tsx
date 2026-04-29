@@ -3,17 +3,15 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { apiDelete, apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
+import ConfirmTradeModal, { TradePreview, tradeActionClass, tradeSideLabel } from "@/components/trade-confirmation";
+import EmptyStatePanel from "@/components/empty-state-panel";
+import { apiDelete, apiGet, apiPost, friendlyApiError, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type { Player, PlayerGamePoint, Portfolio, PricePoint, Quote, WatchlistPlayer } from "@/lib/types";
 
 type TradeSide = "BUY" | "SELL" | "SHORT" | "COVER";
 const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
-
-function toMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 function parseWholeShares(value: string): number | null {
   const trimmed = value.trim();
@@ -43,10 +41,6 @@ function formatStamp(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function isCostSide(side: TradeSide): boolean {
-  return side === "BUY" || side === "SHORT";
 }
 
 function PriceHistoryChart({ points }: { points: PricePoint[] }) {
@@ -297,11 +291,14 @@ export default function PlayerPage() {
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [gameHistory, setGameHistory] = useState<PlayerGamePoint[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [loading, setLoading] = useState(true);
   const [side, setSide] = useState<TradeSide>("BUY");
   const [shares, setShares] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [busyPreview, setBusyPreview] = useState(false);
   const [busyPlace, setBusyPlace] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
   const [watchlist, setWatchlist] = useState<WatchlistPlayer[]>([]);
   const [watchBusy, setWatchBusy] = useState(false);
   const [error, setError] = useState("");
@@ -312,13 +309,14 @@ export default function PlayerPage() {
         router.replace("/auth");
         return;
       }
-      setError(toMessage(err));
+      setError(friendlyApiError(err));
     },
     [router],
   );
 
   const load = useCallback(async () => {
     if (!validId) return;
+    setLoading(true);
     try {
       const [playerData, historyData, gameHistoryData, portfolioData, watchlistData] = await Promise.all([
         apiGet<Player>(`/players/${playerId}`),
@@ -335,6 +333,9 @@ export default function PlayerPage() {
       setError("");
     } catch (err: unknown) {
       handleRequestError(err);
+      setPlayer(null);
+    } finally {
+      setLoading(false);
     }
   }, [handleRequestError, playerId, validId]);
 
@@ -361,11 +362,14 @@ export default function PlayerPage() {
   function changeSide(next: TradeSide) {
     setSide(next);
     setQuote(null);
+    setConfirmOpen(false);
+    setSuccessMessage("");
   }
 
   function changeShares(next: string) {
     setShares(next);
     setQuote(null);
+    setSuccessMessage("");
   }
 
   function applyQuick(nextSize: number) {
@@ -436,8 +440,8 @@ export default function PlayerPage() {
         shares: quote.shares,
       });
       setShares("");
-      setQuote(null);
       await load();
+      setSuccessMessage(`${tradeSideLabel(side)} completed for ${player?.name ?? "this player"}.`);
     } catch (err: unknown) {
       handleRequestError(err);
     } finally {
@@ -480,8 +484,10 @@ export default function PlayerPage() {
       <section className="hero-panel player-hero">
         <div>
           <p className="eyebrow">Player Detail</p>
-          <h1>{player ? player.name : "Loading player..."}</h1>
-          <p className="subtle">{player ? `${player.sport} ${player.team} ${player.position}` : "Fetching latest quote..."}</p>
+          <h1>{player ? player.name : loading ? "Loading player..." : "Player unavailable"}</h1>
+          <p className="subtle">
+            {player ? `${player.sport} ${player.team} ${player.position}` : loading ? "Fetching latest price and stats..." : "Try another player from the market."}
+          </p>
         </div>
         <div className="hero-actions">
           <button onClick={load}>Refresh</button>
@@ -496,7 +502,17 @@ export default function PlayerPage() {
 
       {error && <p className="error-box">{error}</p>}
 
-      {live?.live_now && (
+      {!loading && !player && (
+        <EmptyStatePanel
+          kind="market"
+          title="Player not available"
+          description="This player may have been removed, delisted, or the link may be outdated."
+          actionHref="/market"
+          actionLabel="Browse Players"
+        />
+      )}
+
+      {player && live?.live_now && (
         <section className="table-panel live-detail-panel">
           <div className="live-now-head">
             <span className="live-indicator">
@@ -545,28 +561,40 @@ export default function PlayerPage() {
         </section>
       )}
 
-      <PriceHistoryChart points={history} />
+      {player && <PriceHistoryChart points={history} />}
       {player && <FantasyValueHistoryChart sport={player.sport} points={gameHistory} />}
 
-      <section className="trade-layout">
+      {player && <section className="trade-layout">
         <article className="trade-card">
+          <div className="trade-card-head">
+            <div>
+              <h3>Trade {player.name}</h3>
+              <p className="subtle">Preview first, then confirm when the estimate looks right.</p>
+            </div>
+          </div>
           <div className="segment-row segment-4">
-            <button className={side === "BUY" ? "segment active" : "segment"} onClick={() => changeSide("BUY")}>
+            <button
+              className={side === "BUY" ? "segment trade-segment-positive active" : "segment trade-segment-positive"}
+              onClick={() => changeSide("BUY")}
+            >
               Buy
             </button>
             <button
-              className={side === "SELL" ? "segment danger-segment danger-active" : "segment danger-segment"}
+              className={side === "SELL" ? "segment trade-segment-negative active" : "segment trade-segment-negative"}
               onClick={() => changeSide("SELL")}
             >
               Sell
             </button>
             <button
-              className={side === "SHORT" ? "segment danger-segment danger-active" : "segment danger-segment"}
+              className={side === "SHORT" ? "segment trade-segment-negative active" : "segment trade-segment-negative"}
               onClick={() => changeSide("SHORT")}
             >
               Short
             </button>
-            <button className={side === "COVER" ? "segment active" : "segment"} onClick={() => changeSide("COVER")}>
+            <button
+              className={side === "COVER" ? "segment trade-segment-positive active" : "segment trade-segment-positive"}
+              onClick={() => changeSide("COVER")}
+            >
               Cover
             </button>
           </div>
@@ -578,14 +606,14 @@ export default function PlayerPage() {
           </p>
           <div className="chip-row">
             <button
-              className="chip"
+              className="chip market-quick-buy-btn"
               onClick={() => void executeMaxTrade("BUY", buyRemaining)}
               disabled={buyRemaining <= 0 || busyPreview || busyPlace}
             >
               Buy Max ({formatNumber(buyRemaining)})
             </button>
             <button
-              className="chip"
+              className="chip market-quick-short-btn"
               onClick={() => void executeMaxTrade("SHORT", shortRemaining)}
               disabled={shortRemaining <= 0 || busyPreview || busyPlace}
             >
@@ -618,33 +646,45 @@ export default function PlayerPage() {
           )}
 
           <button
-            className={side === "SHORT" || side === "SELL" ? "primary-btn full short-btn" : "primary-btn full"}
+            className={`primary-btn full ${tradeActionClass(side)}`}
             disabled={!quote || busyPlace}
-            onClick={placeTrade}
+            onClick={() => {
+              setSuccessMessage("");
+              setConfirmOpen(true);
+            }}
           >
-            {busyPlace ? "Placing..." : `Place ${side}`}
+            Review {tradeSideLabel(side)}
           </button>
         </article>
 
         <article className="quote-card">
-          <h3>Quote Breakdown</h3>
+          <h3>Trade Preview</h3>
           {quote ? (
             <>
-              <p className="quote-main">
-                {isCostSide(side) ? "Estimated Cost" : "Estimated Net"}: {formatCurrency(quote.total)}
-              </p>
-              <p className="subtle">Shares: {formatNumber(quote.shares, 0)}</p>
-              <p className="subtle">Average price: {formatCurrency(quote.average_price, 3)}</p>
-              <p className="subtle">
-                Current Price shift: {formatCurrency(quote.spot_price_before)} to {formatCurrency(quote.spot_price_after)}
-              </p>
+              <TradePreview playerName={player.name} side={side} quote={quote} />
               <p className="quote-note">Quotes are point-in-time previews and can move with new trades.</p>
             </>
           ) : (
-            <p className="subtle">Preview to populate quote details and enable trade execution.</p>
+            <p className="subtle">Enter a share amount and preview the trade. You will see the estimated price, total, and price movement before confirming.</p>
           )}
         </article>
-      </section>
+        {quote && (
+          <ConfirmTradeModal
+            open={confirmOpen}
+            playerName={player.name}
+            side={side}
+            quote={quote}
+            busy={busyPlace}
+            successMessage={successMessage}
+            onCancel={() => {
+              setConfirmOpen(false);
+              if (successMessage) setQuote(null);
+              setSuccessMessage("");
+            }}
+            onConfirm={() => void placeTrade()}
+          />
+        )}
+      </section>}
     </main>
   );
 }

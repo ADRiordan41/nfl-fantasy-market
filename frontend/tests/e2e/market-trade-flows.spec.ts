@@ -11,14 +11,6 @@ function rowForPlayer(page: Page, playerName: string) {
   return page.locator("tbody tr", { hasText: playerName }).first();
 }
 
-function sharesHeldCell(row: ReturnType<typeof rowForPlayer>) {
-  return row.locator("td.market-cell-numeric").nth(5);
-}
-
-function sharesShortCell(row: ReturnType<typeof rowForPlayer>) {
-  return row.locator("td.market-cell-numeric").nth(6);
-}
-
 test.describe("Market trade flows", () => {
   test("buy flow: preview then execute updates holdings and cash", async ({ page }) => {
     const { playerName, tradeCalls } = await setupMarketTradeMockApi(page, { initialSharesOwned: 0 });
@@ -29,10 +21,11 @@ test.describe("Market trade flows", () => {
     await row.getByRole("button", { name: "Preview" }).click();
     await expect(row.locator(".market-quote-main")).toContainText("Cost: $1,500.00");
 
-    await row.getByRole("button", { name: "Execute" }).click();
+    await row.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Confirm Buy" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
     await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$98,500.00");
-    await expect(sharesHeldCell(row)).toHaveText("5");
-    await expect(sharesShortCell(row)).toHaveText("0");
+    await expect(page.locator(".hero-metrics .kpi-card").nth(1)).toContainText("$1,500.00");
     await expect(row.getByRole("button", { name: "Preview" })).toBeVisible();
 
     expect(tradeCalls).toEqual([
@@ -51,10 +44,11 @@ test.describe("Market trade flows", () => {
     await row.getByRole("button", { name: "Preview" }).click();
     await expect(row.locator(".market-quote-main")).toContainText("Net: $1,200.00");
 
-    await row.getByRole("button", { name: "Execute" }).click();
+    await row.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Confirm Sell" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
     await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$98,500.00");
-    await expect(sharesHeldCell(row)).toHaveText("5");
-    await expect(sharesShortCell(row)).toHaveText("0");
+    await expect(page.locator(".hero-metrics .kpi-card").nth(1)).toContainText("$1,500.00");
     await expect(row.getByRole("button", { name: "Preview" })).toBeVisible();
 
     expect(tradeCalls).toEqual([
@@ -73,10 +67,11 @@ test.describe("Market trade flows", () => {
     await row.getByRole("button", { name: "Preview" }).click();
     await expect(row.locator(".market-quote-main")).toContainText("Cost: $900.00");
 
-    await row.getByRole("button", { name: "Execute" }).click();
+    await row.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Confirm Short" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
     await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$99,100.00");
-    await expect(sharesHeldCell(row)).toHaveText("0");
-    await expect(sharesShortCell(row)).toHaveText("3");
+    await expect(page.locator(".hero-metrics .kpi-card").nth(1)).toContainText("$900.00");
     await expect(row.getByRole("button", { name: "Preview" })).toBeVisible();
 
     expect(tradeCalls).toEqual([
@@ -95,10 +90,11 @@ test.describe("Market trade flows", () => {
     await row.getByRole("button", { name: "Preview" }).click();
     await expect(row.locator(".market-quote-main")).toContainText("Net: $600.00");
 
-    await row.getByRole("button", { name: "Execute" }).click();
+    await row.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Confirm Cover" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
     await expect(page.locator(".hero-metrics .kpi-card").nth(0)).toContainText("$98,500.00");
-    await expect(sharesHeldCell(row)).toHaveText("0");
-    await expect(sharesShortCell(row)).toHaveText("5");
+    await expect(page.locator(".hero-metrics .kpi-card").nth(1)).toContainText("$1,500.00");
     await expect(row.getByRole("button", { name: "Preview" })).toBeVisible();
 
     expect(tradeCalls).toEqual([

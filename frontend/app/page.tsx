@@ -28,73 +28,69 @@ type HomeTutorialStep = {
 
 const HOME_TUTORIAL_FULL_STEPS: HomeTutorialStep[] = [
   {
-    title: "1. Understand The Price",
-    body: "Each player starts near a preseason projection-based IPO price. Their live price moves as users trade and as fantasy performance updates.",
+    title: "1. Pick A Player",
+    body: "Start with players you know. Each one has a live price based on projections, performance, and trading activity.",
   },
   {
-    title: "2. Trade Long Or Short",
-    body: "Buy shares if you think a player is underpriced. Short shares if you think they are overpriced. Entry price, position size, and timing all matter.",
+    title: "2. Buy Or Sell Shares",
+    body: "Buy when you think a player's value will rise. Sell to lock in gains or free up cash for another idea.",
   },
   {
-    title: "3. Track Live Context",
-    body: "Use the Live page and player cards to follow momentum, matchup context, and performance swings that can shift prices quickly during games.",
+    title: "3. Track Your Portfolio",
+    body: "Your portfolio shows cash, holdings, and total account value so you can see how your picks are doing.",
   },
   {
-    title: "4. Manage Risk",
-    body: "Watch portfolio equity, unrealized P/L, and concentration by holding. Diversify if one position is driving too much of your account.",
+    title: "4. Climb The Leaderboard",
+    body: "Build value over time, invest in more players, and compete for the top spot.",
   },
   {
-    title: "5. Season Settlement",
-    body: "At season close, positions settle to final fantasy production. Strong entries and good risk control usually win over one-off spikes.",
+    title: "5. Shorting Comes Later",
+    body: "Short trades let you benefit when a price falls. They are available where supported, but buying and selling are the easiest way to start.",
   },
 ];
 
 const HOME_TOUR_SHORT_STEPS: HomeTutorialStep[] = [
   {
-    title: "1. Check The Board",
-    body: "Open Market and scan prices, movers, and player cards to find your setup quickly.",
+    title: "1. Browse Players",
+    body: "Open the Market and scan prices, movers, and player cards.",
   },
   {
-    title: "2. Place A Trade",
-    body: "Go long if you expect upside, or short if you expect downside. Keep sizing tight and avoid overconcentration.",
+    title: "2. Preview A Trade",
+    body: "Enter shares, review the estimate, then confirm when it looks right.",
   },
   {
-    title: "3. Track And Adjust",
-    body: "Use Live Game Center and Portfolio to monitor win probability context, position P/L, and rebalance when needed.",
+    title: "3. Grow Your Account",
+    body: "Use Portfolio and Leaderboard to track progress.",
   },
 ];
 
 const HOME_HOW_TO_DEFAULT_STEPS: HomeHowToStep[] = [
   {
-    title: "What Is Matchup Market?",
-    body: "Matchup Market is a sports market game where you can buy and short shares of players based on how you think their fantasy value will change. If you believe a player's value is going to rise, you can buy shares. If you think a player's value may fall, you can short shares and benefit if the price drops. It is a simple and competitive game where you can use your sports knowledge.",
+    title: "What It Is",
+    body: "A free fantasy-sports market where player shares move as fans trade and fantasy value changes.",
   },
   {
-    title: "Browse Players in the Market",
-    body: "Start by exploring the players available on the market. Each player has a price that can move up or down over time.",
+    title: "Browse And Buy Shares",
+    body: "Find players you know, compare prices, and buy shares when you think a player's value will rise.",
   },
   {
-    title: "Buy or Short Players",
-    body: "Use stats, recent performance, news, and your own instincts to decide which players you think are undervalued or overvalued.",
-  },
-  {
-    title: "Manage Your Portfolio",
-    body: "You can sell your positions to lock in gains, reduce risk, or free up space for new opportunities. Your portfolio shows how your decisions are performing over time.",
+    title: "Sell When Ready",
+    body: "Sell shares to lock in gains, reduce risk, or free up cash.",
   },
   {
     title: "Grow Your Portfolio",
-    body: "The goal of Matchup Market is to grow your portfolio over time. As your portfolio value increases, you can invest in more players, build a stronger strategy, and take advantage of more opportunities across the market.\n\nThe more value you build, the higher you can climb on the leaderboard and the closer you get to the top.",
+    body: "Build the strongest portfolio, invest in more players, and climb the leaderboard.",
   },
   {
-    title: "Why People Use Matchup Market",
-    body: "Matchup Market gives fans a fun way to do more than just watch the games. You can make predictions, act on your opinions, and compete against other users in a fun and competitive game. Whether you are new to fantasy sports or already know the players well, Matchup Market makes it easy to get started.",
+    title: "Use Your Sports Feel",
+    body: "Stats help, but your read on players matters too. Start small, learn the prices, and adjust as the season moves.",
   },
 ];
 
 const HOME_HOW_TO_ACTIONS_BY_INDEX: Record<number, { href: string; label: string }> = {
-  1: { href: "/market", label: "Open Market" },
-  2: { href: "/market", label: "Trade In Market" },
-  3: { href: "/portfolio", label: "Open Portfolio" },
+  1: { href: "/market", label: "Browse Players" },
+  2: { href: "/portfolio", label: "Open Portfolio" },
+  3: { href: "/leaderboard", label: "View Leaderboard" },
 };
 
 function homeTutorialStorageKey(userId: number): string {
@@ -355,12 +351,12 @@ export default function HomePage() {
     [posts],
   );
   const tutorialSteps = homeTutorialMode === "tour" ? HOME_TOUR_SHORT_STEPS : HOME_TUTORIAL_FULL_STEPS;
-  const tutorialTitle = homeTutorialMode === "tour" ? "Take A Tour" : "How MatchupMarket Works";
+  const tutorialTitle = homeTutorialMode === "tour" ? "Take A Tour" : "How It Works";
   const tutorialEyebrow = homeTutorialMode === "tour" ? "Tour" : "Quick Start";
   const tutorialSubtitle =
     homeTutorialMode === "tour"
-      ? "A short refresher to re-run the core workflow."
-      : "A full onboarding walkthrough of how pricing, trading, and settlement work.";
+      ? "A short refresher on the core workflow."
+      : "A beginner-friendly walkthrough of prices, trades, and portfolio growth.";
 
   return (
     <main className="page-shell">
@@ -369,8 +365,8 @@ export default function HomePage() {
           <p className="eyebrow">Welcome</p>
           <h1 className="home-headline">Trade Pro Athletes Like Stocks in a Live Market</h1>
           <p className="subtle">
-            MatchupMarket is a free-to-play fantasy sports stock market. Start from preseason projections,
-            trade long or short during the season, and settle positions against final fantasy production.
+            Buy shares when you think a player&apos;s value will rise. Sell to lock in gains or free up cash.
+            Grow your account and climb the leaderboard.
           </p>
         </div>
         {authResolved && !isLoggedIn && (
@@ -432,7 +428,7 @@ export default function HomePage() {
 
       <section className="table-panel home-explainer">
         <div className="home-explainer-head">
-          <h3 className="home-explainer-title">How to Use Matchup Market</h3>
+          <h3 className="home-explainer-title">How It Works</h3>
           <div className="home-explainer-actions">
             <button type="button" className="home-tutorial-open-btn" onClick={() => openHomeTutorial("tour")}>
               Take A Tour

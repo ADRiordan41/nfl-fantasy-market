@@ -1390,17 +1390,9 @@ DEFAULT_HOME_HOW_TO_USE_STEPS: tuple[dict[str, str], ...] = (
         ),
     },
     {
-        "title": "Browse Players in the Market",
+        "title": "Browse And Buy Shares",
         "body": (
-            "Start by exploring the players available on the market. Each player has a price that can move up or down "
-            "over time."
-        ),
-    },
-    {
-        "title": "Buy or Short Players",
-        "body": (
-            "Use stats, recent performance, news, and your own instincts to decide which players you think are "
-            "undervalued or overvalued."
+            "Find players you know, compare prices, and buy shares when you think a player's value will rise."
         ),
     },
     {

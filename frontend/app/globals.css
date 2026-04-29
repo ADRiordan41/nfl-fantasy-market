@@ -4026,6 +4026,82 @@ button.segment.danger-segment.danger-active {
   color: var(--muted);
 }
 
+.trade-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.trade-card-head h3 {
+  margin: 0 0 4px;
+}
+
+.trade-preview-card {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid rgba(105, 137, 185, 0.36);
+  border-radius: 12px;
+  background: rgba(12, 23, 40, 0.38);
+}
+
+.trade-preview-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.trade-preview-line strong {
+  color: var(--ink);
+  text-align: right;
+}
+
+.trade-preview-total {
+  border-top: 1px solid rgba(105, 137, 185, 0.28);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+.trade-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: rgba(5, 16, 34, 0.62);
+}
+
+.trade-modal {
+  width: min(480px, 96vw);
+  max-height: min(90vh, 720px);
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(108, 139, 189, 0.48);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(17, 28, 47, 0.99) 0%, rgba(10, 18, 31, 0.98) 100%);
+  box-shadow: 0 24px 52px rgba(0, 0, 0, 0.38);
+}
+
+.trade-modal h3 {
+  margin: 0;
+}
+
+.trade-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .action-row {
   margin-top: 10px;
   display: flex;
@@ -4041,7 +4117,7 @@ button.segment.danger-segment.danger-active {
 }
 
 .primary-btn.short-btn {
-  background: linear-gradient(135deg, var(--short) 0%, var(--short-dark) 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
 }
 
 .primary-btn.full {
@@ -4283,15 +4359,15 @@ button.segment.danger-segment.danger-active {
 .portfolio-trade-sell-btn {
   color: #fff;
   border-color: transparent;
-  background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
-  box-shadow: 0 8px 16px rgba(212, 108, 16, 0.22);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+  box-shadow: 0 8px 16px rgba(255, 157, 74, 0.22);
 }
 
 .portfolio-trade-cover-btn {
   color: #fff;
   border-color: transparent;
-  background: linear-gradient(135deg, #1f5fa4 0%, #2f7ccf 100%);
-  box-shadow: 0 8px 16px rgba(31, 95, 164, 0.22);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  box-shadow: 0 8px 16px rgba(91, 161, 255, 0.22);
 }
 
 .feedback-fab {
@@ -4719,8 +4795,8 @@ button.segment.danger-segment.danger-active {
 .market-mobile-table th:last-child {
   text-align: center;
   font-variant-numeric: normal;
-  padding-left: 3px;
-  padding-right: 3px;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .market-mobile-table-row:nth-child(odd) td {
@@ -4870,30 +4946,31 @@ button.segment.danger-segment.danger-active {
 .market-quick-buy-btn {
   color: #fff;
   border-color: transparent;
-  background: linear-gradient(135deg, #1f5fa4 0%, #2f7ccf 100%);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
 }
 
 .market-quick-short-btn {
   color: #fff;
   border-color: transparent;
-  background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
 }
 
 .market-mobile-max-btn.market-quick-buy-btn {
-  background: linear-gradient(135deg, #1f5fa4 0%, #2f7ccf 100%);
-  box-shadow: 0 8px 16px rgba(31, 95, 164, 0.22);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  box-shadow: 0 8px 16px rgba(91, 161, 255, 0.22);
 }
 
 .market-mobile-max-btn.market-quick-short-btn {
-  background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
-  box-shadow: 0 8px 16px rgba(212, 108, 16, 0.22);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+  box-shadow: 0 8px 16px rgba(255, 157, 74, 0.22);
 }
 
 .market-mobile-quick-action-stack {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  justify-content: center;
   gap: 4px;
+  width: 100%;
 }
 
 .market-mobile-card {
@@ -5395,6 +5472,37 @@ button.segment.danger-segment.danger-active {
   display: inline-block;
 }
 
+.market-logo-sort-btn {
+  min-width: 42px;
+  padding-inline: 4px;
+}
+
+.market-logo-sort-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 34px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.market-logo-sort-sigma {
+  color: var(--accent);
+  display: inline-block;
+  font-size: 1.02em;
+  line-height: 1;
+}
+
+.market-logo-sort-delta {
+  color: var(--brand);
+  display: inline-block;
+  font-size: 0.98em;
+  line-height: 1;
+  transform: translateY(-0.04em);
+}
+
 .market-sort-btn:hover {
   transform: none;
   border-color: transparent;
@@ -5691,13 +5799,13 @@ button.segment.danger-segment.danger-active {
 }
 
 .market-row-actions .market-quick-buy-btn {
-  background: linear-gradient(135deg, #1f5fa4 0%, #2f7ccf 100%);
-  box-shadow: 0 8px 16px rgba(31, 95, 164, 0.22);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  box-shadow: 0 8px 16px rgba(91, 161, 255, 0.22);
 }
 
 .market-row-actions .market-quick-short-btn {
-  background: linear-gradient(135deg, #f28f32 0%, #d46c10 100%);
-  box-shadow: 0 8px 16px rgba(212, 108, 16, 0.22);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+  box-shadow: 0 8px 16px rgba(255, 157, 74, 0.22);
 }
 
 .market-spacer-row td {
@@ -6185,19 +6293,19 @@ td {
   }
 
   .market-mobile-list .market-mobile-col-player {
-    width: 30%;
+    width: 34%;
   }
 
   .market-mobile-list .market-mobile-col-price {
-    width: 14%;
+    width: 15%;
   }
 
   .market-mobile-list .market-mobile-col-delta {
-    width: 10%;
+    width: 11%;
   }
 
   .market-mobile-list .market-mobile-col-earnings {
-    width: 13%;
+    width: 16%;
   }
 
   .market-mobile-list .market-mobile-col-max {
@@ -6205,7 +6313,7 @@ td {
   }
 
   .market-mobile-list .market-mobile-col-actions {
-    width: 33%;
+    width: 24%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
@@ -6232,12 +6340,12 @@ td {
   }
 
   .market-mobile-list.market-mobile-list-expanded .market-mobile-table {
-    min-width: 560px;
+    min-width: 520px;
   }
 
   .market-mobile-list .market-mobile-table th,
   .market-mobile-list .market-mobile-table td {
-    padding: 6px 5px;
+    padding: 6px 4px;
   }
 
   .market-mobile-list .market-mobile-table th {
@@ -6581,11 +6689,11 @@ td {
   }
 
   .market-mobile-list .market-mobile-col-player {
-    width: 31%;
+    width: 34%;
   }
 
   .market-mobile-list .market-mobile-col-price {
-    width: 14%;
+    width: 15%;
   }
 
   .market-mobile-list.market-mobile-list-compact .market-mobile-col-player {
@@ -6601,11 +6709,15 @@ td {
   }
 
   .market-mobile-list .market-mobile-col-delta {
-    width: 9%;
+    width: 11%;
   }
 
   .market-mobile-list .market-mobile-col-earnings {
-    width: 13%;
+    width: 16%;
+  }
+
+  .market-mobile-list .market-mobile-col-actions {
+    width: 24%;
   }
 
   .market-mobile-list .market-mobile-col-max {
@@ -6634,10 +6746,12 @@ td {
   }
 
   .market-mobile-max-btn {
-    max-width: 56px;
+    width: 100%;
+    max-width: none;
     min-height: 30px;
     height: 30px;
     font-size: 11px;
+    padding: 0 3px;
   }
 
   .market-mobile-actions,
@@ -8360,4 +8474,52 @@ thead th {
 .live-top-player-link:hover .live-top-name-clickable,
 .live-top-player-link:focus-visible .live-top-name-clickable {
   color: #f1f6ff !important;
+}
+
+/* Final trade color authority: trade actions use conventional green/red, separate from brand blue/orange. */
+.trade-action-positive,
+.market-quick-buy-btn,
+.market-mobile-max-btn.market-quick-buy-btn,
+.market-row-actions .market-quick-buy-btn,
+.portfolio-trade-cover-btn {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #008080 0%, #006b6b 100%) !important;
+  box-shadow: 0 8px 16px rgba(0, 128, 128, 0.24) !important;
+}
+
+.trade-action-negative,
+.market-quick-short-btn,
+.market-mobile-max-btn.market-quick-short-btn,
+.market-row-actions .market-quick-short-btn,
+.portfolio-trade-sell-btn,
+.primary-btn.short-btn {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: #cc3433 !important;
+  box-shadow: 0 8px 16px rgba(204, 52, 51, 0.24) !important;
+}
+
+.trade-segment-positive {
+  border-color: rgba(0, 128, 128, 0.76) !important;
+  color: #c9ffff !important;
+}
+
+.trade-segment-positive.active {
+  border-color: rgba(0, 128, 128, 0.98) !important;
+  background: rgba(0, 128, 128, 0.28) !important;
+  color: #e1ffff !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 128, 128, 0.38) !important;
+}
+
+.trade-segment-negative {
+  border-color: rgba(204, 52, 51, 0.52) !important;
+  color: #ffb0b0 !important;
+}
+
+.trade-segment-negative.active {
+  border-color: rgba(204, 52, 51, 0.94) !important;
+  background: rgba(204, 52, 51, 0.18) !important;
+  color: #ffe1e1 !important;
+  box-shadow: inset 0 0 0 1px rgba(204, 52, 51, 0.28) !important;
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import ConfirmTradeModal, { isCostSide, tradeActionClass, tradeSideLabel } from "@/components/trade-confirmation";
 import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency } from "@/lib/format";
 import type { Quote } from "@/lib/types";
 
@@ -58,10 +59,6 @@ type MarketTableRowProps = {
 
 export const DEFAULT_MARKET_ROW_HEIGHT = 44;
 
-function isCostSide(side: MarketTradeSide): boolean {
-  return side === "BUY" || side === "SHORT";
-}
-
 function parseWholeShares(value: string): number | null {
   const trimmed = value.trim();
   if (!/^[0-9]+$/.test(trimmed)) return null;
@@ -102,6 +99,8 @@ function MarketTableRow({
   const [quote, setQuote] = useState<Quote | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isPlacing, setIsPlacing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
     if (!measureRow || !onMeasureRow || !rowRef.current) return;
@@ -147,13 +146,13 @@ function MarketTableRow({
     try {
       await onExecuteTrade(row.player.id, side, quote.shares);
       setQty("");
-      setQuote(null);
+      setSuccessMessage(`${tradeSideLabel(side)} completed for ${row.player.name}.`);
     } catch {
       // Parent callback already surfaces the request error.
     } finally {
       setIsPlacing(false);
     }
-  }, [isTradingHalted, onExecuteTrade, onSetError, quote, row.player.id, side]);
+  }, [isTradingHalted, onExecuteTrade, onSetError, quote, row.player.id, row.player.name, side]);
 
   const handleExecuteMaxTrade = useCallback(
     async (nextSide: MarketTradeSide, maxSize: number) => {
@@ -335,23 +334,38 @@ function MarketTableRow({
       </td>
       <td className="market-quote-cell">
         {quote ? (
-          <div className="market-quote-with-action">
-            <div className="market-quote-text">
-              <p className="market-quote-main">{isCostSide(side) ? "Cost" : "Net"}: {formatCurrency(quote.total)}</p>
-              <p className="market-quote-sub">Avg {formatCurrency(quote.average_price, 3)}</p>
+          <>
+            <div className="market-quote-with-action">
+              <div className="market-quote-text">
+                <p className="market-quote-main">{isCostSide(side) ? "Cost" : "Net"}: {formatCurrency(quote.total)}</p>
+                <p className="market-quote-sub">Avg {formatCurrency(quote.average_price, 3)}</p>
+              </div>
+              <button
+                className={`primary-btn market-quote-action-btn ${tradeActionClass(side)}`}
+                disabled={isTradingHalted || isPlacing}
+                onClick={() => {
+                  setSuccessMessage("");
+                  setConfirmOpen(true);
+                }}
+              >
+                Review
+              </button>
             </div>
-            <button
-              className={
-                side === "SHORT" || side === "SELL"
-                  ? "primary-btn short-btn market-quote-action-btn"
-                  : "primary-btn market-quote-action-btn"
-              }
-              disabled={isTradingHalted || isPlacing}
-              onClick={() => void handlePlaceTrade()}
-            >
-              {isPlacing ? "Placing..." : "Execute"}
-            </button>
-          </div>
+            <ConfirmTradeModal
+              open={confirmOpen}
+              playerName={row.player.name}
+              side={side}
+              quote={quote}
+              busy={isPlacing}
+              successMessage={successMessage}
+              onCancel={() => {
+                setConfirmOpen(false);
+                if (successMessage) setQuote(null);
+                setSuccessMessage("");
+              }}
+              onConfirm={() => void handlePlaceTrade()}
+            />
+          </>
         ) : (
           <button
             className="market-quote-action-btn market-quote-preview-btn"

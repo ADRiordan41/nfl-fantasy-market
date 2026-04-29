@@ -9,7 +9,7 @@ import MarketTableRow, {
   type MarketTradeSide,
 } from "@/components/market-table-row";
 import EmptyStatePanel from "@/components/empty-state-panel";
-import { apiGet, apiPost, isUnauthorizedError } from "@/lib/api";
+import { apiGet, apiPost, friendlyApiError, isUnauthorizedError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { notifySuccess } from "@/lib/toast";
 import { teamPrimaryColor } from "@/lib/teamColors";
@@ -67,10 +67,6 @@ type MobileQuickActionState = {
   side: "BUY" | "SHORT";
 };
 
-function toMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 function getSignedPercent(base: number, spot: number): number {
   if (!base) return 0;
   return ((spot - base) / base) * 100;
@@ -96,16 +92,6 @@ function isSportFilter(value: string): value is SportFilter {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
-}
-
-function formatCompactPlayerName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "";
-  const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return parts[0];
-  const firstInitial = parts[0][0]?.toUpperCase() ?? "";
-  const lastName = parts[parts.length - 1];
-  return `${firstInitial}. ${lastName}`;
 }
 
 export default function MarketPage() {
@@ -140,7 +126,6 @@ export default function MarketPage() {
   const [error, setError] = useState("");
   const [mobileQuickAction, setMobileQuickAction] = useState<MobileQuickActionState | null>(null);
   const [isCompactMobile, setIsCompactMobile] = useState(false);
-  const [mobileTableExpanded, setMobileTableExpanded] = useState(false);
 
   const handleRequestError = useCallback(
     (err: unknown) => {
@@ -148,7 +133,7 @@ export default function MarketPage() {
         router.replace("/auth");
         return;
       }
-      setError(toMessage(err));
+      setError(friendlyApiError(err));
     },
     [router],
   );
@@ -296,7 +281,6 @@ export default function MarketPage() {
     const media = window.matchMedia(query);
     const updateCompactState = (matches: boolean) => {
       setIsCompactMobile(matches);
-      if (!matches) setMobileTableExpanded(false);
     };
     updateCompactState(media.matches);
     const listener = (event: MediaQueryListEvent) => updateCompactState(event.matches);
@@ -588,6 +572,25 @@ export default function MarketPage() {
     [sortColumn, toggleSort],
   );
 
+  const renderTotalChangeSortButton = useCallback(() => {
+    const active = sortColumn === "change_pct";
+    return (
+      <button
+        type="button"
+        className={`market-sort-btn market-logo-sort-btn${active ? " active" : ""}`}
+        onClick={() => toggleSort("change_pct")}
+        aria-pressed={active}
+        aria-label={`Sort by total change${active ? `, ${sortDirection}` : ""}`}
+        title="Total change"
+      >
+        <span className="market-logo-sort-mark" aria-hidden="true">
+          <span className="market-logo-sort-sigma">&Sigma;</span>
+          <span className="market-logo-sort-delta">&Delta;</span>
+        </span>
+      </button>
+    );
+  }, [sortColumn, sortDirection, toggleSort]);
+
   const cashBalance = portfolio?.cash_balance ?? 0;
   const holdingsValue = useMemo(
     () => (portfolio?.holdings ?? []).reduce((sum, holding) => sum + Number(holding.market_value || 0), 0),
@@ -698,38 +701,30 @@ export default function MarketPage() {
         />
       ) : (
         <>
+          {isCompactMobile && (
           <section
-            className={`table-panel market-table-panel market-mobile-list${
-              isCompactMobile ? " market-mobile-list-compact" : ""
-            }${
-              mobileTableExpanded ? " market-mobile-list-expanded" : ""
-            }`}
+            className="table-panel market-table-panel market-mobile-list market-mobile-list-expanded"
           >
-            {isCompactMobile && (
-              <div className="market-mobile-density-toggle">
-                <button
-                  type="button"
-                  className="chip"
-                  onClick={() => setMobileTableExpanded((current) => !current)}
-                  aria-pressed={mobileTableExpanded}
-                >
-                  {mobileTableExpanded ? "Show compact view" : "Expand table"}
-                </button>
-              </div>
-            )}
             <div className="table-wrap">
               <table className="market-mobile-table" aria-label="Mobile market table">
                 <colgroup>
                   <col className="market-mobile-col-player" />
                   <col className="market-mobile-col-price" />
-                  {(!isCompactMobile || mobileTableExpanded) && (
-                    <>
-                      <col className="market-mobile-col-delta" />
-                      <col className="market-mobile-col-earnings" />
-                    </>
-                  )}
+                  <col className="market-mobile-col-delta" />
+                  <col className="market-mobile-col-earnings" />
                   <col className="market-mobile-col-actions" />
                 </colgroup>
+                <thead>
+                  <tr className="market-header-detail-row">
+                    <th className="market-sticky-player-cell market-mobile-player-head">
+                      {renderSortButton("name", "Player")}
+                    </th>
+                    <th>{renderSortButton("spot_price", "Price")}</th>
+                    <th>{renderTotalChangeSortButton()}</th>
+                    <th>{renderSortButton("earnings", "Earnings")}</th>
+                    <th className="market-header-single">Trade</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {visibleRows.map((row) => {
                     const quickActionBusy = Boolean(mobileQuickAction);
@@ -755,9 +750,7 @@ export default function MarketPage() {
                           <div className="market-mobile-player-cell">
                             <div className="market-mobile-player-line">
                               <span className="market-mobile-player-name card-title">
-                                {isCompactMobile && !mobileTableExpanded
-                                  ? formatCompactPlayerName(row.player.name)
-                                  : row.player.name}
+                                {row.player.name}
                               </span>
                               <span className="market-mobile-team-text" style={teamTextStyle}>
                                 {teamCode}
@@ -783,38 +776,34 @@ export default function MarketPage() {
                         >
                           {formatCurrency(row.player.spot_price)}
                         </td>
-                        {(!isCompactMobile || mobileTableExpanded) && (
-                          <>
-                            <td
-                              className={`market-cell-numeric market-mobile-sort-cell ${row.totalChangePct >= 0 ? "up" : "down"}`}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`Sort by delta${sortColumn === "change_pct" ? `, ${sortDirection}` : ""}`}
-                              onClick={() => toggleSort("change_pct")}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                event.preventDefault();
-                                toggleSort("change_pct");
-                              }}
-                            >
-                              {formatSignedPercentCompact(row.totalChangePct)}
-                            </td>
-                            <td
-                              className="market-cell-numeric market-mobile-sort-cell"
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`Sort by earnings${sortColumn === "earnings" ? `, ${sortDirection}` : ""}`}
-                              onClick={() => toggleSort("earnings")}
-                              onKeyDown={(event) => {
-                                if (event.key !== "Enter" && event.key !== " ") return;
-                                event.preventDefault();
-                                toggleSort("earnings");
-                              }}
-                            >
-                              {formatCurrency(row.seasonEarnings)}
-                            </td>
-                          </>
-                        )}
+                        <td
+                          className={`market-cell-numeric market-mobile-sort-cell ${row.totalChangePct >= 0 ? "up" : "down"}`}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Sort by delta${sortColumn === "change_pct" ? `, ${sortDirection}` : ""}`}
+                          onClick={() => toggleSort("change_pct")}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            toggleSort("change_pct");
+                          }}
+                        >
+                          {formatSignedPercentCompact(row.totalChangePct)}
+                        </td>
+                        <td
+                          className="market-cell-numeric market-mobile-sort-cell"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Sort by earnings${sortColumn === "earnings" ? `, ${sortDirection}` : ""}`}
+                          onClick={() => toggleSort("earnings")}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            toggleSort("earnings");
+                          }}
+                        >
+                          {formatCurrency(row.seasonEarnings)}
+                        </td>
                         <td className="market-cell-control market-mobile-actions-cell">
                           <div className="market-mobile-quick-action-stack">
                             <button
@@ -844,6 +833,7 @@ export default function MarketPage() {
               </table>
             </div>
           </section>
+          )}
 
           <section ref={marketTablePanelRef} className="table-panel market-table-panel desktop-market-table">
             <div className="table-wrap">
@@ -865,7 +855,7 @@ export default function MarketPage() {
                     </th>
                     <th>{renderSortButton("spot_price", "Price")}</th>
                     <th>{renderSortButton("earnings", "Earnings")}</th>
-                    <th>{renderSortButton("change_pct", "Σ Δ")}</th>
+                    <th>{renderTotalChangeSortButton()}</th>
                     <th className="market-header-single">Quick Actions</th>
                     <th className="market-header-single">Action</th>
                     <th className="market-header-single">Qty</th>

@@ -84,6 +84,34 @@ export function isUnauthorizedError(err: unknown): err is ApiHttpError {
   return err instanceof ApiHttpError && err.status === 401;
 }
 
+export function friendlyApiError(err: unknown, fallback = "Something went wrong. Please try again."): string {
+  if (!(err instanceof ApiHttpError)) {
+    return err instanceof Error && err.message ? err.message : fallback;
+  }
+
+  let detail = "";
+  try {
+    const parsed = JSON.parse(err.responseText) as { detail?: unknown };
+    if (typeof parsed.detail === "string") detail = parsed.detail;
+    if (Array.isArray(parsed.detail)) detail = parsed.detail.map((item) => String(item?.msg ?? item)).join(" ");
+  } catch {
+    detail = "";
+  }
+
+  const message = detail || err.message;
+  if (err.status === 404) return "We could not find that item. It may no longer be available.";
+  if (err.status === 403) return "You do not have access to do that yet.";
+  if (err.status >= 500) return "The server had trouble completing that request. Please try again.";
+  if (/short this player/i.test(message)) return "You already have a short position in this player. Cover it before buying.";
+  if (/long this player/i.test(message)) return "You already own shares in this player. Sell those shares before opening a short.";
+  if (/insufficient|cash/i.test(message)) return "You do not have enough cash for this trade.";
+  if (/not enough|shares/i.test(message)) return "You do not have enough shares for this trade.";
+  if (/player not found/i.test(message)) return "We could not find that player. Try returning to the market.";
+  if (/validation|field required|value is not/i.test(message)) return "Check the trade details and try again.";
+
+  return detail || fallback;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
   const res = await fetch(`${API_BASE}${path}`, {
