@@ -1,100 +1,124 @@
 "use client";
 
 import Link from "next/link";
+import type { SVGProps } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet, apiPost, getAuthToken } from "@/lib/api";
+import { apiGet, getAuthToken } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
 import type {
-  AdminAuditTrade,
   ForumPostSummary,
-  HomeHowToContent,
-  HomeHowToStep,
   LeaderboardResponse,
   MarketMovers,
   Player,
-  UserAccount,
 } from "@/lib/types";
 
-const HOME_TUTORIAL_VERSION = "v1";
-const HOME_TUTORIAL_STORAGE_PREFIX = "fsm-home-tutorial-dismissed";
-
-type HomeTutorialMode = "full" | "tour";
-
-type HomeTutorialStep = {
+type HomeIntroStep = {
+  eyebrow: string;
+  icon: "market" | "position" | "preview" | "compete" | "portfolio" | "forum";
   title: string;
   body: string;
+  tone?: "up" | "down" | "brand";
 };
 
-const HOME_TUTORIAL_FULL_STEPS: HomeTutorialStep[] = [
+const HOME_INTRO_STEPS: HomeIntroStep[] = [
   {
-    title: "1. Pick A Player",
-    body: "Start with players you know. Each one has a live price based on projections, performance, and trading activity.",
+    eyebrow: "01",
+    icon: "market",
+    title: "Read The Market",
+    body: "Browse player prices, recent movement, teams, and positions. Look for athletes you think the market is missing before everyone else catches up.",
+    tone: "brand",
   },
   {
-    title: "2. Buy Or Sell Shares",
-    body: "Buy when you think a player's value will rise. Sell to lock in gains or free up cash for another idea.",
+    eyebrow: "02",
+    icon: "position",
+    title: "Take A Position",
+    body: "Buy when you think fantasy value is headed up. Short when you think the price is too high and there is room to fall.",
   },
   {
-    title: "3. Track Your Portfolio",
-    body: "Your portfolio shows cash, holdings, and total account value so you can see how your picks are doing.",
+    eyebrow: "03",
+    icon: "preview",
+    title: "Preview The Move",
+    body: "Enter shares and preview the quote before you commit. You can see the estimated price, total cost or credit, and trade impact first.",
+    tone: "brand",
   },
   {
-    title: "4. Climb The Leaderboard",
-    body: "Build value over time, invest in more players, and compete for the top spot.",
+    eyebrow: "04",
+    icon: "compete",
+    title: "Confirm And Compete",
+    body: "Place the trade, then watch your account move as prices change. Sell long shares or cover short shares when it is time to close.",
   },
   {
-    title: "5. Shorting Comes Later",
-    body: "Short trades let you benefit when a price falls. They are available where supported, but buying and selling are the easiest way to start.",
-  },
-];
-
-const HOME_TOUR_SHORT_STEPS: HomeTutorialStep[] = [
-  {
-    title: "1. Browse Players",
-    body: "Open the Market and scan prices, movers, and player cards.",
+    eyebrow: "05",
+    icon: "portfolio",
+    title: "Track Your Portfolio",
+    body: "Use Portfolio and Profile to follow cash, holdings, open positions, gains, and public activity as your strategy develops.",
+    tone: "brand",
   },
   {
-    title: "2. Preview A Trade",
-    body: "Enter shares, review the estimate, then confirm when it looks right.",
-  },
-  {
-    title: "3. Grow Your Account",
-    body: "Use Portfolio and Leaderboard to track progress.",
-  },
-];
-
-const HOME_HOW_TO_DEFAULT_STEPS: HomeHowToStep[] = [
-  {
-    title: "What It Is",
-    body: "A free fantasy-sports market where player shares move as fans trade and fantasy value changes.",
-  },
-  {
-    title: "Browse And Buy Shares",
-    body: "Find players you know, compare prices, and buy shares when you think a player's value will rise.",
-  },
-  {
-    title: "Sell When Ready",
-    body: "Sell shares to lock in gains, reduce risk, or free up cash.",
-  },
-  {
-    title: "Grow Your Portfolio",
-    body: "Build the strongest portfolio, invest in more players, and climb the leaderboard.",
-  },
-  {
-    title: "Use Your Sports Feel",
-    body: "Stats help, but your read on players matters too. Start small, learn the prices, and adjust as the season moves.",
+    eyebrow: "06",
+    icon: "forum",
+    title: "Join The Forum",
+    body: "Post takes, compare ideas, and talk through market moves with other users before the next price swing.",
+    tone: "brand",
   },
 ];
 
-const HOME_HOW_TO_ACTIONS_BY_INDEX: Record<number, { href: string; label: string }> = {
-  1: { href: "/market", label: "Browse Players" },
-  2: { href: "/portfolio", label: "Open Portfolio" },
-  3: { href: "/leaderboard", label: "View Leaderboard" },
-};
-
-function homeTutorialStorageKey(userId: number): string {
-  return `${HOME_TUTORIAL_STORAGE_PREFIX}:${HOME_TUTORIAL_VERSION}:${userId}`;
+function HomeIntroIcon({ kind, ...props }: SVGProps<SVGSVGElement> & { kind: HomeIntroStep["icon"] }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      {kind === "market" && (
+        <>
+          <path d="M4 20V10" />
+          <path d="M9 20V6" />
+          <path d="M14 20v-4" />
+          <path d="M19 20V8" />
+          <path d="M3.5 14.5L8.5 11l4 2 7-6" />
+        </>
+      )}
+      {kind === "position" && (
+        <>
+          <path d="M7 18V6" />
+          <path d="m7 6-3 3" />
+          <path d="m7 6 3 3" />
+          <path d="M17 6v12" />
+          <path d="m17 18-3-3" />
+          <path d="m17 18 3-3" />
+        </>
+      )}
+      {kind === "preview" && (
+        <>
+          <rect x="4" y="5" width="16" height="14" rx="2.4" />
+          <path d="M8 10h8" />
+          <path d="M8 14h4" />
+          <path d="m14.5 15.2 1.1 1.1 2.4-2.8" />
+        </>
+      )}
+      {kind === "compete" && (
+        <>
+          <path d="M8 4h8v4.8A4 4 0 0 1 12 13a4 4 0 0 1-4-4.2V4Z" />
+          <path d="M8 6H4.5v2.2A3.8 3.8 0 0 0 8.2 12" />
+          <path d="M16 6h3.5v2.2a3.8 3.8 0 0 1-3.7 3.8" />
+          <path d="M12 13v4" />
+          <path d="M8.5 20h7" />
+        </>
+      )}
+      {kind === "portfolio" && (
+        <>
+          <path d="M12 3v9h9" />
+          <path d="M12 3a9 9 0 1 0 9 9" />
+          <path d="M12 12 5.8 18.2" />
+        </>
+      )}
+      {kind === "forum" && (
+        <>
+          <path d="M5 6.5h14a2 2 0 0 1 2 2v6.5a2 2 0 0 1-2 2h-6l-3.6 3V17H5a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2Z" />
+          <path d="M8 10h8" />
+          <path d="M8 13h5.5" />
+        </>
+      )}
+    </svg>
+  );
 }
 
 function toMessage(err: unknown): string {
@@ -121,27 +145,19 @@ export default function HomePage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [weeklyMovers, setWeeklyMovers] = useState<MarketMovers | null>(null);
   const [posts, setPosts] = useState<ForumPostSummary[]>([]);
-  const [homeHowToSteps, setHomeHowToSteps] = useState<HomeHowToStep[]>(HOME_HOW_TO_DEFAULT_STEPS);
-  const [homeHowToEditOpen, setHomeHowToEditOpen] = useState(false);
-  const [homeHowToDraftSteps, setHomeHowToDraftSteps] = useState<HomeHowToStep[]>(HOME_HOW_TO_DEFAULT_STEPS);
-  const [savingHomeHowTo, setSavingHomeHowTo] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [communityLocked, setCommunityLocked] = useState(false);
   const [error, setError] = useState("");
   const [authResolved, setAuthResolved] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
-  const [isNewUser, setIsNewUser] = useState(false);
-  const [homeTutorialOpen, setHomeTutorialOpen] = useState(false);
-  const [homeTutorialMode, setHomeTutorialMode] = useState<HomeTutorialMode>("full");
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       let locked = false;
-      const [nextPlayers, nextPosts, nextLeaderboard, nextWeeklyMovers, nextHomeHowTo] = await Promise.all([
+      const [nextPlayers, nextPosts, nextLeaderboard, nextWeeklyMovers] = await Promise.all([
         apiGet<Player[]>("/players"),
         apiGet<ForumPostSummary[]>("/forum/posts?limit=4").catch((err: unknown) => {
           const message = toMessage(err);
@@ -153,13 +169,11 @@ export default function HomePage() {
         }),
         apiGet<LeaderboardResponse>("/leaderboard?scope=global&sport=ALL&limit=5").catch(() => null),
         apiGet<MarketMovers>("/market/movers?limit=100&window_hours=168").catch(() => null),
-        apiGet<HomeHowToContent>("/home/how-to-use").catch(() => null),
       ]);
       setPlayers(nextPlayers);
       setPosts(nextPosts);
       setLeaderboard(nextLeaderboard);
       setWeeklyMovers(nextWeeklyMovers);
-      setHomeHowToSteps(nextHomeHowTo?.steps?.length ? nextHomeHowTo.steps : HOME_HOW_TO_DEFAULT_STEPS);
       setCommunityLocked(locked);
     } catch (err: unknown) {
       setError(toMessage(err));
@@ -177,20 +191,17 @@ export default function HomePage() {
       const token = getAuthToken();
       if (!token) {
         if (cancelled) return;
-        setCurrentUser(null);
         setIsLoggedIn(false);
         setAuthResolved(true);
         return;
       }
 
       try {
-        const me = await apiGet<UserAccount>("/auth/me");
+        await apiGet("/auth/me");
         if (cancelled) return;
-        setCurrentUser(me);
         setIsLoggedIn(true);
       } catch {
         if (cancelled) return;
-        setCurrentUser(null);
         setIsLoggedIn(false);
       } finally {
         if (!cancelled) setAuthResolved(true);
@@ -202,112 +213,6 @@ export default function HomePage() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!authResolved || !isLoggedIn || !currentUser) {
-      setIsNewUser(false);
-      return;
-    }
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(homeTutorialStorageKey(currentUser.id)) === "1") {
-      setIsNewUser(false);
-      return;
-    }
-
-    let cancelled = false;
-    async function resolveNewUser() {
-      try {
-        const transactions = await apiGet<AdminAuditTrade[]>("/transactions/me?limit=1");
-        if (cancelled) return;
-        const shouldAutoOpenTutorial = transactions.length === 0;
-        setIsNewUser(shouldAutoOpenTutorial);
-        if (shouldAutoOpenTutorial) {
-          setHomeTutorialMode("full");
-          setHomeTutorialOpen(true);
-        }
-      } catch {
-        if (cancelled) return;
-      }
-    }
-
-    void resolveNewUser();
-    return () => {
-      cancelled = true;
-    };
-  }, [authResolved, currentUser, isLoggedIn]);
-
-  useEffect(() => {
-    if (!homeTutorialOpen) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setHomeTutorialOpen(false);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [homeTutorialOpen]);
-
-  const dismissHomeTutorial = useCallback(() => {
-    if (typeof window !== "undefined" && currentUser) {
-      window.localStorage.setItem(homeTutorialStorageKey(currentUser.id), "1");
-    }
-    setHomeTutorialOpen(false);
-    setIsNewUser(false);
-  }, [currentUser]);
-
-  const openHomeTutorial = useCallback((mode: HomeTutorialMode) => {
-    setHomeTutorialMode(mode);
-    setHomeTutorialOpen(true);
-  }, []);
-
-  const openHomeHowToEditor = useCallback(() => {
-    setHomeHowToDraftSteps(homeHowToSteps.length ? homeHowToSteps : HOME_HOW_TO_DEFAULT_STEPS);
-    setHomeHowToEditOpen(true);
-  }, [homeHowToSteps]);
-
-  const closeHomeHowToEditor = useCallback(() => {
-    setHomeHowToEditOpen(false);
-  }, []);
-
-  const updateHomeHowToDraftStep = useCallback((index: number, field: "title" | "body", value: string) => {
-    setHomeHowToDraftSteps((previous) =>
-      previous.map((step, stepIndex) => (stepIndex === index ? { ...step, [field]: value } : step)),
-    );
-  }, []);
-
-  const addHomeHowToDraftStep = useCallback(() => {
-    setHomeHowToDraftSteps((previous) => [...previous, { title: "New Step", body: "Describe this step." }]);
-  }, []);
-
-  const removeHomeHowToDraftStep = useCallback((index: number) => {
-    setHomeHowToDraftSteps((previous) => previous.filter((_, stepIndex) => stepIndex !== index));
-  }, []);
-
-  const saveHomeHowToChanges = useCallback(async () => {
-    const normalizedSteps = homeHowToDraftSteps
-      .map((step) => ({ title: step.title.trim(), body: step.body.trim() }))
-      .filter((step) => step.title && step.body);
-    if (!normalizedSteps.length) {
-      setError("Add at least one step with both a title and body.");
-      return;
-    }
-
-    setSavingHomeHowTo(true);
-    setError("");
-    try {
-      const result = await apiPost<HomeHowToContent>("/admin/home/how-to-use", {
-        steps: normalizedSteps,
-      });
-      const nextSteps = result.steps?.length ? result.steps : HOME_HOW_TO_DEFAULT_STEPS;
-      setHomeHowToSteps(nextSteps);
-      setHomeHowToDraftSteps(nextSteps);
-      setHomeHowToEditOpen(false);
-    } catch (err: unknown) {
-      setError(toMessage(err));
-    } finally {
-      setSavingHomeHowTo(false);
-    }
-  }, [homeHowToDraftSteps]);
 
   const marketLeaders = useMemo(() => {
     const weekGainByPlayerId = new Map<number, number>();
@@ -350,13 +255,6 @@ export default function HomePage() {
     () => posts.reduce((sum, post) => sum + Number(post.comment_count || 0), 0),
     [posts],
   );
-  const tutorialSteps = homeTutorialMode === "tour" ? HOME_TOUR_SHORT_STEPS : HOME_TUTORIAL_FULL_STEPS;
-  const tutorialTitle = homeTutorialMode === "tour" ? "Take A Tour" : "How It Works";
-  const tutorialEyebrow = homeTutorialMode === "tour" ? "Tour" : "Quick Start";
-  const tutorialSubtitle =
-    homeTutorialMode === "tour"
-      ? "A short refresher on the core workflow."
-      : "A beginner-friendly walkthrough of prices, trades, and portfolio growth.";
 
   return (
     <main className="page-shell">
@@ -380,155 +278,72 @@ export default function HomePage() {
         )}
       </section>
 
-      {homeTutorialOpen && (
-        <div className="home-tutorial-backdrop" onClick={() => setHomeTutorialOpen(false)}>
-          <section
-            className="home-tutorial-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="home-tutorial-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="home-tutorial-head">
-              <p className="eyebrow">{tutorialEyebrow}</p>
-              <h3 id="home-tutorial-title">{tutorialTitle}</h3>
-              <p className="subtle home-tutorial-subtitle">{tutorialSubtitle}</p>
-            </div>
-            <div className="home-tutorial-grid">
-              {tutorialSteps.map((step) => (
-                <article className="home-tutorial-step" key={step.title}>
-                  <h4>{step.title}</h4>
-                  <p className="subtle">{step.body}</p>
-                </article>
-              ))}
-            </div>
-            <div className="home-tutorial-actions">
-              <button
-                type="button"
-                className="home-tutorial-switch-btn"
-                onClick={() => setHomeTutorialMode((current) => (current === "tour" ? "full" : "tour"))}
-              >
-                {homeTutorialMode === "tour" ? "Open Full Tutorial" : "Take Short Tour"}
-              </button>
-              <Link href={isLoggedIn ? "/market" : "/auth"} className="ghost-link">
-                {isLoggedIn ? "Open Market" : "Sign In To Start"}
-              </Link>
-              {isLoggedIn && homeTutorialMode === "full" && (
-                <button type="button" onClick={dismissHomeTutorial}>
-                  Don&apos;t Show Again
-                </button>
-              )}
-              <button type="button" onClick={() => setHomeTutorialOpen(false)}>
-                Close
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
-
       {error && <p className="error-box">{error}</p>}
 
-      <section className="table-panel home-explainer">
+      <section className="home-explainer" aria-labelledby="home-explainer-title">
         <div className="home-explainer-head">
-          <h3 className="home-explainer-title">How It Works</h3>
-          <div className="home-explainer-actions">
-            <button type="button" className="home-tutorial-open-btn" onClick={() => openHomeTutorial("tour")}>
-              Take A Tour
-            </button>
-            <button
-              type="button"
-              className="home-tutorial-open-btn home-tutorial-open-btn-secondary"
-              onClick={() => openHomeTutorial("full")}
-            >
-              {isLoggedIn && isNewUser ? "Continue Full Tutorial" : "Open Full Tutorial"}
-            </button>
-            {currentUser?.is_admin && (
-              <button
-                type="button"
-                className="home-tutorial-open-btn home-tutorial-open-btn-secondary"
-                onClick={openHomeHowToEditor}
-              >
-                Edit
-              </button>
-            )}
+          <div>
+            <p className="eyebrow">Quick Start</p>
+            <h2 id="home-explainer-title" className="home-explainer-title">How Matchup Market Works</h2>
+            <p className="subtle home-explainer-subtitle">
+              Turn your sports knowledge into market moves. Evaluate player value, take a position, track your
+              portfolio, and join the conversation.
+            </p>
+          </div>
+          <div className="home-explainer-actions" aria-label="Homepage onboarding links">
+            <Link href="/market" className="primary-btn ghost-link">
+              Explore Market
+            </Link>
+            <Link href={isLoggedIn ? "/portfolio" : "/auth"} className="ghost-link">
+              {isLoggedIn ? "View Portfolio" : "Create Account"}
+            </Link>
+            <Link href="/community" className="ghost-link">
+              Join The Forum
+            </Link>
           </div>
         </div>
-        {homeHowToEditOpen && currentUser?.is_admin && (
-          <div className="table-panel home-how-to-editor">
-            <div className="home-snapshot-head">
-              <h3>Edit How-To Content</h3>
-              <p className="subtle">Admin-only. Changes are saved live.</p>
-            </div>
-            <div className="home-steps">
-              {homeHowToDraftSteps.map((step, index) => (
-                <article className="home-step" key={`draft-step-${index}`}>
-                  <label className="field-label" htmlFor={`home-how-to-title-${index}`}>
-                    Step {index + 1} Title
-                  </label>
-                  <input
-                    className="home-how-to-editor-input"
-                    id={`home-how-to-title-${index}`}
-                    value={step.title}
-                    onChange={(event) => updateHomeHowToDraftStep(index, "title", event.target.value)}
-                    placeholder="Step title"
-                  />
-                  <label className="field-label" htmlFor={`home-how-to-body-${index}`}>
-                    Step {index + 1} Body
-                  </label>
-                  <textarea
-                    id={`home-how-to-body-${index}`}
-                    className="home-how-to-editor-textarea"
-                    value={step.body}
-                    onChange={(event) => updateHomeHowToDraftStep(index, "body", event.target.value)}
-                    placeholder="Step body"
-                  />
-                  <div className="admin-actions">
-                    <button
-                      type="button"
-                      className="danger-btn"
-                      onClick={() => removeHomeHowToDraftStep(index)}
-                      disabled={homeHowToDraftSteps.length <= 1 || savingHomeHowTo}
-                    >
-                      Remove Step
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="admin-actions">
-              <button type="button" onClick={addHomeHowToDraftStep} disabled={savingHomeHowTo}>
-                Add Step
-              </button>
-              <button type="button" className="primary-btn" onClick={() => void saveHomeHowToChanges()} disabled={savingHomeHowTo}>
-                {savingHomeHowTo ? "Saving..." : "Save Changes"}
-              </button>
-              <button type="button" onClick={closeHomeHowToEditor} disabled={savingHomeHowTo}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-        <div className="home-steps">
-          {homeHowToSteps.map((step, index) => {
-            const action = HOME_HOW_TO_ACTIONS_BY_INDEX[index];
-            return (
-              <article className="home-step" key={`${index}-${step.title}`}>
-                <h4>{step.title}</h4>
-                {step.body
-                  .split(/\n{2,}/)
-                  .map((paragraph, paragraphIndex) => (
-                    <p className="subtle home-step-body" key={`${index}-p-${paragraphIndex}`}>
-                      {paragraph}
-                    </p>
-                  ))}
-                {action ? (
-                  <Link href={action.href} className="ghost-link home-step-link">
-                    {action.label}
-                  </Link>
-                ) : null}
+
+        <div className="home-onboarding-layout">
+          <div className="home-steps">
+            {HOME_INTRO_STEPS.map((step) => (
+              <article className={`home-step${step.tone ? ` home-step-${step.tone}` : ""}`} key={step.title}>
+                <span className="home-step-icon-wrap">
+                  <HomeIntroIcon kind={step.icon} className="home-step-icon" />
+                  <span className="home-step-number">{step.eyebrow}</span>
+                </span>
+                <h3>{step.title}</h3>
+                <p className="subtle home-step-body">{step.body}</p>
               </article>
-            );
-          })}
+            ))}
+          </div>
+
+          <aside className="home-trade-primer" aria-label="Supported trade actions">
+            <div>
+              <p className="eyebrow">Trade Actions</p>
+              <h3>Open, close, and manage your read.</h3>
+              <p className="subtle">
+                Every trade starts with a quote preview, so you can check the move before it hits your portfolio.
+              </p>
+            </div>
+            <div className="home-trade-action-grid">
+              <div className="home-trade-action home-trade-action-up">
+                <span>Buy</span>
+                <p>Open a long position when you think value is rising.</p>
+              </div>
+              <div className="home-trade-action home-trade-action-down">
+                <span>Sell</span>
+                <p>Close long shares to lock in cash or reduce exposure.</p>
+              </div>
+              <div className="home-trade-action home-trade-action-down">
+                <span>Short</span>
+                <p>Open a short position when you think value is too high.</p>
+              </div>
+              <div className="home-trade-action home-trade-action-up">
+                <span>Cover</span>
+                <p>Close short shares when your downside read has played out.</p>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
 

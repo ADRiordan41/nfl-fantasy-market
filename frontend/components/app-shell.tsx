@@ -208,11 +208,115 @@ function SettingsIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-type SigmaDeltaIconProps = SVGProps<SVGSVGElement> & {
-  gradientPrefix: string;
-};
+function TrophyIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
+    >
+      <DockIconGradient id={gradientId} />
+      <path d="M8 4h8v4.8A4 4 0 0 1 12 13a4 4 0 0 1-4-4.2V4Z" />
+      <path d="M8 6H4.5v2.2A3.8 3.8 0 0 0 8.2 12" />
+      <path d="M16 6h3.5v2.2a3.8 3.8 0 0 1-3.7 3.8" />
+      <path d="M12 13v4" />
+      <path d="M8.5 20h7" />
+      <path d="M10 17h4" />
+    </svg>
+  );
+}
 
-function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
+function WatchlistIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
+    >
+      <DockIconGradient id={gradientId} />
+      <path d="M12 5.2 14 9.4l4.6.68-3.3 3.2.78 4.52L12 15.6l-4.08 2.2.78-4.52-3.3-3.2L10 9.4Z" />
+      <path d="M4 20h16" />
+    </svg>
+  );
+}
+
+function AuthIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
+    >
+      <DockIconGradient id={gradientId} />
+      <path d="M12 3.8 19 7v5.2c0 4.2-2.7 7.2-7 8-4.3-.8-7-3.8-7-8V7Z" />
+      <path d="M9.2 12.2 11 14l4-4.2" />
+    </svg>
+  );
+}
+
+function DocumentIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
+    >
+      <DockIconGradient id={gradientId} />
+      <path d="M7 3.8h7l3 3v13.4H7Z" />
+      <path d="M14 3.8v3h3" />
+      <path d="M9.5 11h5" />
+      <path d="M9.5 14h5" />
+      <path d="M9.5 17h3" />
+    </svg>
+  );
+}
+
+function SupportIcon(props: SVGProps<SVGSVGElement>) {
+  const gradientId = useId();
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
+    >
+      <DockIconGradient id={gradientId} />
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9.8 9.6a2.4 2.4 0 0 1 4.5 1.2c0 1.7-1.5 2.1-2.3 3" />
+      <path d="M12 17.2h.01" />
+    </svg>
+  );
+}
+
+function SigmaDeltaIcon(props: SVGProps<SVGSVGElement>) {
   const sigmaPath = "M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z";
   const deltaPath = "M62 10L81 37H43Z";
   return (
@@ -236,7 +340,40 @@ function SigmaDeltaIcon({ gradientPrefix, ...props }: SigmaDeltaIconProps) {
 }
 
 function HomeIcon(props: SVGProps<SVGSVGElement>) {
-  return <SigmaDeltaIcon {...props} aria-hidden="true" gradientPrefix="mmMobile" />;
+  return <SigmaDeltaIcon {...props} aria-hidden="true" />;
+}
+
+function routeKeyForPathname(pathname: string): string {
+  if (pathname === "/") return "home";
+  if (pathname.startsWith("/market") || pathname.startsWith("/player")) return "market";
+  if (pathname.startsWith("/portfolio") || pathname.startsWith("/profile")) return "portfolio";
+  if (pathname.startsWith("/community")) return "community";
+  if (pathname.startsWith("/inbox") || pathname.startsWith("/notifications")) return "inbox";
+  if (pathname.startsWith("/live")) return "live";
+  if (pathname.startsWith("/leaderboard")) return "leaderboard";
+  if (pathname.startsWith("/watchlist")) return "watchlist";
+  if (pathname.startsWith("/settings")) return "settings";
+  if (pathname.startsWith("/admin")) return "admin";
+  if (pathname.startsWith("/auth")) return "auth";
+  if (pathname.startsWith("/support")) return "support";
+  return "docs";
+}
+
+function RouteAuraIcon({ routeKey }: { routeKey: string }) {
+  const iconProps = { className: "route-aura-icon" };
+  if (routeKey === "home") return <HomeIcon {...iconProps} />;
+  if (routeKey === "market") return <MarketIcon {...iconProps} />;
+  if (routeKey === "portfolio") return <PortfolioIcon {...iconProps} />;
+  if (routeKey === "community") return <CommunityIcon {...iconProps} />;
+  if (routeKey === "inbox") return <InboxIcon {...iconProps} />;
+  if (routeKey === "live") return <LiveIcon {...iconProps} />;
+  if (routeKey === "leaderboard") return <TrophyIcon {...iconProps} />;
+  if (routeKey === "watchlist") return <WatchlistIcon {...iconProps} />;
+  if (routeKey === "settings") return <SettingsIcon {...iconProps} />;
+  if (routeKey === "admin") return <AdminIcon {...iconProps} />;
+  if (routeKey === "auth") return <AuthIcon {...iconProps} />;
+  if (routeKey === "support") return <SupportIcon {...iconProps} />;
+  return <DocumentIcon {...iconProps} />;
 }
 
 const NAV_ITEMS = [
@@ -299,6 +436,7 @@ function cacheUser(user: UserAccount | null): void {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const routeKey = routeKeyForPathname(pathname);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileHomeMenuRef = useRef<HTMLDivElement | null>(null);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
@@ -652,7 +790,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const tickerLoopEntries = tickerEntries.length > 0 ? [...tickerEntries, ...tickerEntries] : [];
   const currentYear = new Date().getFullYear();
   return (
-    <div className={`app-shell${showNav ? " with-ticker" : ""}`}>
+    <div className={`app-shell${showNav ? " with-ticker" : ""}`} data-route={routeKey}>
       {showNav && (
         <div className="market-ticker" role="status" aria-live="polite">
           <div className="market-ticker-inner">
@@ -694,7 +832,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="header-primary">
           <Link href="/" className="brand-lockup">
             <span className="brand-mark" aria-hidden="true">
-              <SigmaDeltaIcon className="brand-mark-icon" gradientPrefix="mmBrand" />
+              <SigmaDeltaIcon className="brand-mark-icon" />
             </span>
             <span>
               <strong className="brand-title">
@@ -712,6 +850,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   className={`desktop-tab ${isActive(pathname, item.href) ? "active" : ""}`}
                 >
+                  <item.Icon className="desktop-tab-icon" />
                   {item.label}
                 </Link>
               ))}
@@ -787,7 +926,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <div id="main-content" tabIndex={-1} className="app-content">
-        <div className="route-frame" key={`${pathname}-${currentUser?.username ?? "guest"}`}>
+        <div className="route-frame" data-route={routeKey} key={`${pathname}-${currentUser?.username ?? "guest"}`}>
+          <div className="route-aura" aria-hidden="true">
+            <RouteAuraIcon routeKey={routeKey} />
+          </div>
           {children}
         </div>
       </div>
