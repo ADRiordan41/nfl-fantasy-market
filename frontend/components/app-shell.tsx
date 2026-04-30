@@ -850,7 +850,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   className={`desktop-tab ${isActive(pathname, item.href) ? "active" : ""}`}
                 >
-                  <item.Icon className="desktop-tab-icon" />
                   {item.label}
                 </Link>
               ))}

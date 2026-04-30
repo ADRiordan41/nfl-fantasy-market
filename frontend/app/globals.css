@@ -9202,25 +9202,6 @@ body {
   stroke-width: 1.4;
 }
 
-.desktop-tab {
-  gap: 7px !important;
-}
-
-.desktop-tab-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  opacity: 0.78;
-  transition: transform 160ms ease, opacity 160ms ease, filter 160ms ease;
-}
-
-.desktop-tab:hover .desktop-tab-icon,
-.desktop-tab.active .desktop-tab-icon {
-  opacity: 1;
-  transform: translateY(-1px);
-  filter: drop-shadow(0 0 10px rgba(91, 161, 255, 0.28));
-}
-
 .brand-mark-icon,
 .nav-icon,
 .empty-state-icon,
@@ -9453,4 +9434,14 @@ button {
     scroll-behavior: auto !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* Trial alignment: center numeric values in market tables for visual evaluation. */
+.market-table .market-cell-numeric,
+.market-mobile-table .market-cell-numeric,
+.portfolio-market-table .market-cell-numeric,
+.market-table th:not(:first-child),
+.market-mobile-table th:not(:first-child),
+.portfolio-market-table th:not(:first-child) {
+  text-align: center !important;
 }
