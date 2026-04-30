@@ -43,6 +43,9 @@ type MarketTableRowProps = {
   hidePerformanceColumns?: boolean;
   extraColumnsBeforeEarnings?: boolean;
   combinePositionColumn?: boolean;
+  separateSharesColumn?: boolean;
+  quickActionOnly?: boolean;
+  showPlayerPageAction?: boolean;
   positionShares?: number | null;
   holdingTotalValue?: number | null;
   closeOnlyShares?: number | null;
@@ -80,6 +83,9 @@ function MarketTableRow({
   hidePerformanceColumns = false,
   extraColumnsBeforeEarnings = false,
   combinePositionColumn = false,
+  separateSharesColumn = false,
+  quickActionOnly = false,
+  showPlayerPageAction = false,
   positionShares = null,
   holdingTotalValue = null,
   closeOnlyShares = null,
@@ -199,8 +205,9 @@ function MarketTableRow({
         : "down";
   const positionSharesLabel =
     positionValue < 0
-      ? `S${formatNumber(Math.abs(positionValue), 0)}`
+      ? `${formatNumber(Math.abs(positionValue), 0)} Short`
       : formatNumber(Math.abs(positionValue), 0);
+  const valueOnlyPositionColumn = combinePositionColumn && separateSharesColumn;
 
   return (
     <tr
@@ -259,15 +266,53 @@ function MarketTableRow({
           {userTotalGainPct != null && Number.isFinite(userTotalGainPct) ? `(${formatPercent(userTotalGainPct)})` : ""}
         </td>
       ) : null}
-      {combinePositionColumn ? (
-        <td className="market-cell-numeric">
-          <div className="market-position-stack">
-            <span className={positionClass}>{positionSharesLabel}</span>
-            <span className="market-position-separator">/</span>
-            <span className={`market-position-value ${holdingValueToneClass}`}>{formatCurrency(holdingTotalValueNumeric)}</span>
-          </div>
+      {separateSharesColumn ? (
+        <td className="market-cell-numeric market-shares-cell">
+          <span className={positionClass}>{positionSharesLabel}</span>
         </td>
       ) : null}
+      {combinePositionColumn ? (
+        <td className="market-cell-numeric">
+          {valueOnlyPositionColumn ? (
+            <span className={`market-position-value ${holdingValueToneClass}`}>{formatCurrency(holdingTotalValueNumeric)}</span>
+          ) : (
+            <div className="market-position-stack">
+              <span className={positionClass}>{positionSharesLabel}</span>
+              <span className="market-position-separator">/</span>
+              <span className={`market-position-value ${holdingValueToneClass}`}>{formatCurrency(holdingTotalValueNumeric)}</span>
+            </div>
+          )}
+        </td>
+      ) : null}
+      {quickActionOnly ? (
+        <>
+          <td className="market-cell-control">
+            <div className="market-row-actions market-row-actions-close-only">
+              <button
+                className={`chip market-mini-btn ${
+                  closeQuickSide === "SELL" ? "market-quick-short-btn" : "market-quick-buy-btn"
+                }`}
+                onClick={() => {
+                  if (closeQuickSide) {
+                    void handleExecuteMaxTrade(closeQuickSide, closeQuickSize);
+                  }
+                }}
+                disabled={isTradingHalted || !closeQuickSide || closeQuickSize <= 0 || isPreviewing || isPlacing}
+              >
+                {closeQuickSide === "SELL" ? "Sell Max" : "Cover Max"}
+              </button>
+            </div>
+          </td>
+          {showPlayerPageAction ? (
+            <td className="market-cell-control portfolio-player-page-cell">
+              <Link href={`/player/${row.player.id}`} className="ghost-link portfolio-player-page-link">
+                View
+              </Link>
+            </td>
+          ) : null}
+        </>
+      ) : (
+        <>
       <td className="market-cell-control">
         <div className={`market-row-actions${closeOnlyEnabled ? " market-row-actions-close-only" : ""}`}>
           {closeOnlyEnabled ? (
@@ -376,6 +421,8 @@ function MarketTableRow({
           </button>
         )}
       </td>
+        </>
+      )}
     </tr>
   );
 }

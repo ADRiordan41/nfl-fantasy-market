@@ -30,7 +30,7 @@ import type {
   UserProfile,
 } from "@/lib/types";
 
-type MarketSortColumn = "name" | "spot_price" | "avg_purchase" | "total_gain" | "earnings" | "position";
+type MarketSortColumn = "name" | "spot_price" | "avg_purchase" | "total_gain" | "earnings" | "shares" | "position";
 type SortDirection = "asc" | "desc";
 
 type PortfolioTradeSide = "SELL" | "COVER";
@@ -86,6 +86,7 @@ const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   avg_purchase: "desc",
   total_gain: "desc",
   earnings: "desc",
+  shares: "desc",
   position: "desc",
 };
 
@@ -341,6 +342,7 @@ export default function PortfolioPage() {
       if (sortColumn === "avg_purchase") return direction * (a.averageEntryPrice - b.averageEntryPrice);
       if (sortColumn === "total_gain") return direction * (a.totalGain - b.totalGain);
       if (sortColumn === "earnings") return direction * (a.market.seasonEarnings - b.market.seasonEarnings);
+      if (sortColumn === "shares") return direction * (a.positionShares - b.positionShares);
       if (sortColumn === "position") return direction * (a.totalValue - b.totalValue);
       return 0;
     });
@@ -742,11 +744,10 @@ export default function PortfolioPage() {
                       <col className="market-col-earnings" />
                       <col className="market-col-change" />
                       <col className="market-col-earnings" />
+                      <col className="market-col-shares" />
                       <col className="market-col-position" />
                       <col className="market-col-quick" />
                       <col className="market-col-action" />
-                      <col className="market-col-qty" />
-                      <col className="market-col-quote" />
                     </colgroup>
                     <thead>
                       <tr className="market-header-detail-row">
@@ -757,11 +758,10 @@ export default function PortfolioPage() {
                         <th>{renderSortButton("avg_purchase", "Cost")}</th>
                         <th>{renderSortButton("total_gain", "Total Gain")}</th>
                         <th>{renderSortButton("earnings", "Earnings")}</th>
-                        <th>{renderSortButton("position", "Position")}</th>
+                        <th>{renderSortButton("shares", "Shares")}</th>
+                        <th>{renderSortButton("position", "Value")}</th>
                         <th className="market-header-single">Quick Action</th>
-                        <th className="market-header-single">Action</th>
-                        <th className="market-header-single">Qty</th>
-                        <th className="market-header-single">Quote</th>
+                        <th className="market-header-single">Player Page</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -772,6 +772,9 @@ export default function PortfolioPage() {
                           hidePerformanceColumns
                           extraColumnsBeforeEarnings
                           combinePositionColumn
+                          separateSharesColumn
+                          quickActionOnly
+                          showPlayerPageAction
                           positionShares={row.positionShares}
                           holdingTotalValue={row.totalValue}
                           closeOnlyShares={row.positionShares}
