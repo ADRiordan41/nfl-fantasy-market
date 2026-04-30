@@ -16,6 +16,7 @@ import type {
 type HomeIntroStep = {
   eyebrow: string;
   icon: "market" | "position" | "portfolio" | "forum";
+  href: string;
   title: string;
   body: string;
   tone?: "up" | "down" | "brand";
@@ -25,6 +26,7 @@ const HOME_INTRO_STEPS: HomeIntroStep[] = [
   {
     eyebrow: "01",
     icon: "market",
+    href: "/market",
     title: "Read The Market",
     body: "Browse player prices, recent movement, teams, and positions. Look for athletes you think the market is missing before everyone else catches up.",
     tone: "brand",
@@ -32,12 +34,14 @@ const HOME_INTRO_STEPS: HomeIntroStep[] = [
   {
     eyebrow: "02",
     icon: "position",
+    href: "/market",
     title: "Take A Position",
     body: "Buy when you think fantasy value is headed up, or short when you think the price is too high. Preview the quote, then confirm the trade when the move looks right.",
   },
   {
     eyebrow: "03",
     icon: "portfolio",
+    href: "/portfolio",
     title: "Track Your Portfolio",
     body: "Use Portfolio and Profile to follow cash, holdings, open positions, gains, and public activity as your strategy develops.",
     tone: "brand",
@@ -45,6 +49,7 @@ const HOME_INTRO_STEPS: HomeIntroStep[] = [
   {
     eyebrow: "04",
     icon: "forum",
+    href: "/community",
     title: "Join The Forum",
     body: "Post takes, compare ideas, and talk through market moves with other users before the next price swing.",
     tone: "brand",
@@ -276,14 +281,19 @@ export default function HomePage() {
         <div className="home-onboarding-layout">
           <div className="home-steps">
             {HOME_INTRO_STEPS.map((step) => (
-              <article className={`home-step${step.tone ? ` home-step-${step.tone}` : ""}`} key={step.title}>
+              <Link
+                href={step.href}
+                className={`home-step${step.tone ? ` home-step-${step.tone}` : ""}`}
+                key={step.title}
+                aria-label={`${step.title}: ${step.body}`}
+              >
                 <span className="home-step-icon-wrap">
                   <HomeIntroIcon kind={step.icon} className="home-step-icon" />
                   <span className="home-step-number">{step.eyebrow}</span>
                 </span>
                 <h3>{step.title}</h3>
                 <p className="subtle home-step-body">{step.body}</p>
-              </article>
+              </Link>
             ))}
           </div>
 
