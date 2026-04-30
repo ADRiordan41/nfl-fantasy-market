@@ -15,7 +15,7 @@ import type {
 
 type HomeIntroStep = {
   eyebrow: string;
-  icon: "market" | "position" | "preview" | "compete" | "portfolio" | "forum";
+  icon: "market" | "position" | "portfolio" | "forum";
   title: string;
   body: string;
   tone?: "up" | "down" | "brand";
@@ -33,30 +33,17 @@ const HOME_INTRO_STEPS: HomeIntroStep[] = [
     eyebrow: "02",
     icon: "position",
     title: "Take A Position",
-    body: "Buy when you think fantasy value is headed up. Short when you think the price is too high and there is room to fall.",
+    body: "Buy when you think fantasy value is headed up, or short when you think the price is too high. Preview the quote, then confirm the trade when the move looks right.",
   },
   {
     eyebrow: "03",
-    icon: "preview",
-    title: "Preview The Move",
-    body: "Enter shares and preview the quote before you commit. You can see the estimated price, total cost or credit, and trade impact first.",
-    tone: "brand",
-  },
-  {
-    eyebrow: "04",
-    icon: "compete",
-    title: "Confirm And Compete",
-    body: "Place the trade, then watch your account move as prices change. Sell long shares or cover short shares when it is time to close.",
-  },
-  {
-    eyebrow: "05",
     icon: "portfolio",
     title: "Track Your Portfolio",
     body: "Use Portfolio and Profile to follow cash, holdings, open positions, gains, and public activity as your strategy develops.",
     tone: "brand",
   },
   {
-    eyebrow: "06",
+    eyebrow: "04",
     icon: "forum",
     title: "Join The Forum",
     body: "Post takes, compare ideas, and talk through market moves with other users before the next price swing.",
@@ -84,23 +71,6 @@ function HomeIntroIcon({ kind, ...props }: SVGProps<SVGSVGElement> & { kind: Hom
           <path d="M17 6v12" />
           <path d="m17 18-3-3" />
           <path d="m17 18 3-3" />
-        </>
-      )}
-      {kind === "preview" && (
-        <>
-          <rect x="4" y="5" width="16" height="14" rx="2.4" />
-          <path d="M8 10h8" />
-          <path d="M8 14h4" />
-          <path d="m14.5 15.2 1.1 1.1 2.4-2.8" />
-        </>
-      )}
-      {kind === "compete" && (
-        <>
-          <path d="M8 4h8v4.8A4 4 0 0 1 12 13a4 4 0 0 1-4-4.2V4Z" />
-          <path d="M8 6H4.5v2.2A3.8 3.8 0 0 0 8.2 12" />
-          <path d="M16 6h3.5v2.2a3.8 3.8 0 0 1-3.7 3.8" />
-          <path d="M12 13v4" />
-          <path d="M8.5 20h7" />
         </>
       )}
       {kind === "portfolio" && (
@@ -291,7 +261,7 @@ export default function HomePage() {
             </p>
           </div>
           <div className="home-explainer-actions" aria-label="Homepage onboarding links">
-            <Link href="/market" className="primary-btn ghost-link">
+            <Link href="/market" className="primary-btn ghost-link home-market-cta">
               Explore Market
             </Link>
             <Link href={isLoggedIn ? "/portfolio" : "/auth"} className="ghost-link">

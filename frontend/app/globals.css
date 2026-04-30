@@ -1549,6 +1549,22 @@ h1 {
   align-items: center;
 }
 
+.home-explainer-actions .home-market-cta {
+  color: #fff7ef !important;
+  background: linear-gradient(135deg, #ff8f2f 0%, #ffad58 44%, #2f6fe0 100%) !important;
+  border-color: rgba(255, 173, 88, 0.52) !important;
+  box-shadow:
+    0 14px 30px rgba(255, 143, 47, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.07) inset !important;
+}
+
+.home-explainer-actions .home-market-cta:hover {
+  border-color: rgba(255, 189, 116, 0.72) !important;
+  box-shadow:
+    0 16px 34px rgba(255, 143, 47, 0.24),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset !important;
+}
+
 .home-onboarding-layout {
   position: relative;
   display: grid;
@@ -9074,7 +9090,7 @@ body {
 .home-onboarding-layout {
   display: grid !important;
   gap: 14px !important;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr) !important;
+  grid-template-columns: minmax(0, 0.92fr) minmax(280px, 0.44fr) !important;
 }
 
 .home-explainer .home-steps {
@@ -9084,7 +9100,7 @@ body {
 }
 
 .home-explainer .home-step {
-  min-height: 178px !important;
+  min-height: 192px !important;
   border-radius: 8px !important;
   background:
     radial-gradient(circle at 100% 0%, rgba(91, 161, 255, 0.13) 0%, rgba(91, 161, 255, 0) 36%),
