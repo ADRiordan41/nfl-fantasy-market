@@ -365,8 +365,10 @@ export default function HomePage() {
           <p className="eyebrow">Welcome</p>
           <h1 className="home-headline">Trade Pro Athletes Like Stocks in a Live Market</h1>
           <p className="subtle">
-            Buy shares when you think a player&apos;s value will rise. Sell to lock in gains or free up cash.
-            Grow your account and climb the leaderboard.
+            Matchup Market is a sports market game where you buy and short shares of players based on how you think
+            their fantasy value will move. If you believe a player is ready to rise, buy shares before the market catches
+            on. If you think a player is overvalued, short shares and benefit if the price falls. It&apos;s a simple,
+            competitive game where your sports knowledge becomes your edge.
           </p>
         </div>
         {authResolved && !isLoggedIn && (
