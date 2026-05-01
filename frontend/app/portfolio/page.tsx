@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type SVGProps } from "react";
 import MarketTableRow, {
   type MarketTableRowModel,
   type MarketTradeSide,
 } from "@/components/market-table-row";
-import { tradeActionClass } from "@/components/trade-confirmation";
 import AccountMixPanel, { type AccountMixSegment as SharedAccountMixSegment } from "@/components/account-mix-panel";
 import CommunityPostsPanel from "@/components/community-posts-panel";
 import { apiGet, apiPost, friendlyApiError, isUnauthorizedError } from "@/lib/api";
 import EmptyStatePanel from "@/components/empty-state-panel";
-import { formatCurrency, formatNumber, formatPercent, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
+import { formatCurrency, formatNumber, formatSignedCurrency, formatSignedPercent } from "@/lib/format";
 import { teamPrimaryColor } from "@/lib/teamColors";
 import { CHICAGO_TIME_ZONE, chicagoNowStamp } from "@/lib/time";
 import { notifySuccess } from "@/lib/toast";
@@ -33,8 +32,6 @@ import type {
 type MarketSortColumn = "name" | "spot_price" | "avg_purchase" | "total_gain" | "earnings" | "shares" | "position";
 type SortDirection = "asc" | "desc";
 
-type PortfolioTradeSide = "SELL" | "COVER";
-
 type HoldingRow = {
   id: number;
   name: string;
@@ -49,7 +46,6 @@ type HoldingRow = {
   marketValue: number;
   pnl: number;
   pnlPct: number;
-  allocationPct: number;
 };
 
 type PortfolioMarketRow = {
@@ -61,14 +57,6 @@ type PortfolioMarketRow = {
   totalGainPct: number;
 };
 
-type SportGroup = {
-  sport: string;
-  rows: HoldingRow[];
-  netValue: number;
-  grossValue: number;
-  allocationPct: number;
-};
-
 type AccountMixSlice = {
   key: string;
   label: string;
@@ -77,7 +65,6 @@ type AccountMixSlice = {
   gainLossPct: number | null;
 };
 
-const SPORT_DISPLAY_ORDER = ["MLB", "NFL", "NBA", "NHL"] as const;
 const MAX_POSITION_NOTIONAL_PER_PLAYER = 10000;
 const STARTING_ACCOUNT_BASELINE = 100000;
 const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
@@ -89,6 +76,17 @@ const SORT_DEFAULT_DIRECTION: Record<MarketSortColumn, SortDirection> = {
   shares: "desc",
   position: "desc",
 };
+
+function MatchupMarketLogo(props: SVGProps<SVGSVGElement>) {
+  const sigmaPath = "M2 6H42L38 12H19.5L33.5 23L19.5 34H42L38 40H2L10 34L24 23L10 12Z";
+  const deltaPath = "M62 10L81 37H43Z";
+  return (
+    <svg {...props} viewBox="0 0 94 46" fill="none" stroke="none" preserveAspectRatio="xMidYMid meet">
+      <path d={sigmaPath} fill="#ffad3d" />
+      <path d={deltaPath} fill="none" stroke="#4db8ff" strokeWidth="6" strokeLinejoin="miter" />
+    </svg>
+  );
+}
 
 function formatStamp(value: string | null): string {
   if (!value) return "--";
@@ -104,20 +102,9 @@ function formatStamp(value: string | null): string {
   });
 }
 
-function parseWholeShares(value: string): number | null {
-  const trimmed = value.trim();
-  if (!/^[0-9]+$/.test(trimmed)) return null;
-  const parsed = Number.parseInt(trimmed, 10);
-  return parsed > 0 ? parsed : null;
-}
-
 function getSignedPercent(base: number, spot: number): number {
   if (!base) return 0;
   return ((spot - base) / base) * 100;
-}
-
-function sideForRow(row: HoldingRow): PortfolioTradeSide {
-  return row.shares < 0 ? "COVER" : "SELL";
 }
 
 export default function PortfolioPage() {
@@ -130,14 +117,11 @@ export default function PortfolioPage() {
   const [change24hById, setChange24hById] = useState<Record<number, number>>({});
   const [sortColumn, setSortColumn] = useState<MarketSortColumn>("spot_price");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [qtyById, setQtyById] = useState<Record<number, string>>({});
-  const [quoteById, setQuoteById] = useState<Record<number, Quote | null>>({});
-  const [previewingId, setPreviewingId] = useState<number | null>(null);
-  const [placingId, setPlacingId] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [tradingStatus, setTradingStatus] = useState<TradingStatus | null>(null);
   const [communityPosts, setCommunityPosts] = useState<ForumPostSummary[]>([]);
   const [activeAccountMixSliceKey, setActiveAccountMixSliceKey] = useState<string | null>(null);
+  const [isRecentTradesOpen, setIsRecentTradesOpen] = useState(false);
   const [error, setError] = useState("");
 
   const handleRequestError = useCallback(
@@ -235,7 +219,6 @@ export default function PortfolioPage() {
           marketValue,
           pnl: normalizedPnl,
           pnlPct,
-          allocationPct: 0,
         };
       })
       .filter((row): row is HoldingRow => row !== null)
@@ -247,60 +230,10 @@ export default function PortfolioPage() {
     [rows],
   );
 
-  const computedGrossExposure = useMemo(
-    () => rows.reduce((sum, row) => sum + Math.abs(row.marketValue), 0),
-    [rows],
-  );
-
-  const basisNotional = useMemo(
-    () => rows.reduce((sum, row) => sum + row.basisNotional, 0),
-    [rows],
-  );
-
-  const rowsWithAllocation = useMemo(
-    () =>
-      rows.map((row) => ({
-        ...row,
-        allocationPct: computedGrossExposure > 0 ? (Math.abs(row.marketValue) / computedGrossExposure) * 100 : 0,
-      })),
-    [computedGrossExposure, rows],
-  );
-  const sportGroups = useMemo<SportGroup[]>(() => {
-    const groups = new Map<string, HoldingRow[]>();
-    for (const row of rowsWithAllocation) {
-      const existing = groups.get(row.sport);
-      if (existing) {
-        existing.push(row);
-      } else {
-        groups.set(row.sport, [row]);
-      }
-    }
-
-    const orderIndex = new Map<string, number>(SPORT_DISPLAY_ORDER.map((sport, index) => [sport, index]));
-    return Array.from(groups.entries())
-      .map(([sport, sportRows]) => {
-        const netValue = sportRows.reduce((sum, row) => sum + row.marketValue, 0);
-        const grossValue = sportRows.reduce((sum, row) => sum + Math.abs(row.marketValue), 0);
-        return {
-          sport,
-          rows: sportRows,
-          netValue,
-          grossValue,
-          allocationPct: computedGrossExposure > 0 ? (grossValue / computedGrossExposure) * 100 : 0,
-        };
-      })
-      .sort((a, b) => {
-        const aIndex = orderIndex.has(a.sport) ? (orderIndex.get(a.sport) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
-        const bIndex = orderIndex.has(b.sport) ? (orderIndex.get(b.sport) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
-        if (aIndex !== bIndex) return aIndex - bIndex;
-        return a.sport.localeCompare(b.sport);
-      });
-  }, [computedGrossExposure, rowsWithAllocation]);
-
   const marketRows = useMemo<PortfolioMarketRow[]>(() => {
     const direction = sortDirection === "asc" ? 1 : -1;
     const nextRows: PortfolioMarketRow[] = [];
-    for (const row of rowsWithAllocation) {
+    for (const row of rows) {
       const player = playersById[row.id];
       if (!player) continue;
       const owned = Number(row.shares);
@@ -347,18 +280,16 @@ export default function PortfolioPage() {
       return 0;
     });
     return nextRows;
-  }, [change24hById, playersById, rowsWithAllocation, sortColumn, sortDirection]);
+  }, [change24hById, playersById, rows, sortColumn, sortDirection]);
 
   const cash = portfolio?.cash_balance ?? 0;
   const holdings = portfolio?.net_exposure ?? computedNetExposure;
   const totalAccount = portfolio?.equity ?? cash + holdings;
   const totalAccountPnlPct = ((totalAccount - STARTING_ACCOUNT_BASELINE) / STARTING_ACCOUNT_BASELINE) * 100;
   const totalAccountAboveBaseline = totalAccount >= STARTING_ACCOUNT_BASELINE;
-  const pnl = rows.reduce((sum, row) => sum + row.pnl, 0);
-  const pnlPct = basisNotional > 0 ? (pnl / basisNotional) * 100 : 0;
   const pieSlices = useMemo<AccountMixSlice[]>(() => {
     const cashValue = Math.max(0, cash);
-    const holdingSlices = rowsWithAllocation
+    const holdingSlices = rows
       .map((row) => ({
         key: `player-${row.id}`,
         label: `${row.shares < 0 ? "Short " : ""}${row.name} (${row.team})`,
@@ -381,8 +312,7 @@ export default function PortfolioPage() {
     }
     slices.push(...holdingSlices);
     return slices;
-  }, [cash, rowsWithAllocation]);
-
+  }, [cash, rows]);
   const pieTotal = useMemo(
     () => pieSlices.reduce((sum, slice) => sum + slice.value, 0),
     [pieSlices],
@@ -418,28 +348,6 @@ export default function PortfolioPage() {
   function haltedForSport(sport: string): TradingHaltState | null {
     if (globalHalt) return globalHalt;
     return haltBySport.get(sport) ?? null;
-  }
-
-  function maxTradableShares(row: HoldingRow): number {
-    return Math.max(0, Math.abs(Math.trunc(row.shares)));
-  }
-  function haltedForRow(row: HoldingRow): TradingHaltState | null {
-    return haltedForSport(row.sport);
-  }
-
-  function clearQuote(playerId: number) {
-    setQuoteById((prev) => ({ ...prev, [playerId]: null }));
-  }
-
-  function setQuantity(playerId: number, value: string) {
-    const digitsOnly = value.replace(/\D/g, "").slice(0, 4);
-    setQtyById((prev) => ({ ...prev, [playerId]: digitsOnly }));
-    clearQuote(playerId);
-  }
-
-  function setMaxQuantity(row: HoldingRow) {
-    if (haltedForRow(row)) return;
-    setQuantity(row.id, String(maxTradableShares(row)));
   }
 
   function toggleSort(column: MarketSortColumn) {
@@ -497,75 +405,12 @@ export default function PortfolioPage() {
     [handleRequestError, load],
   );
 
-  async function previewTrade(row: HoldingRow) {
-    const halt = haltedForRow(row);
-    if (halt) return;
-    const side = sideForRow(row);
-    const maxShares = maxTradableShares(row);
-    if (maxShares <= 0) {
-      setError("No shares available for this action.");
-      return;
-    }
-
-    const shares = parseWholeShares(qtyById[row.id] ?? "");
-    if (!shares) {
-      setError("Enter whole shares (1 or more) before previewing.");
-      return;
-    }
-    if (shares > maxShares) {
-      setError(`${side === "SELL" ? "Sell" : "Cover"} size cannot exceed ${formatNumber(maxShares)} shares.`);
-      return;
-    }
-
-    setPreviewingId(row.id);
-    setError("");
-    try {
-      const quote = await apiPost<Quote>(`/quote/${side.toLowerCase()}`, {
-        player_id: row.id,
-        shares,
-      });
-      setQuoteById((prev) => ({ ...prev, [row.id]: quote }));
-    } catch (err: unknown) {
-      handleRequestError(err);
-    } finally {
-      setPreviewingId(null);
-    }
-  }
-
-  async function placeTrade(row: HoldingRow) {
-    const halt = haltedForRow(row);
-    if (halt) return;
-    const side = sideForRow(row);
-    const quote = quoteById[row.id];
-    if (!quote) {
-      setError("Preview a quote first.");
-      return;
-    }
-
-    setPlacingId(row.id);
-    setError("");
-    try {
-      await apiPost(`/trade/${side.toLowerCase()}`, {
-        player_id: row.id,
-        shares: quote.shares,
-      });
-      setQtyById((prev) => ({ ...prev, [row.id]: "" }));
-      setQuoteById((prev) => ({ ...prev, [row.id]: null }));
-      await load({ silent: true });
-      notifySuccess(`${side} executed.`);
-    } catch (err: unknown) {
-      handleRequestError(err);
-    } finally {
-      setPlacingId(null);
-    }
-  }
-
   return (
     <main className="page-shell">
-      <section className="hero-panel">
+      <section className="hero-panel portfolio-hero">
         <div>
           <p className="eyebrow">Portfolio</p>
-          <h1>Performance Board</h1>
+          <h1>Portfolio</h1>
           <p className="subtle">Monitor market value, allocation, and unrealized return by position.</p>
           <p className="subtle">Last updated {formatStamp(lastUpdated)}</p>
           {currentUser && (
@@ -573,7 +418,13 @@ export default function PortfolioPage() {
               Username: <strong>{currentUser.username}</strong> | User ID: <strong>{currentUser.id}</strong>
               {currentUser.is_admin && (
                 <span className="portfolio-admin-badge" aria-label="Admin account">
+                  <span className="portfolio-admin-star" aria-hidden="true">
+                    ✶
+                  </span>
                   Admin
+                  <span className="portfolio-admin-star" aria-hidden="true">
+                    ✶
+                  </span>
                 </span>
               )}
             </p>
@@ -612,14 +463,15 @@ export default function PortfolioPage() {
             <article className="kpi-card">
               <span>Total Account</span>
               <strong className="portfolio-kpi-pnl">
-                <b className={totalAccountAboveBaseline ? "up" : "down"}>{formatCurrency(totalAccount)}</b>{" "}
-                <small className="subtle">({formatSignedPercent(totalAccountPnlPct)})</small>
+                <b className={totalAccountAboveBaseline ? "up" : "down"}>{formatCurrency(totalAccount)}</b>
               </strong>
             </article>
-            <article className="kpi-card">
-              <span>Unrealized P/L</span>
-              <strong className={`portfolio-kpi-pnl ${pnl >= 0 ? "up" : "down"}`}>
-                {formatSignedCurrency(pnl)} ({formatPercent(pnlPct)})
+            <article className="kpi-card portfolio-logo-kpi-card">
+              <span className="portfolio-kpi-logo-label" aria-label="MatchupMarket">
+                <MatchupMarketLogo aria-hidden="true" />
+              </span>
+              <strong className={`portfolio-kpi-pnl ${totalAccountPnlPct > 0 ? "up" : totalAccountPnlPct < 0 ? "down" : ""}`}>
+                {formatSignedPercent(totalAccountPnlPct)}
               </strong>
             </article>
           </section>
@@ -629,9 +481,10 @@ export default function PortfolioPage() {
             pieSegments={pieSegments}
             activeSliceKey={activeAccountMixSliceKey}
             onActiveSliceKeyChange={setActiveAccountMixSliceKey}
+            showHeader={false}
           />
 
-          {rowsWithAllocation.length === 0 ? (
+          {rows.length === 0 ? (
             <EmptyStatePanel
               kind="portfolio"
               title="No positions yet"
@@ -641,100 +494,6 @@ export default function PortfolioPage() {
             />
           ) : (
             <>
-              <section className="mobile-holdings">
-                {sportGroups.map((group) => (
-                  <section key={group.sport} className="portfolio-sport-group">
-                    <div className="portfolio-sport-group-head">
-                      <h3>{group.sport}</h3>
-                      <p className="subtle portfolio-sport-summary">
-                        {formatNumber(group.rows.length)} positions | Net {formatCurrency(group.netValue)} | {formatPercent(group.allocationPct, 1)} allocation
-                      </p>
-                    </div>
-
-                    <div className="portfolio-sport-group-list">
-                      {group.rows.map((row) => (
-                        <article key={row.id} className="holding-card">
-                          <div className="holding-head">
-                            <Link href={`/player/${row.id}`} className="card-title">
-                              {row.name}
-                            </Link>
-                            <span className="team-pill">
-                              {row.sport} {row.team} {row.position}
-                            </span>
-                          </div>
-                          <p className="muted-line">
-                            {formatNumber(row.shares, 0)} shares | Current Price {formatCurrency(row.spot)} | Purchase Price{" "}
-                            {formatCurrency(row.averageEntryPrice)}
-                          </p>
-                          <div className="portfolio-trade-row">
-                            {haltedForRow(row) && (
-                              <p className="subtle portfolio-row-halt-note">
-                                Trading paused{haltedForRow(row)?.reason ? `: ${haltedForRow(row)?.reason}` : "."}
-                              </p>
-                            )}
-                            <button
-                              type="button"
-                              className={`chip market-mini-btn portfolio-trade-action-btn ${
-                                sideForRow(row) === "SELL" ? "portfolio-trade-sell-btn" : "portfolio-trade-cover-btn"
-                              }`}
-                              onClick={() => setMaxQuantity(row)}
-                              disabled={Boolean(haltedForRow(row)) || maxTradableShares(row) <= 0 || previewingId === row.id || placingId === row.id}
-                            >
-                              {sideForRow(row)} Max
-                            </button>
-                            <input
-                              className="market-qty-input"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              maxLength={4}
-                              value={qtyById[row.id] ?? ""}
-                              onChange={(event) => setQuantity(row.id, event.target.value)}
-                              placeholder="qty"
-                              disabled={Boolean(haltedForRow(row))}
-                            />
-                            {quoteById[row.id] ? (
-                              <button
-                                type="button"
-                                className={`primary-btn market-quote-action-btn ${tradeActionClass(sideForRow(row))}`}
-                                disabled={Boolean(haltedForRow(row)) || placingId === row.id}
-                                onClick={() => void placeTrade(row)}
-                              >
-                                {placingId === row.id ? "Placing..." : "Execute"}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="market-quote-action-btn market-quote-preview-btn"
-                                onClick={() => void previewTrade(row)}
-                                disabled={Boolean(haltedForRow(row)) || previewingId === row.id}
-                              >
-                                {previewingId === row.id ? "Quoting..." : "Preview"}
-                              </button>
-                            )}
-                          </div>
-                          {quoteById[row.id] && (
-                            <p className="subtle portfolio-trade-quote">
-                              Net: {formatCurrency(quoteById[row.id]!.total)} | Avg{" "}
-                              {formatCurrency(quoteById[row.id]!.average_price, 3)}
-                            </p>
-                          )}
-                          <div className="holding-metrics">
-                            <span>Value: {formatCurrency(row.marketValue)}</span>
-                            <span className={row.pnl >= 0 ? "up" : "down"}>
-                              {formatSignedCurrency(row.pnl)} ({formatPercent(row.pnlPct)})
-                            </span>
-                          </div>
-                          <div className="allocation-track">
-                            <div style={{ width: `${Math.max(3, row.allocationPct)}%` }} />
-                          </div>
-                          <p className="subtle">Allocation {formatPercent(row.allocationPct, 1)}</p>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </section>
-
               <section className="table-panel market-table-panel portfolio-market-table-panel">
                 <div className="table-wrap">
                   <table className="market-table portfolio-market-table">
@@ -799,54 +558,64 @@ export default function PortfolioPage() {
             emptyMessage="You haven't published any community posts yet."
           />
 
-          <section className="table-panel">
-            <div className="portfolio-sport-group-head">
-              <h3>Recent Trades</h3>
-              <p className="subtle portfolio-sport-summary">
+          <section className="table-panel portfolio-recent-trades-card">
+            <button
+              type="button"
+              className="portfolio-recent-trades-toggle"
+              aria-expanded={isRecentTradesOpen}
+              aria-controls="portfolio-recent-trades-table"
+              onClick={() => setIsRecentTradesOpen((isOpen) => !isOpen)}
+            >
+              <span>{isRecentTradesOpen ? "Hide Recent Trades" : "Show Recent Trades"}</span>
+              <span className="portfolio-recent-trades-count">
                 {recentTransactions.length
                   ? `${formatNumber(recentTransactions.length)} most recent transactions`
-                  : "No trades recorded yet."}
-              </p>
-            </div>
-            {recentTransactions.length ? (
-              <div className="table-wrap">
-                <table className="portfolio-table">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Type</th>
-                      <th>Player</th>
-                      <th>Shares</th>
-                      <th>Unit Price</th>
-                      <th>Cash Impact</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentTransactions.map((transaction) => (
-                      <tr key={transaction.id}>
-                        <td>{formatStamp(transaction.created_at)}</td>
-                        <td>{transaction.trade_type}</td>
-                        <td>
-                          {transaction.player_id && transaction.player_name ? (
-                            <Link href={`/player/${transaction.player_id}`} className="card-title">
-                              {transaction.player_name}
-                            </Link>
-                          ) : (
-                            <span>{transaction.player_name ?? "System"}</span>
-                          )}
-                        </td>
-                        <td>{formatNumber(transaction.shares, 0)}</td>
-                        <td>{formatCurrency(transaction.unit_price)}</td>
-                        <td className={transaction.amount >= 0 ? "up" : "down"}>
-                          {formatSignedCurrency(transaction.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  : "No trades recorded yet"}
+              </span>
+            </button>
+            {isRecentTradesOpen && (
+              <div id="portfolio-recent-trades-table">
+                {recentTransactions.length ? (
+                  <div className="table-wrap">
+                    <table className="portfolio-table">
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Type</th>
+                          <th>Player</th>
+                          <th>Shares</th>
+                          <th>Unit Price</th>
+                          <th>Cash Impact</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentTransactions.map((transaction) => (
+                          <tr key={transaction.id}>
+                            <td>{formatStamp(transaction.created_at)}</td>
+                            <td>{transaction.trade_type}</td>
+                            <td>
+                              {transaction.player_id && transaction.player_name ? (
+                                <Link href={`/player/${transaction.player_id}`} className="card-title">
+                                  {transaction.player_name}
+                                </Link>
+                              ) : (
+                                <span>{transaction.player_name ?? "System"}</span>
+                              )}
+                            </td>
+                            <td>{formatNumber(transaction.shares, 0)}</td>
+                            <td>{formatCurrency(transaction.unit_price)}</td>
+                            <td className={transaction.amount >= 0 ? "up" : "down"}>
+                              {formatSignedCurrency(transaction.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="subtle portfolio-recent-trades-empty">Executed trades will appear here.</p>
+                )}
               </div>
-            ) : (
-              <p className="subtle">Executed trades will appear here.</p>
             )}
           </section>
         </>

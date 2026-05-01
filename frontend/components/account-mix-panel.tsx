@@ -55,6 +55,7 @@ type AccountMixPanelProps = {
   pieSegments: AccountMixSegment[];
   activeSliceKey: string | null;
   onActiveSliceKeyChange: (key: string | null) => void;
+  showHeader?: boolean;
 };
 
 export default function AccountMixPanel({
@@ -62,6 +63,7 @@ export default function AccountMixPanel({
   pieSegments,
   activeSliceKey,
   onActiveSliceKeyChange,
+  showHeader = true,
 }: AccountMixPanelProps) {
   const activeAccountMixSlice = pieSegments.length
     ? (activeSliceKey ? pieSegments.find((slice) => slice.key === activeSliceKey) : null) ?? pieSegments[0]
@@ -69,10 +71,12 @@ export default function AccountMixPanel({
 
   return (
     <section className="table-panel account-mix-panel" data-parity-section="account-mix">
-      <div className="portfolio-sport-group-head">
-        <h3>Account Mix</h3>
-        <p className="subtle portfolio-sport-summary">Cash and all open holdings.</p>
-      </div>
+      {showHeader && (
+        <div className="portfolio-sport-group-head">
+          <h3>Account Mix</h3>
+          <p className="subtle portfolio-sport-summary">Cash and all open holdings.</p>
+        </div>
+      )}
       <div className="account-mix-layout">
         <div className="account-mix-chart-wrap" onMouseLeave={() => onActiveSliceKeyChange(null)}>
           <svg className="account-mix-donut" viewBox="0 0 200 200" role="img" aria-label="Donut chart showing account mix composition">
