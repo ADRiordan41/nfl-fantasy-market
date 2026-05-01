@@ -645,6 +645,8 @@ class LiveGameStateOut(BaseModel):
     runner_on_third: bool | None = None
     offense_team: str | None = None
     defense_team: str | None = None
+    probable_home_pitcher_name: str | None = None
+    probable_away_pitcher_name: str | None = None
 
 
 class LiveGameAtBatOut(BaseModel):

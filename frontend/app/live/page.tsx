@@ -46,6 +46,11 @@ type WinProbabilityPoint = {
   pitcherName: string | null;
   pitcherPlayerId: number | null;
   pitcherTeam: string | null;
+  probableAwayPitcherName: string | null;
+  probableAwayPitcherPlayerId: number | null;
+  probableHomePitcherName: string | null;
+  probableHomePitcherPlayerId: number | null;
+  firstPitchAt: string | null;
   runnerOnFirst: boolean;
   runnerOnSecond: boolean;
   runnerOnThird: boolean;
@@ -589,6 +594,10 @@ function winProbabilityPointFromApi(
   const pitcherName = apiPoint.pitcher_name ?? matchupAtBat?.pitcher_name ?? null;
   const batterPlayerId = resolveLivePlayerId(batterName, playerLookup);
   const pitcherPlayerId = resolveLivePlayerId(pitcherName, playerLookup);
+  const probableAwayPitcherName = game.state?.probable_away_pitcher_name ?? null;
+  const probableHomePitcherName = game.state?.probable_home_pitcher_name ?? null;
+  const probableAwayPitcherPlayerId = resolveLivePlayerId(probableAwayPitcherName, playerLookup);
+  const probableHomePitcherPlayerId = resolveLivePlayerId(probableHomePitcherName, playerLookup);
   return {
     capturedAt: apiPoint.captured_at ?? game.updated_at ?? generatedAt,
     awayTeam,
@@ -617,6 +626,11 @@ function winProbabilityPointFromApi(
     pitcherName,
     pitcherPlayerId,
     pitcherTeam: apiPoint.defense_team,
+    probableAwayPitcherName,
+    probableAwayPitcherPlayerId,
+    probableHomePitcherName,
+    probableHomePitcherPlayerId,
+    firstPitchAt: game.state?.first_pitch_at ?? null,
     runnerOnFirst: Boolean(apiPoint.runner_on_first),
     runnerOnSecond: Boolean(apiPoint.runner_on_second),
     runnerOnThird: Boolean(apiPoint.runner_on_third),
@@ -680,8 +694,18 @@ function WinProbabilityChart({
       : activePoint;
   const showMatchupRow =
     Boolean(activePoint.batterName || activePoint.pitcherName);
+  const firstPitchLabel = formatFirstPitchLabel(activePoint.firstPitchAt);
+  const showPregameStarters = !activelyLive && !showMatchupRow && Boolean(firstPitchLabel);
   const batterLabel = formatCompactMatchupName(activePoint.batterName, "Unknown hitter");
   const pitcherLabel = formatCompactMatchupName(activePoint.pitcherName, "Unknown pitcher");
+  const probableAwayPitcherLabel = formatCompactMatchupName(
+    activePoint.probableAwayPitcherName,
+    `${activePoint.awayTeam} starter TBD`,
+  );
+  const probableHomePitcherLabel = formatCompactMatchupName(
+    activePoint.probableHomePitcherName,
+    `${activePoint.homeTeam} starter TBD`,
+  );
   const awayScoreValue = activePoint.awayScore == null ? "--" : formatNumber(activePoint.awayScore, 0);
   const homeScoreValue = activePoint.homeScore == null ? "--" : formatNumber(activePoint.homeScore, 0);
   const battingTeamLabel = activePoint.battingTeam ?? "TBD";
@@ -695,14 +719,32 @@ function WinProbabilityChart({
   const countBugLabel = activePoint.countLabel.toUpperCase();
   const batterTeamValue = activePoint.batterTeam ?? battingTeamLabel;
   const pitcherTeamValue = activePoint.pitcherTeam ?? fieldingTeamLabel;
-  const batterNameValue = showMatchupRow ? batterLabel : "Batter pending";
-  const pitcherNameValue = showMatchupRow ? pitcherLabel : "Pitcher pending";
-  const batterPlayerHref = activePoint.batterPlayerId != null ? `/player/${activePoint.batterPlayerId}` : null;
-  const pitcherPlayerHref = activePoint.pitcherPlayerId != null ? `/player/${activePoint.pitcherPlayerId}` : null;
+  const batterNameValue = showPregameStarters ? probableHomePitcherLabel : showMatchupRow ? batterLabel : "Batter pending";
+  const pitcherNameValue = showPregameStarters ? probableAwayPitcherLabel : showMatchupRow ? pitcherLabel : "Pitcher pending";
+  const batterPlayerHref =
+    showPregameStarters
+      ? activePoint.probableHomePitcherPlayerId != null
+        ? `/player/${activePoint.probableHomePitcherPlayerId}`
+        : null
+      : activePoint.batterPlayerId != null ? `/player/${activePoint.batterPlayerId}` : null;
+  const pitcherPlayerHref =
+    showPregameStarters
+      ? activePoint.probableAwayPitcherPlayerId != null
+        ? `/player/${activePoint.probableAwayPitcherPlayerId}`
+        : null
+      : activePoint.pitcherPlayerId != null ? `/player/${activePoint.pitcherPlayerId}` : null;
   const awayTeamReadableColor = teamReadableColor(activePoint.awayTeam, activePoint.sport);
   const homeTeamReadableColor = teamReadableColor(activePoint.homeTeam, activePoint.sport);
-  const batterNameStyle = { "--live-scorebug-detail-color": teamReadableColor(batterTeamValue, activePoint.sport) } as CSSProperties;
-  const pitcherNameStyle = { "--live-scorebug-detail-color": teamReadableColor(pitcherTeamValue, activePoint.sport) } as CSSProperties;
+  const batterNameStyle = {
+    "--live-scorebug-detail-color": teamReadableColor(showPregameStarters ? activePoint.homeTeam : batterTeamValue, activePoint.sport),
+  } as CSSProperties;
+  const pitcherNameStyle = {
+    "--live-scorebug-detail-color": teamReadableColor(showPregameStarters ? activePoint.awayTeam : pitcherTeamValue, activePoint.sport),
+  } as CSSProperties;
+  const scorebugTopLabel = showPregameStarters ? "First pitch" : inningBugLabel;
+  const scorebugBottomLabel = showPregameStarters ? firstPitchLabel : outsBugLabel;
+  const pitcherTagLabel = showPregameStarters ? activePoint.awayTeam : "P";
+  const batterTagLabel = showPregameStarters ? activePoint.homeTeam : "B";
   const highlightedPlaySummary = formatHighlightedPlay(latestPlayPoint);
   const width = 340;
   const height = 124;
@@ -830,12 +872,12 @@ function WinProbabilityChart({
           </div>
           <div className="live-scorebug-info">
             <div className="live-scorebug-state-box">
-              <span className="live-scorebug-state-top">{inningBugLabel}</span>
-              <span className="live-scorebug-state-bottom">{outsBugLabel}</span>
+              <span className="live-scorebug-state-top">{scorebugTopLabel}</span>
+              <span className="live-scorebug-state-bottom">{scorebugBottomLabel}</span>
             </div>
             <div className="live-scorebug-details" aria-label="Current matchup">
               <p className="live-scorebug-detail-row">
-                <span className="live-scorebug-detail-tag">P</span>
+                <span className="live-scorebug-detail-tag">{pitcherTagLabel}</span>
                 {pitcherPlayerHref ? (
                   <Link
                     href={pitcherPlayerHref}
@@ -852,7 +894,7 @@ function WinProbabilityChart({
                 )}
               </p>
               <p className="live-scorebug-detail-row">
-                <span className="live-scorebug-detail-tag">B</span>
+                <span className="live-scorebug-detail-tag">{batterTagLabel}</span>
                 {batterPlayerHref ? (
                   <Link
                     href={batterPlayerHref}

@@ -3140,6 +3140,8 @@ def list_live_games(
                     runner_on_third=mlb_state.runner_on_third,
                     offense_team=mlb_state.offense_team,
                     defense_team=mlb_state.defense_team,
+                    probable_home_pitcher_name=mlb_state.probable_home_pitcher_name,
+                    probable_away_pitcher_name=mlb_state.probable_away_pitcher_name,
                 )
                 at_bats_out = [
                     LiveGameAtBatOut(

@@ -81,6 +81,8 @@ class MlbGameState:
     defense_team: str | None = None
     batter_name: str | None = None
     pitcher_name: str | None = None
+    probable_home_pitcher_name: str | None = None
+    probable_away_pitcher_name: str | None = None
     at_bats: list[MlbGameAtBat] = field(default_factory=list)
 
 
@@ -479,6 +481,25 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
         away_team = normalize_team_code(str(away_meta.get("abbreviation") or ""))
         home_team_id = _parse_int(home_meta.get("id"))
         away_team_id = _parse_int(away_meta.get("id"))
+        probable_pitchers_payload = (
+            game_data.get("probablePitchers", {}) if isinstance(game_data.get("probablePitchers"), dict) else {}
+        )
+        probable_home_pitcher_payload = (
+            probable_pitchers_payload.get("home", {})
+            if isinstance(probable_pitchers_payload.get("home"), dict)
+            else {}
+        )
+        probable_away_pitcher_payload = (
+            probable_pitchers_payload.get("away", {})
+            if isinstance(probable_pitchers_payload.get("away"), dict)
+            else {}
+        )
+        probable_home_pitcher_name = (
+            str(probable_home_pitcher_payload.get("fullName") or "").strip() or None
+        )
+        probable_away_pitcher_name = (
+            str(probable_away_pitcher_payload.get("fullName") or "").strip() or None
+        )
 
         teams_score = linescore.get("teams", {}) if isinstance(linescore.get("teams"), dict) else {}
         home_score_payload = teams_score.get("home", {}) if isinstance(teams_score.get("home"), dict) else {}
@@ -656,6 +677,8 @@ def fetch_mlb_game_states(*, game_pks: list[str], timeout: float = 5.0) -> dict[
             defense_team=defense_team,
             batter_name=current_batter_name,
             pitcher_name=current_pitcher_name,
+            probable_home_pitcher_name=probable_home_pitcher_name,
+            probable_away_pitcher_name=probable_away_pitcher_name,
             at_bats=at_bats[-180:],
         )
         states[game_pk] = state

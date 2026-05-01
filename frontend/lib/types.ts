@@ -55,6 +55,8 @@ export type LiveGameState = {
   runner_on_third: boolean | null;
   offense_team: string | null;
   defense_team: string | null;
+  probable_home_pitcher_name: string | null;
+  probable_away_pitcher_name: string | null;
 };
 
 export type LiveGameAtBat = {

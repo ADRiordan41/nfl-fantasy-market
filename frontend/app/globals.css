@@ -113,8 +113,10 @@ textarea {
 }
 
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 3px solid rgba(47, 127, 255, 0.92);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(91, 161, 255, 0.4),
+    0 0 0 5px rgba(91, 161, 255, 0.14);
 }
 
 button,
@@ -287,6 +289,13 @@ textarea[aria-invalid="true"] {
 
 .market-ticker-item:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.market-ticker-item:focus-visible {
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(150, 194, 255, 0.52),
+    0 0 0 3px rgba(91, 161, 255, 0.16);
 }
 
 .market-ticker-player {
@@ -2689,10 +2698,12 @@ h1 {
 .market-card.team-tinted::before {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 1px;
+  right: 1px;
   top: 0;
   height: 4px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
   background: linear-gradient(90deg, rgba(var(--team-rgb), 0.88) 0%, rgba(var(--team-rgb), 0.46) 62%, rgba(var(--team-rgb), 0) 100%);
   pointer-events: none;
 }
@@ -8990,8 +9001,10 @@ body::after {
 .kpi-card::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto;
+  inset: 0 1px auto;
   height: 2px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
   background: linear-gradient(90deg, rgba(255, 157, 74, 0.74), rgba(91, 161, 255, 0.74));
   opacity: 0.78;
 }
@@ -9291,6 +9304,44 @@ button:not(.market-sort-btn):not(.mobile-link):not(.mobile-home-trigger) {
   background: rgba(76, 91, 113, 0.62) !important;
   color: rgba(226, 234, 247, 0.72) !important;
   box-shadow: none !important;
+}
+
+/* Market controls use rounded focus rings instead of the global square outline. */
+.market-page-shell :where(button, input, select, textarea, a, [tabindex]):focus-visible,
+.market-mobile-card:focus-visible,
+.market-mobile-table-row:focus-visible,
+.market-table .card-title:focus-visible,
+.market-mobile-player-name:focus-visible {
+  outline: none !important;
+}
+
+.market-page-shell :where(
+  .market-mini-btn,
+  .market-mobile-max-btn,
+  .market-quote-action-btn,
+  .market-qty-input,
+  .market-mobile-qty-input,
+  .sport-filter-btn,
+  .market-mobile-card,
+  .market-mobile-quote-card,
+  .market-side-select,
+  .market-mobile-player-name,
+  .card-title
+):focus-visible {
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 2px rgba(91, 161, 255, 0.34),
+    0 0 0 5px rgba(91, 161, 255, 0.14) !important;
+}
+
+.market-page-shell .market-mobile-table-row:focus-visible td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+
+.market-page-shell .market-mobile-table-row:focus-visible td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 /* Regression guard: polished headings and panels must never overflow mobile viewports. */
@@ -9621,6 +9672,64 @@ button {
 .primary-btn:focus-visible::after,
 .ghost-link:focus-visible::after {
   transform: scaleX(1);
+}
+
+/* Final Market focus lock: no square outlines on rounded market controls. */
+.market-page-shell :where(*):focus,
+.market-page-shell :where(*):focus-visible {
+  outline: none !important;
+}
+
+.market-page-shell :where(
+  button,
+  input,
+  select,
+  textarea,
+  .ghost-link,
+  .primary-btn,
+  .sport-filter-btn,
+  .market-mini-btn,
+  .market-mobile-max-btn,
+  .market-quote-action-btn,
+  .market-qty-input,
+  .market-mobile-qty-input,
+  .market-mobile-card,
+  .market-mobile-quote-card,
+  .market-side-select
+):focus-visible {
+  border-radius: inherit;
+}
+
+.market-page-shell :where(
+  .sport-filter-btn,
+  .market-mini-btn,
+  .market-mobile-max-btn,
+  .market-quote-action-btn,
+  .market-qty-input,
+  .market-mobile-qty-input,
+  .market-mobile-card,
+  .market-mobile-quote-card,
+  .market-side-select
+):focus-visible {
+  box-shadow:
+    0 0 0 2px rgba(91, 161, 255, 0.34),
+    0 0 0 5px rgba(91, 161, 255, 0.12) !important;
+}
+
+.market-page-shell .market-mobile-sort-cell:focus,
+.market-page-shell .market-mobile-sort-cell:focus-visible,
+.market-page-shell .market-mobile-table-row:focus,
+.market-page-shell .market-mobile-table-row:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.market-page-shell .market-toolbar-controls,
+.market-page-shell .market-table-search {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .home-trade-action-up:hover {
