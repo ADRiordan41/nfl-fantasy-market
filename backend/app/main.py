@@ -9039,7 +9039,11 @@ def settle_week(week: int, db: Session = Depends(get_db)):
 
 
 @app.post("/season/close/{season}", response_model=SeasonCloseOut)
-def close_season(season: int, db: Session = Depends(get_db)):
+def close_season(
+    season: int,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
     if season <= 0:
         raise HTTPException(400, "season must be a positive integer")
 
@@ -9095,7 +9099,11 @@ def close_season(season: int, db: Session = Depends(get_db)):
 
 
 @app.post("/season/reset/{season}", response_model=SeasonResetOut)
-def reset_season(season: int, db: Session = Depends(get_db)):
+def reset_season(
+    season: int,
+    _admin: AuthContext = Depends(get_admin_context),
+    db: Session = Depends(get_db),
+):
     if season <= 0:
         raise HTTPException(400, "season must be a positive integer")
 
