@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { SVGProps } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { apiGet, getAuthToken } from "@/lib/api";
 import { formatCurrency, formatNumber, formatSignedPercent } from "@/lib/format";
 import { useAdaptivePolling } from "@/lib/use-adaptive-polling";
@@ -15,50 +15,108 @@ import type {
 
 type HomeIntroStep = {
   eyebrow: string;
-  icon: "market" | "position" | "portfolio" | "forum";
+  icon: "market" | "position" | "portfolio" | "live" | "forum";
   href: string;
   title: string;
   body: string;
   tone?: "up" | "down" | "brand";
+  tradeActions?: {
+    label: string;
+    description: string;
+    tone: "up" | "down";
+  }[];
 };
 
 const HOME_INTRO_STEPS: HomeIntroStep[] = [
   {
-    eyebrow: "01",
+    eyebrow: "I",
     icon: "market",
     href: "/market",
-    title: "Read The Market",
-    body: "Browse player prices, recent movement, teams, and positions. Look for athletes you think the market is missing before everyone else catches up.",
+    title: "Explore the Market",
+    body: "Player prices move as their fantasy value changes. Strong performance, rising opportunity, and market demand can push prices up, while weaker production or fading roles can pull them down. Early prices lean on projections, then actual fantasy production and market pressure carry more weight as the season progresses. When the season ends, shares liquidate at each player's total fantasy points.",
     tone: "brand",
   },
   {
-    eyebrow: "02",
+    eyebrow: "II",
     icon: "position",
     href: "/market",
-    title: "Take A Position",
+    title: "Take a Position by Buying and Shorting Players",
     body: "Buy when you think fantasy value is headed up, or short when you think the price is too high. Preview the quote, then confirm the trade when the move looks right.",
+    tradeActions: [
+      {
+        label: "Buy",
+        description: "Open a long position when you think value is rising.",
+        tone: "up",
+      },
+      {
+        label: "Short",
+        description: "Open a short position when you think value is too high.",
+        tone: "down",
+      },
+    ],
   },
   {
-    eyebrow: "03",
+    eyebrow: "III",
     icon: "portfolio",
     href: "/portfolio",
-    title: "Track Your Portfolio",
+    title: "Manage Your Portfolio",
     body: "Use Portfolio and Profile to follow cash, holdings, open positions, gains, and public activity as your strategy develops.",
+    tone: "brand",
+    tradeActions: [
+      {
+        label: "Sell",
+        description: "Close long shares to lock in cash or reduce exposure.",
+        tone: "down",
+      },
+      {
+        label: "Cover",
+        description: "Close short shares when your downside read has played out.",
+        tone: "up",
+      },
+    ],
+  },
+  {
+    eyebrow: "IV",
+    icon: "live",
+    href: "/live",
+    title: "Follow the Action in the Live Game Center",
+    body: "Watch active games, track win probability swings, and follow player performance as live stats update.",
     tone: "brand",
   },
   {
-    eyebrow: "04",
+    eyebrow: "V",
     icon: "forum",
     href: "/community",
-    title: "Join The Forum",
+    title: "Join the Conversation in the Forum",
     body: "Post takes, compare ideas, and talk through market moves with other users before the next price swing.",
     tone: "brand",
   },
 ];
 
-function HomeIntroIcon({ kind, ...props }: SVGProps<SVGSVGElement> & { kind: HomeIntroStep["icon"] }) {
+function HomeDockIconGradient({ id }: { id: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+    <defs>
+      <linearGradient id={id} x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stopColor="#ffad58" />
+        <stop offset="0.34" stopColor="#ff8f2f" />
+        <stop offset="0.62" stopColor="#66a9ff" />
+        <stop offset="1" stopColor="#3f8cff" />
+      </linearGradient>
+    </defs>
+  );
+}
+
+function HomeIntroIcon({ kind, ...props }: SVGProps<SVGSVGElement> & { kind: HomeIntroStep["icon"] }) {
+  const gradientId = useId();
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      {...props}
+      style={{ ...(props.style ?? {}), stroke: `url(#${gradientId})` }}
+    >
+      <HomeDockIconGradient id={gradientId} />
       {kind === "market" && (
         <>
           <path d="M4 20V10" />
@@ -83,6 +141,16 @@ function HomeIntroIcon({ kind, ...props }: SVGProps<SVGSVGElement> & { kind: Hom
           <path d="M12 3v9h9" />
           <path d="M12 3a9 9 0 1 0 9 9" />
           <path d="M12 12 5.8 18.2" />
+        </>
+      )}
+      {kind === "live" && (
+        <>
+          <path d="M8.6 4 12 7" />
+          <path d="M15.4 4 12 7" />
+          <rect x="2.6" y="7" width="18.8" height="11.6" rx="2.6" />
+          <path d="M8.4 20.2h7.2" />
+          <path d="M7.4 18.6 6.4 20.4" />
+          <path d="m16.6 18.6 1 1.8" />
         </>
       )}
       {kind === "forum" && (
@@ -278,52 +346,34 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="home-onboarding-layout">
-          <div className="home-steps">
-            {HOME_INTRO_STEPS.map((step) => (
-              <Link
-                href={step.href}
-                className={`home-step${step.tone ? ` home-step-${step.tone}` : ""}`}
-                key={step.title}
-                aria-label={`${step.title}: ${step.body}`}
-              >
+        <div className="home-steps">
+          {HOME_INTRO_STEPS.map((step) => (
+            <Link
+              href={step.href}
+              className={`home-step${step.tone ? ` home-step-${step.tone}` : ""}`}
+              key={step.title}
+              aria-label={`${step.title}: ${step.body}`}
+            >
+              <span className="home-step-marker">
+                <span className="home-step-number">{step.eyebrow}</span>
                 <span className="home-step-icon-wrap">
                   <HomeIntroIcon kind={step.icon} className="home-step-icon" />
-                  <span className="home-step-number">{step.eyebrow}</span>
                 </span>
-                <h3>{step.title}</h3>
-                <p className="subtle home-step-body">{step.body}</p>
-              </Link>
-            ))}
-          </div>
-
-          <aside className="home-trade-primer" aria-label="Supported trade actions">
-            <div>
-              <p className="eyebrow">Trade Actions</p>
-              <h3>Open, close, and manage your read.</h3>
-              <p className="subtle">
-                Every trade starts with a quote preview, so you can check the move before it hits your portfolio.
-              </p>
-            </div>
-            <div className="home-trade-action-grid">
-              <div className="home-trade-action home-trade-action-up">
-                <span>Buy</span>
-                <p>Open a long position when you think value is rising.</p>
-              </div>
-              <div className="home-trade-action home-trade-action-down">
-                <span>Sell</span>
-                <p>Close long shares to lock in cash or reduce exposure.</p>
-              </div>
-              <div className="home-trade-action home-trade-action-down">
-                <span>Short</span>
-                <p>Open a short position when you think value is too high.</p>
-              </div>
-              <div className="home-trade-action home-trade-action-up">
-                <span>Cover</span>
-                <p>Close short shares when your downside read has played out.</p>
-              </div>
-            </div>
-          </aside>
+              </span>
+              <h3>{step.title}</h3>
+              <p className="subtle home-step-body">{step.body}</p>
+              {step.tradeActions && (
+                <div className="home-step-trade-grid">
+                  {step.tradeActions.map((action) => (
+                    <div className={`home-trade-action home-trade-action-${action.tone}`} key={action.label}>
+                      <span>{action.label}</span>
+                      <p>{action.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Link>
+          ))}
         </div>
       </section>
 

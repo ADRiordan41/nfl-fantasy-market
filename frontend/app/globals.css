@@ -1593,6 +1593,12 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.home-steps .home-step:nth-child(5):last-child {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: calc((100% - 12px) / 2);
+}
+
 .home-step {
   position: relative;
   min-height: 178px;
@@ -1615,18 +1621,33 @@ h1 {
   opacity: 0.7;
 }
 
+.home-step-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .home-step-number {
   display: inline-flex;
-  width: 34px;
-  height: 24px;
+  width: auto;
+  min-width: 44px;
+  height: auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(141, 174, 225, 0.4);
-  border-radius: 999px;
-  background: rgba(5, 11, 22, 0.54);
-  color: #ffbd74;
-  font-size: 0.76rem;
-  font-weight: 800;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #f7d875;
+  background: linear-gradient(180deg, #fff3b0 0%, #f2c94c 32%, #b98216 62%, #ffe38a 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  font-size: 1.6rem;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28),
+    0 2px 6px rgba(113, 73, 8, 0.42);
+  -webkit-text-fill-color: transparent;
 }
 
 .home-step h3 {
@@ -1642,8 +1663,19 @@ h1 {
   line-height: 1.5;
 }
 
-.home-step-brand .home-step-number {
-  color: #9acbff;
+.home-step-trade-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.home-step .home-trade-action {
+  padding: 10px;
+}
+
+.home-step .home-trade-action p {
+  font-size: 0.84rem;
 }
 
 .home-trade-primer {
@@ -9501,6 +9533,12 @@ body {
     grid-template-columns: 1fr !important;
   }
 
+  .home-explainer .home-steps .home-step:nth-child(5):last-child {
+    grid-column: auto !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+  }
+
   .home-explainer .home-step {
     min-height: auto !important;
   }
@@ -9569,12 +9607,11 @@ body {
 }
 
 .home-step-number {
-  position: absolute;
-  right: -8px;
-  bottom: -7px;
-  width: 27px !important;
-  height: 20px !important;
-  font-size: 0.68rem !important;
+  position: static;
+  width: auto !important;
+  min-width: 44px !important;
+  height: auto !important;
+  font-size: 1.6rem !important;
 }
 
 .empty-state-icon-wrap,
