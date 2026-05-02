@@ -91,7 +91,7 @@ const FORUM_POSTS = [
     id: 1,
     title: "MLB Opening Week Ideas",
     body_preview: "Who are your top long picks for week one?",
-    author_username: "foreverhopeful",
+    author_username: "ForeverHopeful",
     comment_count: 8,
     view_count: 120,
     created_at: "2026-02-01T00:00:00Z",
@@ -507,7 +507,7 @@ const RECENT_TRANSACTIONS = [
   {
     id: 501,
     user_id: 1,
-    username: "foreverhopeful",
+    username: "ForeverHopeful",
     player_id: 101,
     player_name: "Aaron Judge",
     sport: "MLB",
@@ -522,7 +522,7 @@ const RECENT_TRANSACTIONS = [
   {
     id: 502,
     user_id: 1,
-    username: "foreverhopeful",
+    username: "ForeverHopeful",
     player_id: 102,
     player_name: "Ronald Acuna Jr.",
     sport: "MLB",
@@ -537,7 +537,7 @@ const RECENT_TRANSACTIONS = [
   {
     id: 503,
     user_id: 1,
-    username: "foreverhopeful",
+    username: "ForeverHopeful",
     player_id: 103,
     player_name: "Mookie Betts",
     sport: "MLB",
@@ -629,7 +629,7 @@ async function mockApi(page: Page, authEnabled: boolean, options: MockApiOptions
       if (!authEnabled) return json(route, { detail: "Authentication required." }, 401);
       return json(route, {
         id: 1,
-        username: "foreverhopeful",
+        username: "ForeverHopeful",
         profile_image_url: "https://example.com/avatar.png",
         bio: "Long volatility, short hype.",
         cash_balance: 98765.43,
@@ -663,7 +663,7 @@ async function mockApi(page: Page, authEnabled: boolean, options: MockApiOptions
       if (!authEnabled) return json(route, { detail: "Authentication required." }, 401);
       return json(route, {
         id: 1,
-        username: "foreverhopeful",
+        username: "ForeverHopeful",
         cash_balance: 98765.43,
         profile_image_url: null,
         bio: null,

@@ -63,10 +63,10 @@ class DynamicPricingTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.db.close()
 
-    def make_user(self, *, username: str = "foreverhopeful", cash_balance: float = 100000.0) -> User:
+    def make_user(self, *, username: str = "ForeverHopeful", cash_balance: float = 100000.0) -> User:
         user = User(
             username=username,
-            email=f"{username}@example.com",
+            email=f"{username.lower()}@example.com",
             cash_balance=cash_balance,
             password_hash="test",
         )
@@ -74,6 +74,26 @@ class DynamicPricingTests(unittest.TestCase):
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def test_username_lookup_accepts_either_case(self) -> None:
+        from backend.app.main import get_user_by_username_or_raise
+
+        user = self.make_user(username="ForeverHopeful")
+
+        lowercase_lookup = get_user_by_username_or_raise(
+            db=self.db,
+            username="foreverhopeful",
+            for_update=False,
+        )
+        display_case_lookup = get_user_by_username_or_raise(
+            db=self.db,
+            username="ForeverHopeful",
+            for_update=False,
+        )
+
+        self.assertEqual(lowercase_lookup.id, user.id)
+        self.assertEqual(display_case_lookup.id, user.id)
+        self.assertEqual(lowercase_lookup.username, "ForeverHopeful")
 
     def make_player(
         self,

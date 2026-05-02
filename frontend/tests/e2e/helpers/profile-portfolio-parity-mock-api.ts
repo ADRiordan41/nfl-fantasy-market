@@ -76,7 +76,7 @@ export async function setupProfilePortfolioParityMockApi(page: Page): Promise<vo
 
   const meProfile = {
     id: 1,
-    username: "foreverhopeful",
+    username: "ForeverHopeful",
     profile_image_url: null,
     bio: "Long volatility.",
     cash_balance: 98765.43,
@@ -133,7 +133,7 @@ export async function setupProfilePortfolioParityMockApi(page: Page): Promise<vo
     if (method === "GET" && pathname === "/auth/me") {
       return json(route, {
         id: 1,
-        username: "foreverhopeful",
+        username: "ForeverHopeful",
         cash_balance: portfolio.cash_balance,
         profile_image_url: null,
         bio: null,

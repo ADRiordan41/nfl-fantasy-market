@@ -37,6 +37,16 @@ npm run dev
 
 Frontend: `http://localhost:3000` (or `3001` if `3000` is busy)
 
+## Test
+On Windows, run backend tests from the repo root with:
+
+```powershell
+.\test.ps1 backend/tests/test_dynamic_pricing.py
+```
+
+The helper uses the repo `.venv` when it exists, so it does not matter which system Python PowerShell finds first.
+It also installs anything listed in `backend/requirements.txt` before running pytest.
+
 ## Mobile App Starter
 There is now an Expo-based mobile starter app in [mobile/package.json](/workspace/mobile/package.json).
 
@@ -166,8 +176,8 @@ docker compose up --build -d api
 - Current user: `GET /auth/me`
 - Logout: `POST /auth/logout`
 - Token auth required for market/portfolio/search/forum/profile endpoints
-- Seeded user: `foreverhopeful` / `sandbox` (override via `SANDBOX_USERNAME` / `SANDBOX_PASSWORD`)
-- Admin users from `ADMIN_USERNAMES` (comma-separated; default `foreverhopeful`)
+- Seeded user: `ForeverHopeful` / `sandbox` (override via `SANDBOX_USERNAME` / `SANDBOX_PASSWORD`)
+- Admin users from `ADMIN_USERNAMES` (comma-separated; default `ForeverHopeful`)
 - Admin stats import:
   - Preview: `POST /admin/stats/preview`
   - Publish: `POST /admin/stats/publish`

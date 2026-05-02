@@ -4,7 +4,7 @@ import time
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -141,7 +141,7 @@ POSITION_DEFAULT_K = {
 }
 
 DEFAULT_PRIMARY_SPORT = os.environ.get("DEFAULT_PRIMARY_SPORT", "NFL").strip().upper() or "NFL"
-DEFAULT_SANDBOX_USERNAME = (os.environ.get("SANDBOX_USERNAME") or "ForeverHopeful").strip().lower() or "foreverhopeful"
+DEFAULT_SANDBOX_USERNAME = (os.environ.get("SANDBOX_USERNAME") or "ForeverHopeful").strip() or "ForeverHopeful"
 LEGACY_SANDBOX_USERNAME = "sandbox"
 REQUIRE_PROJECTIONS = os.environ.get("REQUIRE_PROJECTIONS", "false").strip().lower() in {"1", "true", "yes"}
 SEED_UPDATE_EXISTING_PRICING = os.environ.get("SEED_UPDATE_EXISTING_PRICING", "false").strip().lower() in {
@@ -910,12 +910,15 @@ def normalize_open_holdings_to_latest_spot_basis(db: Session) -> None:
 
 def seed(db: Session):
     sandbox_username = DEFAULT_SANDBOX_USERNAME
-    user = db.execute(select(User).where(User.username == sandbox_username)).scalar_one_or_none()
+    sandbox_username_key = sandbox_username.lower()
+    user = db.execute(select(User).where(func.lower(User.username) == sandbox_username_key)).scalar_one_or_none()
     if not user and sandbox_username != LEGACY_SANDBOX_USERNAME:
         legacy_user = db.execute(select(User).where(User.username == LEGACY_SANDBOX_USERNAME)).scalar_one_or_none()
         if legacy_user:
             legacy_user.username = sandbox_username
             user = legacy_user
+    if user and str(user.username) != sandbox_username:
+        user.username = sandbox_username
     sandbox_password_hash = hash_password(os.environ.get("SANDBOX_PASSWORD", "sandbox"))
     if not user:
         starting_cash = Decimal(os.environ.get("STARTING_CASH", "100000"))

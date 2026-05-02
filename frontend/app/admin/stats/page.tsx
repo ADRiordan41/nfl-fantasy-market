@@ -130,7 +130,7 @@ export default function AdminStatsPage() {
   const [homeHowToSteps, setHomeHowToSteps] = useState<HomeHowToStep[]>([]);
   const [homeHowToJson, setHomeHowToJson] = useState("[]");
   const [busyHomeHowToContent, setBusyHomeHowToContent] = useState(false);
-  const [equityLookupUsername, setEquityLookupUsername] = useState("foreverhopeful");
+  const [equityLookupUsername, setEquityLookupUsername] = useState("ForeverHopeful");
   const [adminUsers, setAdminUsers] = useState<AdminUserListItem[]>([]);
   const [userPickerQuery, setUserPickerQuery] = useState("");
   const [busyAdminUsers, setBusyAdminUsers] = useState(false);

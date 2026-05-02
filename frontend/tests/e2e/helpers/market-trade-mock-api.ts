@@ -182,7 +182,7 @@ export async function setupMarketTradeMockApi(page: Page, options: SetupOptions 
     if (method === "GET" && pathname === "/auth/me") {
       return json(route, {
         id: 1,
-        username: "foreverhopeful",
+        username: "ForeverHopeful",
         cash_balance: cashBalance,
         profile_image_url: null,
         bio: null,
