@@ -380,6 +380,8 @@ SPORT_SEASON_PROGRESS_UNITS = {
     "NBA": int(os.environ.get("NBA_SEASON_GAMES", "82")),
     "NHL": int(os.environ.get("NHL_SEASON_GAMES", "82")),
 }
+MLB_STARTING_PITCHER_SEASON_STARTS = int(os.environ.get("MLB_STARTING_PITCHER_SEASON_STARTS", "32"))
+MLB_STARTING_PITCHER_ROTATION_GAMES = int(os.environ.get("MLB_STARTING_PITCHER_ROTATION_GAMES", "5"))
 SEASON_CLOSE_PAYOUT_PER_POINT = Decimal(os.environ.get("SEASON_CLOSE_PAYOUT_PER_POINT", "1.0"))
 MIN_SPOT_PRICE = Decimal(os.environ.get("MIN_SPOT_PRICE", "1.0"))
 MAINTENANCE_MARGIN_LONG = Decimal(os.environ.get("MAINTENANCE_MARGIN_LONG", "0.0"))
@@ -1543,6 +1545,24 @@ def season_progress_units_for_sport(sport: str | None) -> int:
     return max(1, SPORT_SEASON_PROGRESS_UNITS.get(sport_code, DEFAULT_SEASON_PROGRESS_UNITS))
 
 
+def is_mlb_starting_pitcher(player: Player) -> bool:
+    return str(player.sport).strip().upper() == "MLB" and str(player.position).strip().upper() == "SP"
+
+
+def season_progress_units_for_player(player: Player) -> int:
+    if is_mlb_starting_pitcher(player):
+        return max(1, MLB_STARTING_PITCHER_SEASON_STARTS)
+    return season_progress_units_for_sport(player.sport)
+
+
+def projection_replacement_units_for_player(player: Player, snapshot: PlayerStatsSnapshot) -> int:
+    if is_mlb_starting_pitcher(player):
+        rotation_games = max(1, MLB_STARTING_PITCHER_ROTATION_GAMES)
+        expected_starts_elapsed = max(0, int(snapshot.team_games_played)) // rotation_games
+        return max(0, int(snapshot.latest_week), expected_starts_elapsed)
+    return max(0, int(snapshot.team_games_played))
+
+
 def detect_column(sample_row: dict[str, str], candidates: tuple[str, ...]) -> str:
     keys_by_normalized = {normalize_text(key): key for key in sample_row.keys()}
     for candidate in candidates:
@@ -2129,7 +2149,6 @@ def get_pricing_context(
     )
     points_to_date = snapshot.points_to_date
     latest_week = snapshot.latest_week
-    team_games_played = snapshot.team_games_played
     live_game_id = normalize_optional_profile_field(player.live_game_id)
 
     if bool(player.live_now) and player.live_game_fantasy_points is not None:
@@ -2141,9 +2160,10 @@ def get_pricing_context(
             points_to_date += live_points
             if player.live_week is not None:
                 latest_week = max(latest_week, int(player.live_week))
-    season_units = season_progress_units_for_sport(player.sport)
-    clamped_team_games = min(max(int(team_games_played), 0), season_units)
-    removed_projection = Decimal(clamped_team_games) * (projected_points / Decimal(season_units))
+    season_units = season_progress_units_for_player(player)
+    projection_units_elapsed = projection_replacement_units_for_player(player, snapshot)
+    clamped_projection_units = min(max(int(projection_units_elapsed), 0), season_units)
+    removed_projection = Decimal(clamped_projection_units) * (projected_points / Decimal(season_units))
     fundamental = max(Decimal("1"), projected_points - removed_projection + points_to_date)
     return fundamental, points_to_date, latest_week
 

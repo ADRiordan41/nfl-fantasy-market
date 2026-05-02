@@ -531,6 +531,99 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertEqual(1, int(injured_snapshot.team_games_played))
         self.assertLess(float(decayed_fundamental), float(baseline_fundamental))
 
+    def test_mlb_starting_pitcher_does_not_decay_between_starts(self) -> None:
+        admin = self.make_user()
+        pitcher = self.make_player(name="Rotation Ace", team="PIT", sport="MLB", position="SP", base_price=185.0)
+        teammate = self.make_player(name="Everyday Bat", team="PIT", sport="MLB", position="OF", base_price=160.0)
+
+        baseline_fundamental, _, _ = get_pricing_context(
+            pitcher,
+            get_stats_snapshot_by_player(self.db, [int(pitcher.id)]),
+        )
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(teammate.id),
+                week=1,
+                fantasy_points=6.0,
+                live_game_id="PIT-G1",
+                live_game_label="PIT @ CHC",
+                live_game_status="Final",
+                live_game_fantasy_points=6.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        pitcher_snapshot = get_stats_snapshot_by_player(self.db, [int(pitcher.id)])[int(pitcher.id)]
+        after_teammate_game, _, _ = get_pricing_context(pitcher, {int(pitcher.id): pitcher_snapshot})
+
+        self.assertEqual(0.0, float(pitcher_snapshot.points_to_date))
+        self.assertEqual(1, int(pitcher_snapshot.team_games_played))
+        self.assertEqual(float(baseline_fundamental), float(after_teammate_game))
+
+    def test_mlb_starting_pitcher_projection_replacement_advances_per_start(self) -> None:
+        admin = self.make_user()
+        pitcher = self.make_player(name="Rotation Ace", team="PIT", sport="MLB", position="SP", base_price=320.0)
+
+        baseline_fundamental, _, _ = get_pricing_context(
+            pitcher,
+            get_stats_snapshot_by_player(self.db, [int(pitcher.id)]),
+        )
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(pitcher.id),
+                week=1,
+                fantasy_points=0.0,
+                live_game_id="PIT-SP-1",
+                live_game_label="PIT @ CHC",
+                live_game_status="Final",
+                live_game_fantasy_points=0.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        pitcher_snapshot = get_stats_snapshot_by_player(self.db, [int(pitcher.id)])[int(pitcher.id)]
+        after_start, _, _ = get_pricing_context(pitcher, {int(pitcher.id): pitcher_snapshot})
+
+        self.assertEqual(1, pitcher_snapshot.latest_week)
+        self.assertEqual(0.0, float(pitcher_snapshot.points_to_date))
+        self.assertAlmostEqual(float(baseline_fundamental) - 10.0, float(after_start), places=6)
+
+    def test_mlb_starting_pitcher_decays_after_missed_rotation_turn(self) -> None:
+        admin = self.make_user()
+        pitcher = self.make_player(name="Injured Ace", team="PIT", sport="MLB", position="SP", base_price=320.0)
+        teammate = self.make_player(name="Everyday Bat", team="PIT", sport="MLB", position="OF", base_price=160.0)
+
+        baseline_fundamental, _, _ = get_pricing_context(
+            pitcher,
+            get_stats_snapshot_by_player(self.db, [int(pitcher.id)]),
+        )
+
+        for game_number in range(1, 6):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(teammate.id),
+                    week=game_number,
+                    fantasy_points=float(game_number),
+                    live_game_id=f"PIT-G{game_number}",
+                    live_game_label=f"PIT Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=1.0,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        pitcher_snapshot = get_stats_snapshot_by_player(self.db, [int(pitcher.id)])[int(pitcher.id)]
+        after_missed_turn, _, _ = get_pricing_context(pitcher, {int(pitcher.id): pitcher_snapshot})
+
+        self.assertEqual(0, pitcher_snapshot.latest_week)
+        self.assertEqual(5, int(pitcher_snapshot.team_games_played))
+        self.assertAlmostEqual(float(baseline_fundamental) - 10.0, float(after_missed_turn), places=6)
+
 
 if __name__ == "__main__":
     unittest.main()
