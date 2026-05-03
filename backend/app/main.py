@@ -2096,18 +2096,11 @@ def get_stats_snapshot_by_player(
         if player_id in snapshots:
             continue
         team_key = team_key_by_player_id.get(player_id)
-        if (
-            team_key is not None
-            and team_key[0] == "MLB"
-            and not is_mlb_starting_pitcher_by_player_id.get(player_id, False)
-        ):
-            team_games_played = 0
-        else:
-            team_games_played = (
-                team_games_played_by_key.get(team_key, 0)
-                if team_key is not None
-                else 0
-            )
+        team_games_played = (
+            team_games_played_by_key.get(team_key, 0)
+            if team_key is not None
+            else 0
+        )
         snapshots[player_id] = PlayerStatsSnapshot(
             points_to_date=Decimal("0"),
             latest_week=0,
@@ -2266,8 +2259,6 @@ def sp_price_point_looks_cratered(
         return False
     if is_mlb_starting_pitcher(player):
         return fundamental_price <= max(Decimal("1"), points_to_date + Decimal("1"))
-    if latest_week == 0 and points_to_date == 0 and fundamental_price < Decimal(str(player.base_price)):
-        return True
     return False
 
 
@@ -2288,6 +2279,18 @@ def current_price_context_by_player(
             current_spot_price(player, fundamental_price=fundamental),
         )
     return contexts
+
+
+def is_mlb_no_direct_stats_context(player: Player, context: tuple[Decimal, Decimal, int, Decimal] | None) -> bool:
+    if context is None:
+        return False
+    _fundamental, points_to_date, latest_week, _spot = context
+    return (
+        str(player.sport).strip().upper() == "MLB"
+        and not is_mlb_starting_pitcher(player)
+        and int(latest_week) == 0
+        and points_to_date == 0
+    )
 
 
 def record_price_points_for_players(
@@ -2451,13 +2454,16 @@ def build_market_mover_rows(
             or latest_row
         )
         reference_spot, reference_at = reference_row
+        player = players_by_id[player_id]
+        if is_mlb_no_direct_stats_context(player, current_contexts.get(player_id)):
+            reference_spot = current_spot
+            reference_at = current_at
         safe_reference = reference_spot if reference_spot > Decimal("0") else current_spot
         if safe_reference > Decimal("0"):
             change_percent = ((current_spot - safe_reference) / safe_reference) * Decimal("100")
         else:
             change_percent = Decimal("0")
         change = current_spot - safe_reference
-        player = players_by_id[player_id]
         movers.append(
             MarketMoverOut(
                 player_id=player_id,
