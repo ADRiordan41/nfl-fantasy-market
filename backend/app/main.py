@@ -1957,13 +1957,17 @@ def get_stats_snapshot_by_player(
         return {}
 
     player_meta_rows = db.execute(
-        select(Player.id, Player.sport, Player.team).where(Player.id.in_(player_ids))
+        select(Player.id, Player.sport, Player.team, Player.position).where(Player.id.in_(player_ids))
     ).all()
     team_key_by_player_id: dict[int, tuple[str, str]] = {}
+    is_mlb_starting_pitcher_by_player_id: dict[int, bool] = {}
     team_keys: set[tuple[str, str]] = set()
-    for player_id, sport, team in player_meta_rows:
+    for player_id, sport, team, position in player_meta_rows:
         team_key = (str(sport).strip().upper(), str(team).strip().upper())
         team_key_by_player_id[int(player_id)] = team_key
+        is_mlb_starting_pitcher_by_player_id[int(player_id)] = (
+            str(sport).strip().upper() == "MLB" and str(position).strip().upper() == "SP"
+        )
         team_keys.add(team_key)
 
     team_games_played_by_key: dict[tuple[str, str], int] = {}
@@ -2019,16 +2023,21 @@ def get_stats_snapshot_by_player(
     players_with_game_history = set(game_rows_by_player.keys())
     for player_id, stat_rows in game_rows_by_player.items():
         latest_game_id, _, season_points = stat_rows[-1]
-        recent_rows = stat_rows[-RECENT_FORM_WINDOW:]
+        projection_rows = (
+            [row for row in stat_rows if abs(row[1]) > Decimal("0.000001")]
+            if is_mlb_starting_pitcher_by_player_id.get(player_id, False)
+            else stat_rows
+        )
+        recent_rows = projection_rows[-RECENT_FORM_WINDOW:]
         recent_points = sum((game_points for _, game_points, _ in recent_rows), Decimal("0"))
-        player_game_rows = len(stat_rows)
+        player_game_rows = len(projection_rows)
         team_key = team_key_by_player_id.get(player_id)
         team_games_played = (
-            team_games_played_by_key.get(team_key, player_game_rows)
+            team_games_played_by_key.get(team_key, len(stat_rows))
             if team_key is not None
-            else player_game_rows
+            else len(stat_rows)
         )
-        team_games_played = max(team_games_played, player_game_rows)
+        team_games_played = max(team_games_played, len(stat_rows), player_game_rows)
         snapshots[player_id] = PlayerStatsSnapshot(
             points_to_date=season_points,
             latest_week=player_game_rows,

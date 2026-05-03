@@ -575,11 +575,11 @@ class DynamicPricingTests(unittest.TestCase):
             StatIn(
                 player_id=int(pitcher.id),
                 week=1,
-                fantasy_points=0.0,
+                fantasy_points=12.0,
                 live_game_id="PIT-SP-1",
                 live_game_label="PIT @ CHC",
                 live_game_status="Final",
-                live_game_fantasy_points=0.0,
+                live_game_fantasy_points=12.0,
             ),
             self.auth_for(admin),
             self.db,
@@ -589,8 +589,39 @@ class DynamicPricingTests(unittest.TestCase):
         after_start, _, _ = get_pricing_context(pitcher, {int(pitcher.id): pitcher_snapshot})
 
         self.assertEqual(1, pitcher_snapshot.latest_week)
-        self.assertEqual(0.0, float(pitcher_snapshot.points_to_date))
-        self.assertAlmostEqual(float(baseline_fundamental) - 10.0, float(after_start), places=6)
+        self.assertEqual(12.0, float(pitcher_snapshot.points_to_date))
+        self.assertAlmostEqual(float(baseline_fundamental) + 2.0, float(after_start), places=6)
+
+    def test_mlb_starting_pitcher_zero_point_roster_rows_do_not_count_as_starts(self) -> None:
+        admin = self.make_user()
+        pitcher = self.make_player(name="Rostered Ace", team="PIT", sport="MLB", position="SP", base_price=320.0)
+
+        baseline_fundamental, _, _ = get_pricing_context(
+            pitcher,
+            get_stats_snapshot_by_player(self.db, [int(pitcher.id)]),
+        )
+
+        for game_number in range(1, 6):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(pitcher.id),
+                    week=game_number,
+                    fantasy_points=0.0,
+                    live_game_id=f"PIT-SP-DNP-{game_number}",
+                    live_game_label=f"PIT Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=0.0,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        pitcher_snapshot = get_stats_snapshot_by_player(self.db, [int(pitcher.id)])[int(pitcher.id)]
+        after_roster_rows, _, _ = get_pricing_context(pitcher, {int(pitcher.id): pitcher_snapshot})
+
+        self.assertEqual(0, pitcher_snapshot.latest_week)
+        self.assertEqual(5, int(pitcher_snapshot.team_games_played))
+        self.assertAlmostEqual(float(baseline_fundamental) - 10.0, float(after_roster_rows), places=6)
 
     def test_mlb_starting_pitcher_decays_after_missed_rotation_turn(self) -> None:
         admin = self.make_user()

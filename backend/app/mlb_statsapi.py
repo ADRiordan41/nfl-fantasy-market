@@ -295,6 +295,10 @@ def _format_mlb_live_stat_line(
     return None
 
 
+def _mlb_player_appeared_in_game(game_batting: dict[str, Any], game_pitching: dict[str, Any]) -> bool:
+    return _format_mlb_live_stat_line(game_batting=game_batting, game_pitching=game_pitching) is not None
+
+
 def fetch_mlb_statsapi_rows(
     *,
     schedule_date: date,
@@ -405,6 +409,8 @@ def fetch_mlb_statsapi_rows(
                 season_points = _mlb_hitter_points(season_batting) + _mlb_pitcher_points(season_pitching)
                 game_points = _mlb_hitter_points(game_batting) + _mlb_pitcher_points(game_pitching)
                 live_stat_line = _format_mlb_live_stat_line(game_batting=game_batting, game_pitching=game_pitching)
+                if not _mlb_player_appeared_in_game(game_batting=game_batting, game_pitching=game_pitching):
+                    continue
 
                 row = MlbIncomingStat(
                     name=name,
