@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 try:
     from backend.app.db import Base, SessionLocal, engine
+    from backend.app.infra import CACHE
     from backend.app.time_utils import chicago_now
     from backend.app.main import (
         AuthContext,
@@ -30,6 +31,7 @@ try:
     from backend.app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
 except ModuleNotFoundError:
     from app.db import Base, SessionLocal, engine
+    from app.infra import CACHE
     from app.time_utils import chicago_now
     from app.main import (
         AuthContext,
@@ -63,6 +65,7 @@ class DynamicPricingTests(unittest.TestCase):
             TEST_DB_PATH.unlink()
 
     def setUp(self) -> None:
+        CACHE.delete_prefixes(["v2|"])
         Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         self.db = SessionLocal()
@@ -538,6 +541,38 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertEqual(1, int(injured_snapshot.team_games_played))
         self.assertLess(float(decayed_fundamental), float(baseline_fundamental))
 
+    def test_mlb_player_without_rows_does_not_inherit_team_game_decay(self) -> None:
+        admin = self.make_user()
+        unmatched = self.make_player(name="Unmatched Bat", team="PIT", sport="MLB", position="OF", base_price=162.0)
+        teammate = self.make_player(name="Matched Bat", team="PIT", sport="MLB", position="OF", base_price=160.0)
+
+        baseline_fundamental, _, _ = get_pricing_context(
+            unmatched,
+            get_stats_snapshot_by_player(self.db, [int(unmatched.id)]),
+        )
+
+        for game_number in range(1, 57):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(teammate.id),
+                    week=game_number,
+                    fantasy_points=float(game_number),
+                    live_game_id=f"PIT-G{game_number}",
+                    live_game_label=f"PIT Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=1.0,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        unmatched_snapshot = get_stats_snapshot_by_player(self.db, [int(unmatched.id)])[int(unmatched.id)]
+        after_team_history, _, _ = get_pricing_context(unmatched, {int(unmatched.id): unmatched_snapshot})
+
+        self.assertEqual(0.0, float(unmatched_snapshot.points_to_date))
+        self.assertEqual(0, int(unmatched_snapshot.team_games_played))
+        self.assertEqual(float(baseline_fundamental), float(after_team_history))
+
     def test_mlb_starting_pitcher_does_not_decay_between_starts(self) -> None:
         admin = self.make_user()
         pitcher = self.make_player(name="Rotation Ace", team="PIT", sport="MLB", position="SP", base_price=185.0)
@@ -738,6 +773,34 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertEqual(2, len(history))
         self.assertAlmostEqual(300.0, history[0].spot_price, places=6)
         self.assertAlmostEqual(300.0, history[1].spot_price, places=6)
+
+    def test_mlb_no_stat_decay_rows_do_not_drive_movers_or_history(self) -> None:
+        player = self.make_player(name="No Stat Crater", team="PIT", sport="MLB", position="OF", base_price=162.0)
+        now = chicago_now()
+        cratered_price = 162.0 * (1.0 - (56.0 / 162.0))
+        self.db.add(
+            PricePoint(
+                player_id=int(player.id),
+                source="BAD_NO_STAT_DECAY",
+                fundamental_price=cratered_price,
+                spot_price=cratered_price,
+                total_shares=0.0,
+                points_to_date=0.0,
+                latest_week=0,
+                created_at=now - timedelta(hours=1),
+            )
+        )
+        self.db.commit()
+
+        movers = build_market_mover_rows(self.db, [player], window_hours=168)
+        history = get_player_history(player_id=int(player.id), limit=500, db=self.db)
+
+        self.assertEqual(1, len(movers))
+        self.assertAlmostEqual(162.0, movers[0].spot_price, places=6)
+        self.assertAlmostEqual(162.0, movers[0].reference_price, places=6)
+        self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
+        self.assertEqual(1, len(history))
+        self.assertAlmostEqual(162.0, history[0].spot_price, places=6)
 
 
 if __name__ == "__main__":

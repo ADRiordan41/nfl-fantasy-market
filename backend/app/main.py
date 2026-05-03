@@ -2096,11 +2096,18 @@ def get_stats_snapshot_by_player(
         if player_id in snapshots:
             continue
         team_key = team_key_by_player_id.get(player_id)
-        team_games_played = (
-            team_games_played_by_key.get(team_key, 0)
-            if team_key is not None
-            else 0
-        )
+        if (
+            team_key is not None
+            and team_key[0] == "MLB"
+            and not is_mlb_starting_pitcher_by_player_id.get(player_id, False)
+        ):
+            team_games_played = 0
+        else:
+            team_games_played = (
+                team_games_played_by_key.get(team_key, 0)
+                if team_key is not None
+                else 0
+            )
         snapshots[player_id] = PlayerStatsSnapshot(
             points_to_date=Decimal("0"),
             latest_week=0,
@@ -2253,10 +2260,15 @@ def sp_price_point_looks_cratered(
     *,
     fundamental_price: Decimal,
     points_to_date: Decimal,
+    latest_week: int | None = None,
 ) -> bool:
-    if not is_mlb_starting_pitcher(player):
+    if str(player.sport).strip().upper() != "MLB":
         return False
-    return fundamental_price <= max(Decimal("1"), points_to_date + Decimal("1"))
+    if is_mlb_starting_pitcher(player):
+        return fundamental_price <= max(Decimal("1"), points_to_date + Decimal("1"))
+    if latest_week == 0 and points_to_date == 0 and fundamental_price < Decimal(str(player.base_price)):
+        return True
+    return False
 
 
 def current_price_context_by_player(
@@ -2343,6 +2355,7 @@ def build_market_mover_rows(
             PricePoint.spot_price.label("spot_price"),
             PricePoint.fundamental_price.label("fundamental_price"),
             PricePoint.points_to_date.label("points_to_date"),
+            PricePoint.latest_week.label("latest_week"),
             PricePoint.created_at.label("created_at"),
             func.row_number()
             .over(
@@ -2363,6 +2376,7 @@ def build_market_mover_rows(
             pre_cutoff_ranked.c.spot_price,
             pre_cutoff_ranked.c.fundamental_price,
             pre_cutoff_ranked.c.points_to_date,
+            pre_cutoff_ranked.c.latest_week,
             pre_cutoff_ranked.c.created_at,
         ).where(pre_cutoff_ranked.c.rn == 1)
     ).all()
@@ -2375,6 +2389,7 @@ def build_market_mover_rows(
             player,
             fundamental_price=Decimal(str(row.fundamental_price)),
             points_to_date=Decimal(str(row.points_to_date)),
+            latest_week=int(row.latest_week),
         ):
             spot = latest_by_player.get(player_id, (spot, row.created_at))[0]
         pre_cutoff_by_player[player_id] = (spot, row.created_at)
@@ -2385,6 +2400,7 @@ def build_market_mover_rows(
             PricePoint.spot_price.label("spot_price"),
             PricePoint.fundamental_price.label("fundamental_price"),
             PricePoint.points_to_date.label("points_to_date"),
+            PricePoint.latest_week.label("latest_week"),
             PricePoint.created_at.label("created_at"),
             func.row_number()
             .over(
@@ -2405,6 +2421,7 @@ def build_market_mover_rows(
             post_cutoff_ranked.c.spot_price,
             post_cutoff_ranked.c.fundamental_price,
             post_cutoff_ranked.c.points_to_date,
+            post_cutoff_ranked.c.latest_week,
             post_cutoff_ranked.c.created_at,
         ).where(post_cutoff_ranked.c.rn == 1)
     ).all()
@@ -2417,6 +2434,7 @@ def build_market_mover_rows(
             player,
             fundamental_price=Decimal(str(row.fundamental_price)),
             points_to_date=Decimal(str(row.points_to_date)),
+            latest_week=int(row.latest_week),
         ):
             spot = latest_by_player.get(player_id, (spot, row.created_at))[0]
         post_cutoff_by_player[player_id] = (spot, row.created_at)
@@ -3333,6 +3351,7 @@ def get_player_history(
             player,
             fundamental_price=fundamental_price,
             points_to_date=points_to_date,
+            latest_week=int(point.latest_week),
         ):
             fundamental_price = last_sane_fundamental or fallback_fundamental
             spot = last_sane_spot or fallback_spot
