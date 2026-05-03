@@ -989,7 +989,7 @@ def enforce_rate_limit(*, key: str, limit: int, window_seconds: int, label: str)
 
 
 def build_cache_key(*parts: object) -> str:
-    normalized_parts: list[str] = []
+    normalized_parts: list[str] = ["v2"]
     for part in parts:
         text = str(part).strip()
         normalized_parts.append(text or "-")
@@ -2248,6 +2248,36 @@ def add_price_point(
     )
 
 
+def sp_price_point_looks_cratered(
+    player: Player,
+    *,
+    fundamental_price: Decimal,
+    points_to_date: Decimal,
+) -> bool:
+    if not is_mlb_starting_pitcher(player):
+        return False
+    return fundamental_price <= max(Decimal("1"), points_to_date + Decimal("1"))
+
+
+def current_price_context_by_player(
+    db: Session,
+    players: list[Player],
+) -> dict[int, tuple[Decimal, Decimal, int, Decimal]]:
+    if not players:
+        return {}
+    stats_snapshot = get_stats_snapshot_by_player(db, [int(player.id) for player in players])
+    contexts: dict[int, tuple[Decimal, Decimal, int, Decimal]] = {}
+    for player in players:
+        fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+        contexts[int(player.id)] = (
+            fundamental,
+            points_to_date,
+            latest_week,
+            current_spot_price(player, fundamental_price=fundamental),
+        )
+    return contexts
+
+
 def record_price_points_for_players(
     db: Session,
     players: list[Player],
@@ -2300,41 +2330,19 @@ def build_market_mover_rows(
     players_by_id = {int(player.id): player for player in players}
     player_ids = sorted(players_by_id.keys())
     cutoff = chicago_now() - timedelta(hours=window_hours)
-
-    latest_ranked = (
-        select(
-            PricePoint.player_id.label("player_id"),
-            PricePoint.spot_price.label("spot_price"),
-            PricePoint.created_at.label("created_at"),
-            func.row_number()
-            .over(
-                partition_by=PricePoint.player_id,
-                order_by=[PricePoint.created_at.desc(), PricePoint.id.desc()],
-            )
-            .label("rn"),
-        )
-        .where(PricePoint.player_id.in_(player_ids))
-        .subquery()
-    )
-    latest_rows = db.execute(
-        select(
-            latest_ranked.c.player_id,
-            latest_ranked.c.spot_price,
-            latest_ranked.c.created_at,
-        ).where(latest_ranked.c.rn == 1)
-    ).all()
+    current_contexts = current_price_context_by_player(db, players)
+    now = chicago_now()
     latest_by_player = {
-        int(row.player_id): (
-            Decimal(str(row.spot_price)),
-            row.created_at,
-        )
-        for row in latest_rows
+        player_id: (context[3], now)
+        for player_id, context in current_contexts.items()
     }
 
     pre_cutoff_ranked = (
         select(
             PricePoint.player_id.label("player_id"),
             PricePoint.spot_price.label("spot_price"),
+            PricePoint.fundamental_price.label("fundamental_price"),
+            PricePoint.points_to_date.label("points_to_date"),
             PricePoint.created_at.label("created_at"),
             func.row_number()
             .over(
@@ -2353,21 +2361,30 @@ def build_market_mover_rows(
         select(
             pre_cutoff_ranked.c.player_id,
             pre_cutoff_ranked.c.spot_price,
+            pre_cutoff_ranked.c.fundamental_price,
+            pre_cutoff_ranked.c.points_to_date,
             pre_cutoff_ranked.c.created_at,
         ).where(pre_cutoff_ranked.c.rn == 1)
     ).all()
-    pre_cutoff_by_player = {
-        int(row.player_id): (
-            Decimal(str(row.spot_price)),
-            row.created_at,
-        )
-        for row in pre_cutoff_rows
-    }
+    pre_cutoff_by_player: dict[int, tuple[Decimal, datetime]] = {}
+    for row in pre_cutoff_rows:
+        player_id = int(row.player_id)
+        player = players_by_id[player_id]
+        spot = Decimal(str(row.spot_price))
+        if sp_price_point_looks_cratered(
+            player,
+            fundamental_price=Decimal(str(row.fundamental_price)),
+            points_to_date=Decimal(str(row.points_to_date)),
+        ):
+            spot = latest_by_player.get(player_id, (spot, row.created_at))[0]
+        pre_cutoff_by_player[player_id] = (spot, row.created_at)
 
     post_cutoff_ranked = (
         select(
             PricePoint.player_id.label("player_id"),
             PricePoint.spot_price.label("spot_price"),
+            PricePoint.fundamental_price.label("fundamental_price"),
+            PricePoint.points_to_date.label("points_to_date"),
             PricePoint.created_at.label("created_at"),
             func.row_number()
             .over(
@@ -2386,25 +2403,23 @@ def build_market_mover_rows(
         select(
             post_cutoff_ranked.c.player_id,
             post_cutoff_ranked.c.spot_price,
+            post_cutoff_ranked.c.fundamental_price,
+            post_cutoff_ranked.c.points_to_date,
             post_cutoff_ranked.c.created_at,
         ).where(post_cutoff_ranked.c.rn == 1)
     ).all()
-    post_cutoff_by_player = {
-        int(row.player_id): (
-            Decimal(str(row.spot_price)),
-            row.created_at,
-        )
-        for row in post_cutoff_rows
-    }
-
-    missing_player_ids = [player_id for player_id in player_ids if player_id not in latest_by_player]
-    if missing_player_ids:
-        stats_snapshot = get_stats_snapshot_by_player(db, missing_player_ids)
-        now = chicago_now()
-        for player_id in missing_player_ids:
-            player = players_by_id[player_id]
-            fundamental, _, _ = get_pricing_context(player, stats_snapshot)
-            latest_by_player[player_id] = (current_spot_price(player, fundamental_price=fundamental), now)
+    post_cutoff_by_player: dict[int, tuple[Decimal, datetime]] = {}
+    for row in post_cutoff_rows:
+        player_id = int(row.player_id)
+        player = players_by_id[player_id]
+        spot = Decimal(str(row.spot_price))
+        if sp_price_point_looks_cratered(
+            player,
+            fundamental_price=Decimal(str(row.fundamental_price)),
+            points_to_date=Decimal(str(row.points_to_date)),
+        ):
+            spot = latest_by_player.get(player_id, (spot, row.created_at))[0]
+        post_cutoff_by_player[player_id] = (spot, row.created_at)
 
     movers: list[MarketMoverOut] = []
     for player_id in player_ids:
@@ -3301,19 +3316,41 @@ def get_player_history(
         .limit(limit)
     ).scalars().all()
 
-    result = [
-        PricePointOut(
-            player_id=point.player_id,
-            source=point.source,
-            fundamental_price=float(point.fundamental_price),
-            spot_price=float(point.spot_price),
-            total_shares=float(point.total_shares),
-            points_to_date=float(point.points_to_date),
-            latest_week=int(point.latest_week),
-            created_at=point.created_at,
+    current_context = current_price_context_by_player(db, [player]).get(int(player.id))
+    fallback_fundamental = current_context[0] if current_context else Decimal(str(player.base_price))
+    fallback_spot = current_context[3] if current_context else current_spot_price(
+        player,
+        fundamental_price=fallback_fundamental,
+    )
+    last_sane_fundamental: Decimal | None = None
+    last_sane_spot: Decimal | None = None
+    result: list[PricePointOut] = []
+    for point in points:
+        fundamental_price = Decimal(str(point.fundamental_price))
+        spot = Decimal(str(point.spot_price))
+        points_to_date = Decimal(str(point.points_to_date))
+        if sp_price_point_looks_cratered(
+            player,
+            fundamental_price=fundamental_price,
+            points_to_date=points_to_date,
+        ):
+            fundamental_price = last_sane_fundamental or fallback_fundamental
+            spot = last_sane_spot or fallback_spot
+        else:
+            last_sane_fundamental = fundamental_price
+            last_sane_spot = spot
+        result.append(
+            PricePointOut(
+                player_id=point.player_id,
+                source=point.source,
+                fundamental_price=float(fundamental_price),
+                spot_price=float(spot),
+                total_shares=float(point.total_shares),
+                points_to_date=float(point.points_to_date),
+                latest_week=int(point.latest_week),
+                created_at=point.created_at,
+            )
         )
-        for point in points
-    ]
     return set_cached_json(cache_key, result, ttl_seconds=30)
 
 

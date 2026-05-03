@@ -15,7 +15,9 @@ try:
     from backend.app.main import (
         AuthContext,
         admin_stats_publish,
+        build_market_mover_rows,
         buy,
+        get_player_history,
         get_pricing_context,
         get_stats_snapshot_by_player,
         PlayerStatsSnapshot,
@@ -24,7 +26,7 @@ try:
         short,
         upsert_weekly_stat,
     )
-    from backend.app.models import Player, PlayerGamePoint, User, WeeklyStat
+    from backend.app.models import Player, PlayerGamePoint, PricePoint, User, WeeklyStat
     from backend.app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
 except ModuleNotFoundError:
     from app.db import Base, SessionLocal, engine
@@ -32,7 +34,9 @@ except ModuleNotFoundError:
     from app.main import (
         AuthContext,
         admin_stats_publish,
+        build_market_mover_rows,
         buy,
+        get_player_history,
         get_pricing_context,
         get_stats_snapshot_by_player,
         PlayerStatsSnapshot,
@@ -41,7 +45,7 @@ except ModuleNotFoundError:
         short,
         upsert_weekly_stat,
     )
-    from app.models import Player, PlayerGamePoint, User, WeeklyStat
+    from app.models import Player, PlayerGamePoint, PricePoint, User, WeeklyStat
     from app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
 
 
@@ -675,6 +679,65 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertEqual(42.0, float(points_to_date))
         self.assertEqual(3, latest_week)
         self.assertAlmostEqual(322.0, float(fundamental), places=6)
+
+    def test_mlb_starting_pitcher_movers_ignore_cratered_latest_price_point(self) -> None:
+        pitcher = self.make_player(name="Cratered Mover", team="PIT", sport="MLB", position="SP", base_price=320.0)
+        now = chicago_now()
+        self.db.add(
+            PricePoint(
+                player_id=int(pitcher.id),
+                source="BAD_SP_POINT",
+                fundamental_price=42.0,
+                spot_price=42.0,
+                total_shares=0.0,
+                points_to_date=42.0,
+                latest_week=32,
+                created_at=now - timedelta(hours=1),
+            )
+        )
+        self.db.commit()
+
+        movers = build_market_mover_rows(self.db, [pitcher], window_hours=24)
+
+        self.assertEqual(1, len(movers))
+        self.assertAlmostEqual(320.0, movers[0].spot_price, places=6)
+        self.assertAlmostEqual(320.0, movers[0].reference_price, places=6)
+        self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
+
+    def test_mlb_starting_pitcher_history_sanitizes_cratered_price_points(self) -> None:
+        pitcher = self.make_player(name="Cratered Chart", team="PIT", sport="MLB", position="SP", base_price=320.0)
+        now = chicago_now()
+        self.db.add_all(
+            [
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="GOOD_SP_POINT",
+                    fundamental_price=300.0,
+                    spot_price=300.0,
+                    total_shares=0.0,
+                    points_to_date=20.0,
+                    latest_week=2,
+                    created_at=now - timedelta(hours=2),
+                ),
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="BAD_SP_POINT",
+                    fundamental_price=42.0,
+                    spot_price=42.0,
+                    total_shares=0.0,
+                    points_to_date=42.0,
+                    latest_week=32,
+                    created_at=now - timedelta(hours=1),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        history = get_player_history(player_id=int(pitcher.id), limit=500, db=self.db)
+
+        self.assertEqual(2, len(history))
+        self.assertAlmostEqual(300.0, history[0].spot_price, places=6)
+        self.assertAlmostEqual(300.0, history[1].spot_price, places=6)
 
 
 if __name__ == "__main__":
