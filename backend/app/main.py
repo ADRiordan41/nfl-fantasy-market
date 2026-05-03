@@ -1558,8 +1558,10 @@ def season_progress_units_for_player(player: Player) -> int:
 def projection_replacement_units_for_player(player: Player, snapshot: PlayerStatsSnapshot) -> int:
     if is_mlb_starting_pitcher(player):
         rotation_games = max(1, MLB_STARTING_PITCHER_ROTATION_GAMES)
+        actual_starts = max(0, int(snapshot.latest_week))
         expected_starts_elapsed = max(0, int(snapshot.team_games_played)) // rotation_games
-        return max(0, int(snapshot.latest_week), expected_starts_elapsed)
+        missed_start_failsafe = min(expected_starts_elapsed, actual_starts + 1)
+        return max(actual_starts, missed_start_failsafe)
     return max(0, int(snapshot.team_games_played))
 
 

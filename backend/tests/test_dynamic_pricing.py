@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 TEST_DB_PATH = Path(__file__).resolve().with_name("test_dynamic_pricing.sqlite3")
@@ -17,6 +18,7 @@ try:
         buy,
         get_pricing_context,
         get_stats_snapshot_by_player,
+        PlayerStatsSnapshot,
         portfolio,
         quote_buy,
         short,
@@ -33,6 +35,7 @@ except ModuleNotFoundError:
         buy,
         get_pricing_context,
         get_stats_snapshot_by_player,
+        PlayerStatsSnapshot,
         portfolio,
         quote_buy,
         short,
@@ -654,6 +657,24 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertEqual(0, pitcher_snapshot.latest_week)
         self.assertEqual(5, int(pitcher_snapshot.team_games_played))
         self.assertAlmostEqual(float(baseline_fundamental) - 10.0, float(after_missed_turn), places=6)
+
+    def test_mlb_starting_pitcher_failsafe_cannot_remove_full_projection_from_team_history(self) -> None:
+        pitcher = self.make_player(name="Partial Season Ace", team="PIT", sport="MLB", position="SP", base_price=320.0)
+        snapshot = PlayerStatsSnapshot(
+            points_to_date=Decimal("42.0"),
+            latest_week=3,
+            recent_points=Decimal("42.0"),
+            recent_sample_size=3,
+            latest_game_id="PIT-SP-3",
+            uses_game_history=True,
+            team_games_played=180,
+        )
+
+        fundamental, points_to_date, latest_week = get_pricing_context(pitcher, {int(pitcher.id): snapshot})
+
+        self.assertEqual(42.0, float(points_to_date))
+        self.assertEqual(3, latest_week)
+        self.assertAlmostEqual(322.0, float(fundamental), places=6)
 
 
 if __name__ == "__main__":
