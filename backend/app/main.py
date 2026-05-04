@@ -2368,7 +2368,7 @@ def cap_no_direct_mlb_contexts_to_latest_history(
         player
         for player in players
         if is_mlb_no_direct_stats_context(player, contexts.get(int(player.id)))
-        and abs(current_market_bias(player)) <= Decimal("0.000001")
+        and current_market_bias(player) <= Decimal("0.000001")
     ]
     latest_points = latest_price_point_by_player(db, [int(player.id) for player in candidate_players])
     for player in candidate_players:
@@ -2676,6 +2676,7 @@ def build_account_risk_snapshot(
     db: Session,
     user: User,
     for_update: bool = False,
+    display_prices: bool = False,
 ) -> AccountRiskSnapshot:
     holdings_stmt = select(Holding).where(
         Holding.user_id == user.id,
@@ -2705,7 +2706,12 @@ def build_account_risk_snapshot(
     players = db.execute(players_stmt).scalars().all()
     players_by_id = {int(player.id): player for player in players}
 
-    stats_snapshot = get_stats_snapshot_by_player(db, player_ids)
+    if display_prices:
+        display_contexts = current_display_price_context_by_player(db, players)
+        stats_snapshot = {}
+    else:
+        display_contexts = {}
+        stats_snapshot = get_stats_snapshot_by_player(db, player_ids)
 
     positions: list[PositionRisk] = []
     net_exposure = Decimal("0")
@@ -2720,7 +2726,11 @@ def build_account_risk_snapshot(
         if shares == 0:
             continue
 
-        fundamental_price, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+        display_context = display_contexts.get(int(player.id))
+        if display_context is None:
+            fundamental_price, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+        else:
+            fundamental_price, points_to_date, latest_week, _spot = display_context
         basis_amount = holding_basis_amount(holding)
         entry_basis_amount = holding_entry_basis_amount(holding)
         mark_basis_amount = holding_mark_basis_amount(holding)
@@ -4914,6 +4924,7 @@ def users_me_profile(
         db=db,
         user=user,
         for_update=False,
+        display_prices=True,
     )
     return user_profile_to_out(
         user=user,
@@ -4947,6 +4958,7 @@ def users_me_profile_update(
         db=db,
         user=user,
         for_update=False,
+        display_prices=True,
     )
     out = user_profile_to_out(
         user=user,
@@ -4979,6 +4991,7 @@ def users_profile_by_username(
         db=db,
         user=user,
         for_update=False,
+        display_prices=True,
     )
     friendship = friendship_status_for_users(db, int(auth.user.id), int(user.id))
     return user_profile_to_out(
@@ -6552,6 +6565,7 @@ def portfolio(
         db=db,
         user=user,
         for_update=False,
+        display_prices=True,
     )
     return PortfolioOut(
         cash_balance=float(user.cash_balance),
@@ -8837,6 +8851,7 @@ def admin_user_equity_snapshot(
         db=db,
         user=user,
         for_update=False,
+        display_prices=True,
     )
     baseline_cash = float(REGISTER_STARTING_CASH)
     equity = float(snapshot.equity)

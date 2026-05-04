@@ -16,6 +16,7 @@ try:
     from backend.app.main import (
         AuthContext,
         admin_stats_publish,
+        build_account_risk_snapshot,
         build_market_mover_rows,
         buy,
         get_player,
@@ -29,7 +30,7 @@ try:
         short,
         upsert_weekly_stat,
     )
-    from backend.app.models import Player, PlayerGamePoint, PricePoint, User, WeeklyStat
+    from backend.app.models import Holding, Player, PlayerGamePoint, PricePoint, User, WeeklyStat
     from backend.app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
 except ModuleNotFoundError:
     from app.db import Base, SessionLocal, engine
@@ -38,6 +39,7 @@ except ModuleNotFoundError:
     from app.main import (
         AuthContext,
         admin_stats_publish,
+        build_account_risk_snapshot,
         build_market_mover_rows,
         buy,
         get_player,
@@ -51,7 +53,7 @@ except ModuleNotFoundError:
         short,
         upsert_weekly_stat,
     )
-    from app.models import Player, PlayerGamePoint, PricePoint, User, WeeklyStat
+    from app.models import Holding, Player, PlayerGamePoint, PricePoint, User, WeeklyStat
     from app.schemas import AdminStatsPreviewIn, StatIn, TradeIn
 
 
@@ -1263,6 +1265,61 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertEqual(0, latest_week)
         self.assertAlmostEqual(360.0, player_out.spot_price, places=6)
         self.assertAlmostEqual(360.0, history[-1].spot_price, places=6)
+
+    def test_short_no_direct_mlb_holding_does_not_show_loss_from_corrected_team_games(self) -> None:
+        admin = self.make_user()
+        user = self.make_user(username="shortuser", cash_balance=100000.0)
+        inactive = self.make_player(name="Inactive Short", team="WSH", sport="MLB", position="OF", base_price=384.0)
+        teammate = self.make_player(name="Active Nat", team="WSH", sport="MLB", position="OF", base_price=162.0)
+        now = chicago_now()
+        inactive.market_bias = -1.0
+        inactive.total_shares = -1.0
+        self.db.add(
+            Holding(
+                user_id=int(user.id),
+                player_id=int(inactive.id),
+                shares_owned=-1.0,
+                basis_amount=380.0,
+                entry_basis_amount=380.0,
+                mark_basis_amount=380.0,
+            )
+        )
+        self.db.add(
+            PricePoint(
+                player_id=int(inactive.id),
+                source="PREVIOUS_DECAY",
+                fundamental_price=360.0,
+                spot_price=360.0,
+                total_shares=-1.0,
+                points_to_date=0.0,
+                latest_week=0,
+                created_at=now - timedelta(hours=1),
+            )
+        )
+        self.db.commit()
+
+        for game_number in range(1, 6):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(teammate.id),
+                    week=game_number,
+                    fantasy_points=float(game_number),
+                    live_game_id=f"WSH-G{game_number}",
+                    live_game_label=f"WSH Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=1.0,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        raw_snapshot = build_account_risk_snapshot(db=self.db, user=user, for_update=False)
+        display_portfolio = portfolio(self.auth_for(user), self.db)
+        row = next(row for row in display_portfolio.holdings if row.player_id == int(inactive.id))
+
+        self.assertGreater(raw_snapshot.positions[0].spot_price, Decimal("360.0"))
+        self.assertLessEqual(row.spot_price, 360.0)
+        self.assertGreater(row.unrealized_pnl, 0.0)
 
 
 if __name__ == "__main__":
