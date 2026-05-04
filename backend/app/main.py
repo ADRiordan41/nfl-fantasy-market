@@ -989,7 +989,7 @@ def enforce_rate_limit(*, key: str, limit: int, window_seconds: int, label: str)
 
 
 def build_cache_key(*parts: object) -> str:
-    normalized_parts: list[str] = ["v2"]
+    normalized_parts: list[str] = ["v3"]
     for part in parts:
         text = str(part).strip()
         normalized_parts.append(text or "-")
@@ -1031,12 +1031,12 @@ def invalidate_market_read_cache(
     }
     normalized_player_ids = {int(player_id) for player_id in player_ids}
 
-    keys = ["players|ALL", "live_games|ALL"]
+    keys = [build_cache_key("players", "ALL"), build_cache_key("live_games", "ALL")]
     prefixes = [
-        "market_movers|",
+        build_cache_key("market_movers"),
     ]
     if include_sports_catalog:
-        keys.append("sports")
+        keys.append(build_cache_key("sports"))
     for sport_code in normalized_sports:
         keys.append(build_cache_key("players", sport_code))
         keys.append(build_cache_key("live_games", sport_code))
@@ -3373,6 +3373,8 @@ def get_player_history(
 
     current_context = current_price_context_by_player(db, [player]).get(int(player.id))
     fallback_fundamental = current_context[0] if current_context else Decimal(str(player.base_price))
+    current_points_to_date = current_context[1] if current_context else Decimal("0")
+    current_latest_week = int(current_context[2]) if current_context else 0
     fallback_spot = current_context[3] if current_context else current_spot_price(
         player,
         fundamental_price=fallback_fundamental,
@@ -3405,6 +3407,24 @@ def get_player_history(
                 points_to_date=float(point.points_to_date),
                 latest_week=int(point.latest_week),
                 created_at=point.created_at,
+            )
+        )
+    latest_history = result[-1] if result else None
+    if (
+        latest_history is None
+        or abs(Decimal(str(latest_history.fundamental_price)) - fallback_fundamental) > Decimal("0.000001")
+        or abs(Decimal(str(latest_history.spot_price)) - fallback_spot) > Decimal("0.000001")
+    ):
+        result.append(
+            PricePointOut(
+                player_id=int(player.id),
+                source="CURRENT",
+                fundamental_price=float(fallback_fundamental),
+                spot_price=float(fallback_spot),
+                total_shares=float(player.total_shares),
+                points_to_date=float(current_points_to_date),
+                latest_week=current_latest_week,
+                created_at=chicago_now(),
             )
         )
     return set_cached_json(cache_key, result, ttl_seconds=30)

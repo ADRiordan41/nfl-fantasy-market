@@ -67,7 +67,7 @@ class DynamicPricingTests(unittest.TestCase):
             TEST_DB_PATH.unlink()
 
     def setUp(self) -> None:
-        CACHE.delete_prefixes(["v2|"])
+        CACHE.delete_prefixes(["v2|", "v3|"])
         Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         self.db = SessionLocal()
@@ -772,9 +772,10 @@ class DynamicPricingTests(unittest.TestCase):
 
         history = get_player_history(player_id=int(pitcher.id), limit=500, db=self.db)
 
-        self.assertEqual(2, len(history))
+        self.assertEqual(3, len(history))
         self.assertAlmostEqual(310.0, history[0].spot_price, places=6)
         self.assertAlmostEqual(310.0, history[1].spot_price, places=6)
+        self.assertEqual("CURRENT", history[2].source)
 
     def test_mlb_starting_pitcher_history_sanitizes_no_start_overdecay(self) -> None:
         pitcher = self.make_player(name="Overdecayed Chart", team="TOR", sport="MLB", position="SP", base_price=414.0)
@@ -822,6 +823,46 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(414.0, history[1].spot_price, places=6)
         self.assertAlmostEqual(414.0, history[2].spot_price, places=6)
 
+    def test_player_history_appends_current_price_when_latest_snapshot_is_stale(self) -> None:
+        player = self.make_player(name="Stale Chart", team="NYM", sport="MLB", position="SS", base_price=486.25)
+        now = chicago_now()
+        self.db.add(
+            PricePoint(
+                player_id=int(player.id),
+                source="ADMIN_MLB_BACKFILL",
+                fundamental_price=477.14,
+                spot_price=477.14,
+                total_shares=0.0,
+                points_to_date=0.0,
+                latest_week=0,
+                created_at=now - timedelta(days=2),
+            )
+        )
+        self.db.commit()
+
+        self.db.add(
+            PlayerGamePoint(
+                player_id=int(player.id),
+                game_id="NYM-G1",
+                game_label="NYM Game 1",
+                game_status="Final",
+                game_fantasy_points=1.0,
+                season_fantasy_points=1.0,
+                recorded_at=now - timedelta(hours=1),
+            )
+        )
+        self.db.commit()
+
+        current_fundamental, _, _ = get_pricing_context(
+            player,
+            get_stats_snapshot_by_player(self.db, [int(player.id)]),
+        )
+        history = get_player_history(player_id=int(player.id), limit=500, db=self.db)
+
+        self.assertEqual(2, len(history))
+        self.assertEqual("CURRENT", history[-1].source)
+        self.assertAlmostEqual(float(current_fundamental), history[-1].spot_price, places=6)
+
     def test_mlb_starting_pitcher_history_sanitizes_after_start_overdecay(self) -> None:
         pitcher = self.make_player(name="Started Overdecayed Chart", team="TOR", sport="MLB", position="SP", base_price=414.0)
         now = chicago_now()
@@ -863,10 +904,11 @@ class DynamicPricingTests(unittest.TestCase):
 
         history = get_player_history(player_id=int(pitcher.id), limit=500, db=self.db)
 
-        self.assertEqual(3, len(history))
+        self.assertEqual(4, len(history))
         self.assertAlmostEqual(390.125, history[0].spot_price, places=6)
         self.assertAlmostEqual(390.125, history[1].spot_price, places=6)
         self.assertAlmostEqual(390.125, history[2].spot_price, places=6)
+        self.assertEqual("CURRENT", history[3].source)
 
     def test_mlb_starting_pitcher_game_history_uses_team_game_timeline(self) -> None:
         admin = self.make_user()
