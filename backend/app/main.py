@@ -2426,52 +2426,6 @@ def build_market_mover_rows(
             spot = latest_by_player.get(player_id, (spot, row.created_at, latest_week))[0]
         pre_cutoff_by_player[player_id] = (spot, row.created_at, latest_week)
 
-    post_cutoff_ranked = (
-        select(
-            PricePoint.player_id.label("player_id"),
-            PricePoint.spot_price.label("spot_price"),
-            PricePoint.fundamental_price.label("fundamental_price"),
-            PricePoint.points_to_date.label("points_to_date"),
-            PricePoint.latest_week.label("latest_week"),
-            PricePoint.created_at.label("created_at"),
-            func.row_number()
-            .over(
-                partition_by=PricePoint.player_id,
-                order_by=[PricePoint.created_at.asc(), PricePoint.id.asc()],
-            )
-            .label("rn"),
-        )
-        .where(
-            PricePoint.player_id.in_(player_ids),
-            PricePoint.created_at > cutoff,
-        )
-        .subquery()
-    )
-    post_cutoff_rows = db.execute(
-        select(
-            post_cutoff_ranked.c.player_id,
-            post_cutoff_ranked.c.spot_price,
-            post_cutoff_ranked.c.fundamental_price,
-            post_cutoff_ranked.c.points_to_date,
-            post_cutoff_ranked.c.latest_week,
-            post_cutoff_ranked.c.created_at,
-        ).where(post_cutoff_ranked.c.rn == 1)
-    ).all()
-    post_cutoff_by_player: dict[int, tuple[Decimal, datetime, int | None]] = {}
-    for row in post_cutoff_rows:
-        player_id = int(row.player_id)
-        player = players_by_id[player_id]
-        spot = Decimal(str(row.spot_price))
-        latest_week = int(row.latest_week)
-        if sp_price_point_looks_cratered(
-            player,
-            fundamental_price=Decimal(str(row.fundamental_price)),
-            points_to_date=Decimal(str(row.points_to_date)),
-            latest_week=latest_week,
-        ):
-            spot = latest_by_player.get(player_id, (spot, row.created_at, latest_week))[0]
-        post_cutoff_by_player[player_id] = (spot, row.created_at, latest_week)
-
     movers: list[MarketMoverOut] = []
     for player_id in player_ids:
         latest_row = latest_by_player.get(player_id)
@@ -2482,7 +2436,7 @@ def build_market_mover_rows(
         if reference_row and mover_reference_is_too_stale(reference_row[1], cutoff, window_hours):
             reference_row = None
         if reference_row is None:
-            reference_row = post_cutoff_by_player.get(player_id) or latest_row
+            reference_row = latest_row
         reference_spot, reference_at, reference_latest_week = reference_row
         player = players_by_id[player_id]
         current_context = current_contexts.get(player_id)

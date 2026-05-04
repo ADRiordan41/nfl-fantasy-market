@@ -878,7 +878,7 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(movers[0].spot_price, movers[0].reference_price, places=6)
         self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
 
-    def test_stale_pre_window_price_can_fall_back_to_in_window_reference(self) -> None:
+    def test_in_window_price_history_without_boundary_reference_is_not_reported_as_daily_mover(self) -> None:
         player = self.make_player(name="Fresh Reference Player", team="BUF", sport="NFL", position="WR", base_price=100.0)
         now = chicago_now()
         self.db.add_all(
@@ -911,8 +911,8 @@ class DynamicPricingTests(unittest.TestCase):
 
         self.assertEqual(1, len(movers))
         self.assertAlmostEqual(100.0, movers[0].spot_price, places=6)
-        self.assertAlmostEqual(90.0, movers[0].reference_price, places=6)
-        self.assertAlmostEqual(11.111111, movers[0].change_percent, places=6)
+        self.assertAlmostEqual(100.0, movers[0].reference_price, places=6)
+        self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
 
     def test_mlb_no_direct_stats_team_decay_is_not_reported_as_weekly_mover(self) -> None:
         admin = self.make_user()
