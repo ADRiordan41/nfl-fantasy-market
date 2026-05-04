@@ -774,6 +774,52 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(300.0, history[0].spot_price, places=6)
         self.assertAlmostEqual(300.0, history[1].spot_price, places=6)
 
+    def test_mlb_starting_pitcher_history_sanitizes_no_start_overdecay(self) -> None:
+        pitcher = self.make_player(name="Overdecayed Chart", team="TOR", sport="MLB", position="SP", base_price=414.0)
+        now = chicago_now()
+        self.db.add_all(
+            [
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="SEED",
+                    fundamental_price=414.0,
+                    spot_price=414.0,
+                    total_shares=0.0,
+                    points_to_date=0.0,
+                    latest_week=0,
+                    created_at=now - timedelta(hours=3),
+                ),
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="BAD_SP_TEAM_DECAY",
+                    fundamental_price=309.0,
+                    spot_price=309.0,
+                    total_shares=0.0,
+                    points_to_date=0.0,
+                    latest_week=0,
+                    created_at=now - timedelta(hours=2),
+                ),
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="GOOD_SP_POINT",
+                    fundamental_price=414.0,
+                    spot_price=414.0,
+                    total_shares=0.0,
+                    points_to_date=0.0,
+                    latest_week=0,
+                    created_at=now - timedelta(hours=1),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        history = get_player_history(player_id=int(pitcher.id), limit=500, db=self.db)
+
+        self.assertEqual(3, len(history))
+        self.assertAlmostEqual(414.0, history[0].spot_price, places=6)
+        self.assertAlmostEqual(414.0, history[1].spot_price, places=6)
+        self.assertAlmostEqual(414.0, history[2].spot_price, places=6)
+
     def test_mlb_no_stat_decay_rows_do_not_drive_movers(self) -> None:
         player = self.make_player(name="No Stat Crater", team="PIT", sport="MLB", position="OF", base_price=162.0)
         now = chicago_now()

@@ -2262,6 +2262,46 @@ def sp_price_point_looks_cratered(
     return False
 
 
+def sp_price_point_looks_overdecayed(
+    player: Player,
+    *,
+    fundamental_price: Decimal,
+    points_to_date: Decimal,
+    latest_week: int | None = None,
+) -> bool:
+    if not is_mlb_starting_pitcher(player):
+        return False
+    actual_starts = max(0, int(latest_week or 0))
+    if actual_starts > 0 or abs(points_to_date) > Decimal("0.000001"):
+        return False
+    base_price = Decimal(str(player.base_price))
+    minimum_no_start_fundamental = base_price * (
+        Decimal(MLB_STARTING_PITCHER_SEASON_STARTS - 1)
+        / Decimal(MLB_STARTING_PITCHER_SEASON_STARTS)
+    )
+    return fundamental_price < minimum_no_start_fundamental - Decimal("0.000001")
+
+
+def sp_price_point_needs_sanitizing(
+    player: Player,
+    *,
+    fundamental_price: Decimal,
+    points_to_date: Decimal,
+    latest_week: int | None = None,
+) -> bool:
+    return sp_price_point_looks_cratered(
+        player,
+        fundamental_price=fundamental_price,
+        points_to_date=points_to_date,
+        latest_week=latest_week,
+    ) or sp_price_point_looks_overdecayed(
+        player,
+        fundamental_price=fundamental_price,
+        points_to_date=points_to_date,
+        latest_week=latest_week,
+    )
+
+
 def current_price_context_by_player(
     db: Session,
     players: list[Player],
@@ -2417,7 +2457,7 @@ def build_market_mover_rows(
         player = players_by_id[player_id]
         spot = Decimal(str(row.spot_price))
         latest_week = int(row.latest_week)
-        if sp_price_point_looks_cratered(
+        if sp_price_point_needs_sanitizing(
             player,
             fundamental_price=Decimal(str(row.fundamental_price)),
             points_to_date=Decimal(str(row.points_to_date)),
@@ -3346,7 +3386,7 @@ def get_player_history(
         fundamental_price = Decimal(str(point.fundamental_price))
         spot = Decimal(str(point.spot_price))
         points_to_date = Decimal(str(point.points_to_date))
-        if sp_price_point_looks_cratered(
+        if sp_price_point_needs_sanitizing(
             player,
             fundamental_price=fundamental_price,
             points_to_date=points_to_date,
