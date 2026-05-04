@@ -2293,6 +2293,29 @@ def is_mlb_no_direct_stats_context(player: Player, context: tuple[Decimal, Decim
     )
 
 
+def max_expected_progress_units_for_mover_window(player: Player, window_hours: int) -> int:
+    days = max(1, (max(1, int(window_hours)) + 23) // 24)
+    if str(player.sport).strip().upper() == "MLB":
+        if is_mlb_starting_pitcher(player):
+            return max(1, (days // max(1, MLB_STARTING_PITCHER_ROTATION_GAMES)) + 2)
+        return days + 2
+    return max(1, (max(1, int(window_hours)) // 168) + 1)
+
+
+def mover_reference_progress_jump_is_implausible(
+    player: Player,
+    *,
+    current_context: tuple[Decimal, Decimal, int, Decimal] | None,
+    reference_latest_week: int | None,
+    window_hours: int,
+) -> bool:
+    if current_context is None or reference_latest_week is None:
+        return False
+    _fundamental, _points_to_date, current_latest_week, _spot = current_context
+    progress_delta = max(0, int(current_latest_week) - max(0, int(reference_latest_week)))
+    return progress_delta > max_expected_progress_units_for_mover_window(player, window_hours)
+
+
 def record_price_points_for_players(
     db: Session,
     players: list[Player],
@@ -2347,8 +2370,8 @@ def build_market_mover_rows(
     cutoff = chicago_now() - timedelta(hours=window_hours)
     current_contexts = current_price_context_by_player(db, players)
     now = chicago_now()
-    latest_by_player = {
-        player_id: (context[3], now)
+    latest_by_player: dict[int, tuple[Decimal, datetime, int | None]] = {
+        player_id: (context[3], now, int(context[2]))
         for player_id, context in current_contexts.items()
     }
 
@@ -2383,19 +2406,20 @@ def build_market_mover_rows(
             pre_cutoff_ranked.c.created_at,
         ).where(pre_cutoff_ranked.c.rn == 1)
     ).all()
-    pre_cutoff_by_player: dict[int, tuple[Decimal, datetime]] = {}
+    pre_cutoff_by_player: dict[int, tuple[Decimal, datetime, int | None]] = {}
     for row in pre_cutoff_rows:
         player_id = int(row.player_id)
         player = players_by_id[player_id]
         spot = Decimal(str(row.spot_price))
+        latest_week = int(row.latest_week)
         if sp_price_point_looks_cratered(
             player,
             fundamental_price=Decimal(str(row.fundamental_price)),
             points_to_date=Decimal(str(row.points_to_date)),
-            latest_week=int(row.latest_week),
+            latest_week=latest_week,
         ):
-            spot = latest_by_player.get(player_id, (spot, row.created_at))[0]
-        pre_cutoff_by_player[player_id] = (spot, row.created_at)
+            spot = latest_by_player.get(player_id, (spot, row.created_at, latest_week))[0]
+        pre_cutoff_by_player[player_id] = (spot, row.created_at, latest_week)
 
     post_cutoff_ranked = (
         select(
@@ -2428,34 +2452,44 @@ def build_market_mover_rows(
             post_cutoff_ranked.c.created_at,
         ).where(post_cutoff_ranked.c.rn == 1)
     ).all()
-    post_cutoff_by_player: dict[int, tuple[Decimal, datetime]] = {}
+    post_cutoff_by_player: dict[int, tuple[Decimal, datetime, int | None]] = {}
     for row in post_cutoff_rows:
         player_id = int(row.player_id)
         player = players_by_id[player_id]
         spot = Decimal(str(row.spot_price))
+        latest_week = int(row.latest_week)
         if sp_price_point_looks_cratered(
             player,
             fundamental_price=Decimal(str(row.fundamental_price)),
             points_to_date=Decimal(str(row.points_to_date)),
-            latest_week=int(row.latest_week),
+            latest_week=latest_week,
         ):
-            spot = latest_by_player.get(player_id, (spot, row.created_at))[0]
-        post_cutoff_by_player[player_id] = (spot, row.created_at)
+            spot = latest_by_player.get(player_id, (spot, row.created_at, latest_week))[0]
+        post_cutoff_by_player[player_id] = (spot, row.created_at, latest_week)
 
     movers: list[MarketMoverOut] = []
     for player_id in player_ids:
         latest_row = latest_by_player.get(player_id)
         if not latest_row:
             continue
-        current_spot, current_at = latest_row
+        current_spot, current_at, _current_latest_week = latest_row
         reference_row = (
             pre_cutoff_by_player.get(player_id)
             or post_cutoff_by_player.get(player_id)
             or latest_row
         )
-        reference_spot, reference_at = reference_row
+        reference_spot, reference_at, reference_latest_week = reference_row
         player = players_by_id[player_id]
-        if is_mlb_no_direct_stats_context(player, current_contexts.get(player_id)):
+        current_context = current_contexts.get(player_id)
+        if is_mlb_no_direct_stats_context(
+            player,
+            current_context,
+        ) or mover_reference_progress_jump_is_implausible(
+            player,
+            current_context=current_context,
+            reference_latest_week=reference_latest_week,
+            window_hours=window_hours,
+        ):
             reference_spot = current_spot
             reference_at = current_at
         safe_reference = reference_spot if reference_spot > Decimal("0") else current_spot

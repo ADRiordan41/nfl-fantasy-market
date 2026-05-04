@@ -799,6 +799,51 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(162.0, movers[0].reference_price, places=6)
         self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
 
+    def test_mlb_backfilled_game_history_is_not_reported_as_weekly_mover(self) -> None:
+        admin = self.make_user()
+        player = self.make_player(name="Backfilled Bat", team="PIT", sport="MLB", position="OF", base_price=162.0)
+        now = chicago_now()
+        self.db.add(
+            PricePoint(
+                player_id=int(player.id),
+                source="SEED",
+                fundamental_price=162.0,
+                spot_price=162.0,
+                total_shares=0.0,
+                points_to_date=0.0,
+                latest_week=0,
+                created_at=now - timedelta(days=8),
+            )
+        )
+        self.db.commit()
+
+        for game_number in range(1, 57):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(player.id),
+                    week=game_number,
+                    fantasy_points=20.0,
+                    live_game_id=f"PIT-BF-{game_number}",
+                    live_game_label=f"PIT Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=0.25,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        current_fundamental, _, latest_week = get_pricing_context(
+            player,
+            get_stats_snapshot_by_player(self.db, [int(player.id)]),
+        )
+        movers = build_market_mover_rows(self.db, [player], window_hours=168)
+
+        self.assertEqual(56, latest_week)
+        self.assertEqual(1, len(movers))
+        self.assertAlmostEqual(float(current_fundamental), movers[0].spot_price, places=6)
+        self.assertAlmostEqual(float(current_fundamental), movers[0].reference_price, places=6)
+        self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
+
     def test_mlb_no_direct_stats_team_decay_is_not_reported_as_weekly_mover(self) -> None:
         admin = self.make_user()
         unmatched = self.make_player(name="No Direct Stats", team="PIT", sport="MLB", position="OF", base_price=162.0)
