@@ -957,6 +957,97 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(20.0, history[-1].season_fantasy_points, places=6)
         self.assertAlmostEqual(0.0, history[5].game_fantasy_points, places=6)
 
+    def test_mlb_hitter_game_history_uses_team_game_timeline(self) -> None:
+        admin = self.make_user()
+        hitter = self.make_player(name="Timeline Hitter", team="NYM", sport="MLB", position="SS", base_price=486.25)
+        teammate = self.make_player(name="Timeline Teammate", team="NYM", sport="MLB", position="OF", base_price=162.0)
+
+        for game_number in range(1, 11):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(teammate.id),
+                    week=game_number,
+                    fantasy_points=float(game_number),
+                    live_game_id=f"NYM-G{game_number}",
+                    live_game_label=f"NYM Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=1.0,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        for game_number, season_points in ((1, 5.0), (5, 18.0)):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(hitter.id),
+                    week=game_number,
+                    fantasy_points=season_points,
+                    live_game_id=f"NYM-G{game_number}",
+                    live_game_label=f"NYM Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=season_points,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        history = get_player_game_history(player_id=int(hitter.id), limit=500, db=self.db)
+
+        self.assertEqual(10, len(history))
+        self.assertEqual("NYM-G1", history[0].game_id)
+        self.assertEqual("NYM-G10", history[-1].game_id)
+        self.assertAlmostEqual(5.0, history[0].season_fantasy_points, places=6)
+        self.assertAlmostEqual(5.0, history[3].season_fantasy_points, places=6)
+        self.assertAlmostEqual(18.0, history[4].season_fantasy_points, places=6)
+        self.assertAlmostEqual(18.0, history[-1].season_fantasy_points, places=6)
+        self.assertAlmostEqual(0.0, history[-1].game_fantasy_points, places=6)
+
+    def test_mlb_team_game_timeline_ignores_mislabeled_current_team_rows(self) -> None:
+        admin = self.make_user()
+        hitter = self.make_player(name="Clean Timeline Hitter", team="NYM", sport="MLB", position="SS", base_price=486.25)
+        mislabeled_teammate = self.make_player(
+            name="Mislabeled Current Teammate",
+            team="NYM",
+            sport="MLB",
+            position="OF",
+            base_price=162.0,
+        )
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(hitter.id),
+                week=1,
+                fantasy_points=5.0,
+                live_game_id="NYM-G1",
+                live_game_label="PIT @ NYM",
+                live_game_status="Final",
+                live_game_fantasy_points=5.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(mislabeled_teammate.id),
+                week=1,
+                fantasy_points=1.0,
+                live_game_id="MIL-G1",
+                live_game_label="CWS @ MIL",
+                live_game_status="Final",
+                live_game_fantasy_points=1.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        snapshot = get_stats_snapshot_by_player(self.db, [int(hitter.id)])[int(hitter.id)]
+        history = get_player_game_history(player_id=int(hitter.id), limit=500, db=self.db)
+
+        self.assertEqual(1, snapshot.team_games_played)
+        self.assertEqual(1, len(history))
+        self.assertEqual("NYM-G1", history[0].game_id)
+
     def test_mlb_no_stat_decay_rows_do_not_drive_movers(self) -> None:
         player = self.make_player(name="No Stat Crater", team="PIT", sport="MLB", position="OF", base_price=162.0)
         now = chicago_now()

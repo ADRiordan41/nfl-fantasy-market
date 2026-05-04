@@ -1565,6 +1565,16 @@ def projection_replacement_units_for_player(player: Player, snapshot: PlayerStat
     return max(0, int(snapshot.team_games_played))
 
 
+def game_label_mentions_team(game_label: object, team: object) -> bool:
+    normalized_team = str(team or "").strip().upper()
+    if not normalized_team:
+        return True
+    normalized_label = str(game_label or "").strip().upper()
+    if not normalized_label:
+        return True
+    return re.search(rf"(^|[^A-Z0-9]){re.escape(normalized_team)}([^A-Z0-9]|$)", normalized_label) is not None
+
+
 def detect_column(sample_row: dict[str, str], candidates: tuple[str, ...]) -> str:
     keys_by_normalized = {normalize_text(key): key for key in sample_row.keys()}
     for candidate in candidates:
@@ -1978,7 +1988,7 @@ def get_stats_snapshot_by_player(
         teams = sorted({team for _, team in team_keys if team})
         if sports and teams:
             team_game_rows = db.execute(
-                select(Player.sport, Player.team, PlayerGamePoint.game_id)
+                select(Player.sport, Player.team, PlayerGamePoint.game_id, PlayerGamePoint.game_label)
                 .join(Player, Player.id == PlayerGamePoint.player_id)
                 .where(
                     Player.sport.in_(sports),
@@ -1987,9 +1997,11 @@ def get_stats_snapshot_by_player(
                 .distinct()
             ).all()
             games_by_team_key: dict[tuple[str, str], set[str]] = defaultdict(set)
-            for sport, team, game_id in team_game_rows:
+            for sport, team, game_id, game_label in team_game_rows:
                 team_key = (str(sport).strip().upper(), str(team).strip().upper())
                 if team_key not in team_keys:
+                    continue
+                if not game_label_mentions_team(game_label, team):
                     continue
                 normalized_game_id = str(game_id).strip()
                 if not normalized_game_id:
@@ -3453,7 +3465,7 @@ def get_player_game_history(
         .limit(limit)
     ).scalars().all()
 
-    if is_mlb_starting_pitcher(player):
+    if str(player.sport).strip().upper() == "MLB":
         team_game_rows = db.execute(
             select(
                 PlayerGamePoint.game_id,
@@ -3474,6 +3486,8 @@ def get_player_game_history(
         carried_season_points = Decimal("0")
         result: list[PlayerGamePointOut] = []
         for game_id, recorded_at, game_label, game_status in team_game_rows:
+            if not game_label_mentions_team(game_label, player.team):
+                continue
             normalized_game_id = str(game_id)
             player_row = player_rows_by_game_id.get(normalized_game_id)
             if player_row is not None:

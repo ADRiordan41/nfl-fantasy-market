@@ -76,10 +76,18 @@ function PriceHistoryChart({ points }: { points: PricePoint[] }) {
   const max = rawMin === rawMax ? rawMax + 1 : rawMax;
   const span = Math.max(0.0001, max - min);
 
-  const xAt = (index: number) => (sorted.length === 1 ? left + plotWidth / 2 : left + (index * plotWidth) / (sorted.length - 1));
+  const startTime = new Date(sorted[0].created_at).getTime();
+  const endTime = new Date(sorted[sorted.length - 1].created_at).getTime();
+  const timeSpan = Math.max(1, endTime - startTime);
+  const xAt = (createdAt: string) => {
+    if (sorted.length === 1) return left + plotWidth / 2;
+    const timestamp = new Date(createdAt).getTime();
+    if (!Number.isFinite(timestamp)) return left + plotWidth / 2;
+    return left + ((timestamp - startTime) * plotWidth) / timeSpan;
+  };
   const yAt = (value: number) => top + ((max - value) / span) * plotHeight;
 
-  const coords = sorted.map((point, index) => ({ x: xAt(index), y: yAt(point.spot_price), point }));
+  const coords = sorted.map((point) => ({ x: xAt(point.created_at), y: yAt(point.spot_price), point }));
   const linePath = coords
     .map((coord, index) => `${index === 0 ? "M" : "L"} ${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`)
     .join(" ");
