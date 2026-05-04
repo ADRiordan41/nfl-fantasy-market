@@ -18,6 +18,7 @@ try:
         admin_stats_publish,
         build_market_mover_rows,
         buy,
+        get_player,
         get_player_history,
         get_player_game_history,
         get_pricing_context,
@@ -39,6 +40,7 @@ except ModuleNotFoundError:
         admin_stats_publish,
         build_market_mover_rows,
         buy,
+        get_player,
         get_player_history,
         get_player_game_history,
         get_pricing_context,
@@ -1214,6 +1216,53 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(106.0, movers[0].spot_price, places=6)
         self.assertAlmostEqual(106.0, movers[0].reference_price, places=6)
         self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
+
+    def test_mlb_no_direct_stats_display_does_not_rise_above_latest_history(self) -> None:
+        admin = self.make_user()
+        inactive = self.make_player(name="Inactive No Buy", team="WSH", sport="MLB", position="OF", base_price=384.0)
+        teammate = self.make_player(name="Active Nat", team="WSH", sport="MLB", position="OF", base_price=162.0)
+        now = chicago_now()
+        self.db.add(
+            PricePoint(
+                player_id=int(inactive.id),
+                source="PREVIOUS_DECAY",
+                fundamental_price=360.0,
+                spot_price=360.0,
+                total_shares=0.0,
+                points_to_date=0.0,
+                latest_week=0,
+                created_at=now - timedelta(hours=1),
+            )
+        )
+        self.db.commit()
+
+        for game_number in range(1, 6):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(teammate.id),
+                    week=game_number,
+                    fantasy_points=float(game_number),
+                    live_game_id=f"WSH-G{game_number}",
+                    live_game_label=f"WSH Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=1.0,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        uncapped_fundamental, points_to_date, latest_week = get_pricing_context(
+            inactive,
+            get_stats_snapshot_by_player(self.db, [int(inactive.id)]),
+        )
+        player_out = get_player(player_id=int(inactive.id), db=self.db)
+        history = get_player_history(player_id=int(inactive.id), limit=500, db=self.db)
+
+        self.assertGreater(float(uncapped_fundamental), 360.0)
+        self.assertEqual(0.0, float(points_to_date))
+        self.assertEqual(0, latest_week)
+        self.assertAlmostEqual(360.0, player_out.spot_price, places=6)
+        self.assertAlmostEqual(360.0, history[-1].spot_price, places=6)
 
 
 if __name__ == "__main__":

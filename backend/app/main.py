@@ -2331,6 +2331,71 @@ def current_price_context_by_player(
     return contexts
 
 
+def latest_price_point_by_player(
+    db: Session,
+    player_ids: list[int],
+) -> dict[int, PricePoint]:
+    if not player_ids:
+        return {}
+    ranked = (
+        select(
+            PricePoint.id.label("id"),
+            PricePoint.player_id.label("player_id"),
+            func.row_number()
+            .over(
+                partition_by=PricePoint.player_id,
+                order_by=[PricePoint.created_at.desc(), PricePoint.id.desc()],
+            )
+            .label("rn"),
+        )
+        .where(PricePoint.player_id.in_(player_ids))
+        .subquery()
+    )
+    rows = db.execute(
+        select(PricePoint)
+        .join(ranked, PricePoint.id == ranked.c.id)
+        .where(ranked.c.rn == 1)
+    ).scalars().all()
+    return {int(row.player_id): row for row in rows}
+
+
+def cap_no_direct_mlb_contexts_to_latest_history(
+    db: Session,
+    players: list[Player],
+    contexts: dict[int, tuple[Decimal, Decimal, int, Decimal]],
+) -> dict[int, tuple[Decimal, Decimal, int, Decimal]]:
+    candidate_players = [
+        player
+        for player in players
+        if is_mlb_no_direct_stats_context(player, contexts.get(int(player.id)))
+        and abs(current_market_bias(player)) <= Decimal("0.000001")
+    ]
+    latest_points = latest_price_point_by_player(db, [int(player.id) for player in candidate_players])
+    for player in candidate_players:
+        player_id = int(player.id)
+        context = contexts.get(player_id)
+        latest_point = latest_points.get(player_id)
+        if context is None or latest_point is None:
+            continue
+        fundamental, points_to_date, latest_week, spot = context
+        latest_fundamental = Decimal(str(latest_point.fundamental_price))
+        latest_spot = Decimal(str(latest_point.spot_price))
+        if latest_fundamental <= Decimal("0") or latest_spot <= Decimal("0"):
+            continue
+        capped_fundamental = min(fundamental, latest_fundamental)
+        capped_spot = min(spot, latest_spot)
+        contexts[player_id] = (capped_fundamental, points_to_date, latest_week, capped_spot)
+    return contexts
+
+
+def current_display_price_context_by_player(
+    db: Session,
+    players: list[Player],
+) -> dict[int, tuple[Decimal, Decimal, int, Decimal]]:
+    contexts = current_price_context_by_player(db, players)
+    return cap_no_direct_mlb_contexts_to_latest_history(db, players, contexts)
+
+
 def is_mlb_no_direct_stats_context(player: Player, context: tuple[Decimal, Decimal, int, Decimal] | None) -> bool:
     if context is None:
         return False
@@ -2754,12 +2819,12 @@ def list_players(
         stmt = stmt.where(Player.sport == normalize_sport_code(sport))
     players = db.execute(stmt.order_by(Player.name)).scalars().all()
     visible_players = [p for p in players if not SYNTHETIC_PLAYER_NAME.match(p.name)]
-    stats_snapshot = get_stats_snapshot_by_player(db, [p.id for p in visible_players])
+    display_contexts = current_display_price_context_by_player(db, visible_players)
     holdings_snapshot = get_aggregate_holdings_by_player(db, [p.id for p in visible_players])
 
     out: list[PlayerOut] = []
     for player in visible_players:
-        fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+        fundamental, points_to_date, latest_week, _spot = display_contexts[int(player.id)]
         shares_held, shares_short = holdings_snapshot.get(player.id, (Decimal("0"), Decimal("0")))
         out.append(
             player_to_out(
@@ -3345,9 +3410,13 @@ def get_player(player_id: int, db: Session = Depends(get_db)):
     if not player_is_listed(player):
         raise HTTPException(404, "Player not found")
 
-    stats_snapshot = get_stats_snapshot_by_player(db, [player_id])
+    display_context = current_display_price_context_by_player(db, [player]).get(int(player.id))
     holdings_snapshot = get_aggregate_holdings_by_player(db, [player_id])
-    fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+    if display_context is None:
+        stats_snapshot = get_stats_snapshot_by_player(db, [player_id])
+        fundamental, points_to_date, latest_week = get_pricing_context(player, stats_snapshot)
+    else:
+        fundamental, points_to_date, latest_week, _spot = display_context
     shares_held, shares_short = holdings_snapshot.get(player_id, (Decimal("0"), Decimal("0")))
     result = player_to_out(
         player=player,
@@ -3383,7 +3452,7 @@ def get_player_history(
         .limit(limit)
     ).scalars().all()
 
-    current_context = current_price_context_by_player(db, [player]).get(int(player.id))
+    current_context = current_display_price_context_by_player(db, [player]).get(int(player.id))
     fallback_fundamental = current_context[0] if current_context else Decimal(str(player.base_price))
     current_points_to_date = current_context[1] if current_context else Decimal("0")
     current_latest_week = int(current_context[2]) if current_context else 0
