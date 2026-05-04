@@ -19,6 +19,7 @@ try:
         build_market_mover_rows,
         buy,
         get_player_history,
+        get_player_game_history,
         get_pricing_context,
         get_stats_snapshot_by_player,
         PlayerStatsSnapshot,
@@ -39,6 +40,7 @@ except ModuleNotFoundError:
         build_market_mover_rows,
         buy,
         get_player_history,
+        get_player_game_history,
         get_pricing_context,
         get_stats_snapshot_by_player,
         PlayerStatsSnapshot,
@@ -747,8 +749,8 @@ class DynamicPricingTests(unittest.TestCase):
                 PricePoint(
                     player_id=int(pitcher.id),
                     source="GOOD_SP_POINT",
-                    fundamental_price=300.0,
-                    spot_price=300.0,
+                    fundamental_price=310.0,
+                    spot_price=310.0,
                     total_shares=0.0,
                     points_to_date=20.0,
                     latest_week=2,
@@ -771,8 +773,8 @@ class DynamicPricingTests(unittest.TestCase):
         history = get_player_history(player_id=int(pitcher.id), limit=500, db=self.db)
 
         self.assertEqual(2, len(history))
-        self.assertAlmostEqual(300.0, history[0].spot_price, places=6)
-        self.assertAlmostEqual(300.0, history[1].spot_price, places=6)
+        self.assertAlmostEqual(310.0, history[0].spot_price, places=6)
+        self.assertAlmostEqual(310.0, history[1].spot_price, places=6)
 
     def test_mlb_starting_pitcher_history_sanitizes_no_start_overdecay(self) -> None:
         pitcher = self.make_player(name="Overdecayed Chart", team="TOR", sport="MLB", position="SP", base_price=414.0)
@@ -819,6 +821,99 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(414.0, history[0].spot_price, places=6)
         self.assertAlmostEqual(414.0, history[1].spot_price, places=6)
         self.assertAlmostEqual(414.0, history[2].spot_price, places=6)
+
+    def test_mlb_starting_pitcher_history_sanitizes_after_start_overdecay(self) -> None:
+        pitcher = self.make_player(name="Started Overdecayed Chart", team="TOR", sport="MLB", position="SP", base_price=414.0)
+        now = chicago_now()
+        self.db.add_all(
+            [
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="GOOD_SP_POINT",
+                    fundamental_price=390.125,
+                    spot_price=390.125,
+                    total_shares=0.0,
+                    points_to_date=2.0,
+                    latest_week=1,
+                    created_at=now - timedelta(hours=3),
+                ),
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="BAD_SP_TEAM_DECAY",
+                    fundamental_price=309.0,
+                    spot_price=309.0,
+                    total_shares=0.0,
+                    points_to_date=2.0,
+                    latest_week=1,
+                    created_at=now - timedelta(hours=2),
+                ),
+                PricePoint(
+                    player_id=int(pitcher.id),
+                    source="GOOD_SP_POINT",
+                    fundamental_price=390.125,
+                    spot_price=390.125,
+                    total_shares=0.0,
+                    points_to_date=2.0,
+                    latest_week=1,
+                    created_at=now - timedelta(hours=1),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        history = get_player_history(player_id=int(pitcher.id), limit=500, db=self.db)
+
+        self.assertEqual(3, len(history))
+        self.assertAlmostEqual(390.125, history[0].spot_price, places=6)
+        self.assertAlmostEqual(390.125, history[1].spot_price, places=6)
+        self.assertAlmostEqual(390.125, history[2].spot_price, places=6)
+
+    def test_mlb_starting_pitcher_game_history_uses_team_game_timeline(self) -> None:
+        admin = self.make_user()
+        pitcher = self.make_player(name="Timeline Starter", team="TOR", sport="MLB", position="SP", base_price=414.0)
+        teammate = self.make_player(name="Timeline Bat", team="TOR", sport="MLB", position="OF", base_price=162.0)
+
+        for game_number in range(1, 11):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(teammate.id),
+                    week=game_number,
+                    fantasy_points=float(game_number),
+                    live_game_id=f"TOR-G{game_number}",
+                    live_game_label=f"TOR Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=1.0,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        for game_number, season_points in ((2, 12.0), (7, 20.0)):
+            upsert_weekly_stat(
+                StatIn(
+                    player_id=int(pitcher.id),
+                    week=game_number,
+                    fantasy_points=season_points,
+                    live_game_id=f"TOR-G{game_number}",
+                    live_game_label=f"TOR Game {game_number}",
+                    live_game_status="Final",
+                    live_game_fantasy_points=season_points,
+                ),
+                self.auth_for(admin),
+                self.db,
+            )
+
+        history = get_player_game_history(player_id=int(pitcher.id), limit=500, db=self.db)
+
+        self.assertEqual(10, len(history))
+        self.assertEqual("TOR-G1", history[0].game_id)
+        self.assertEqual("TOR-G10", history[-1].game_id)
+        self.assertAlmostEqual(0.0, history[0].season_fantasy_points, places=6)
+        self.assertAlmostEqual(12.0, history[1].season_fantasy_points, places=6)
+        self.assertAlmostEqual(12.0, history[5].season_fantasy_points, places=6)
+        self.assertAlmostEqual(20.0, history[6].season_fantasy_points, places=6)
+        self.assertAlmostEqual(20.0, history[-1].season_fantasy_points, places=6)
+        self.assertAlmostEqual(0.0, history[5].game_fantasy_points, places=6)
 
     def test_mlb_no_stat_decay_rows_do_not_drive_movers(self) -> None:
         player = self.make_player(name="No Stat Crater", team="PIT", sport="MLB", position="OF", base_price=162.0)

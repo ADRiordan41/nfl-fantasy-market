@@ -2272,14 +2272,12 @@ def sp_price_point_looks_overdecayed(
     if not is_mlb_starting_pitcher(player):
         return False
     actual_starts = max(0, int(latest_week or 0))
-    if actual_starts > 0 or abs(points_to_date) > Decimal("0.000001"):
-        return False
     base_price = Decimal(str(player.base_price))
-    minimum_no_start_fundamental = base_price * (
-        Decimal(MLB_STARTING_PITCHER_SEASON_STARTS - 1)
-        / Decimal(MLB_STARTING_PITCHER_SEASON_STARTS)
-    )
-    return fundamental_price < minimum_no_start_fundamental - Decimal("0.000001")
+    season_starts = max(1, MLB_STARTING_PITCHER_SEASON_STARTS)
+    max_elapsed_starts = min(season_starts, actual_starts + 1)
+    maximum_allowed_projection_decay = Decimal(max_elapsed_starts) * (base_price / Decimal(season_starts))
+    minimum_fundamental = max(Decimal("1"), base_price - maximum_allowed_projection_decay + points_to_date)
+    return fundamental_price < minimum_fundamental - Decimal("0.000001")
 
 
 def sp_price_point_needs_sanitizing(
@@ -3434,6 +3432,53 @@ def get_player_game_history(
         .order_by(PlayerGamePoint.recorded_at.asc(), PlayerGamePoint.id.asc())
         .limit(limit)
     ).scalars().all()
+
+    if is_mlb_starting_pitcher(player):
+        team_game_rows = db.execute(
+            select(
+                PlayerGamePoint.game_id,
+                func.min(PlayerGamePoint.recorded_at).label("recorded_at"),
+                func.max(PlayerGamePoint.game_label).label("game_label"),
+                func.max(PlayerGamePoint.game_status).label("game_status"),
+            )
+            .join(Player, Player.id == PlayerGamePoint.player_id)
+            .where(
+                Player.sport == str(player.sport),
+                Player.team == str(player.team),
+            )
+            .group_by(PlayerGamePoint.game_id)
+            .order_by(func.min(PlayerGamePoint.recorded_at).asc(), PlayerGamePoint.game_id.asc())
+            .limit(limit)
+        ).all()
+        player_rows_by_game_id = {str(row.game_id): row for row in rows}
+        carried_season_points = Decimal("0")
+        result: list[PlayerGamePointOut] = []
+        for game_id, recorded_at, game_label, game_status in team_game_rows:
+            normalized_game_id = str(game_id)
+            player_row = player_rows_by_game_id.get(normalized_game_id)
+            if player_row is not None:
+                game_points = Decimal(str(player_row.game_fantasy_points))
+                carried_season_points = Decimal(str(player_row.season_fantasy_points))
+                row_label = normalize_optional_profile_field(player_row.game_label)
+                row_status = normalize_optional_profile_field(player_row.game_status)
+                row_recorded_at = player_row.recorded_at
+            else:
+                game_points = Decimal("0")
+                row_label = normalize_optional_profile_field(game_label)
+                row_status = normalize_optional_profile_field(game_status)
+                row_recorded_at = recorded_at
+            result.append(
+                PlayerGamePointOut(
+                    player_id=int(player.id),
+                    game_id=normalized_game_id,
+                    game_label=row_label,
+                    game_status=row_status,
+                    game_fantasy_points=float(game_points),
+                    season_fantasy_points=float(carried_season_points),
+                    recorded_at=row_recorded_at,
+                )
+            )
+        return set_cached_json(cache_key, result, ttl_seconds=30)
 
     result = [
         PlayerGamePointOut(
