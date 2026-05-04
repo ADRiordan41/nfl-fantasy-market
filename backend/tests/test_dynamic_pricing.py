@@ -844,6 +844,76 @@ class DynamicPricingTests(unittest.TestCase):
         self.assertAlmostEqual(float(current_fundamental), movers[0].reference_price, places=6)
         self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
 
+    def test_stale_price_history_is_not_reported_as_daily_mover(self) -> None:
+        admin = self.make_user()
+        player = self.make_player(name="Sparse History Player", team="BUF", sport="NFL", position="WR", base_price=100.0)
+        now = chicago_now()
+        self.db.add(
+            PricePoint(
+                player_id=int(player.id),
+                source="SEED",
+                fundamental_price=100.0,
+                spot_price=100.0,
+                total_shares=0.0,
+                points_to_date=0.0,
+                latest_week=0,
+                created_at=now - timedelta(days=30),
+            )
+        )
+        self.db.commit()
+
+        upsert_weekly_stat(
+            StatIn(
+                player_id=int(player.id),
+                week=1,
+                fantasy_points=20.0,
+            ),
+            self.auth_for(admin),
+            self.db,
+        )
+
+        movers = build_market_mover_rows(self.db, [player], window_hours=24)
+
+        self.assertEqual(1, len(movers))
+        self.assertAlmostEqual(movers[0].spot_price, movers[0].reference_price, places=6)
+        self.assertAlmostEqual(0.0, movers[0].change_percent, places=6)
+
+    def test_stale_pre_window_price_can_fall_back_to_in_window_reference(self) -> None:
+        player = self.make_player(name="Fresh Reference Player", team="BUF", sport="NFL", position="WR", base_price=100.0)
+        now = chicago_now()
+        self.db.add_all(
+            [
+                PricePoint(
+                    player_id=int(player.id),
+                    source="SEED",
+                    fundamental_price=50.0,
+                    spot_price=50.0,
+                    total_shares=0.0,
+                    points_to_date=0.0,
+                    latest_week=0,
+                    created_at=now - timedelta(days=30),
+                ),
+                PricePoint(
+                    player_id=int(player.id),
+                    source="RECENT",
+                    fundamental_price=90.0,
+                    spot_price=90.0,
+                    total_shares=0.0,
+                    points_to_date=0.0,
+                    latest_week=0,
+                    created_at=now - timedelta(hours=2),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        movers = build_market_mover_rows(self.db, [player], window_hours=24)
+
+        self.assertEqual(1, len(movers))
+        self.assertAlmostEqual(100.0, movers[0].spot_price, places=6)
+        self.assertAlmostEqual(90.0, movers[0].reference_price, places=6)
+        self.assertAlmostEqual(11.111111, movers[0].change_percent, places=6)
+
     def test_mlb_no_direct_stats_team_decay_is_not_reported_as_weekly_mover(self) -> None:
         admin = self.make_user()
         unmatched = self.make_player(name="No Direct Stats", team="PIT", sport="MLB", position="OF", base_price=162.0)

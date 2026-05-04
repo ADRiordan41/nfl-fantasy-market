@@ -2316,6 +2316,11 @@ def mover_reference_progress_jump_is_implausible(
     return progress_delta > max_expected_progress_units_for_mover_window(player, window_hours)
 
 
+def mover_reference_is_too_stale(reference_at: datetime, cutoff: datetime, window_hours: int) -> bool:
+    max_reference_age = timedelta(hours=max(1, int(window_hours)))
+    return reference_at < cutoff - max_reference_age
+
+
 def record_price_points_for_players(
     db: Session,
     players: list[Player],
@@ -2473,11 +2478,11 @@ def build_market_mover_rows(
         if not latest_row:
             continue
         current_spot, current_at, _current_latest_week = latest_row
-        reference_row = (
-            pre_cutoff_by_player.get(player_id)
-            or post_cutoff_by_player.get(player_id)
-            or latest_row
-        )
+        reference_row = pre_cutoff_by_player.get(player_id)
+        if reference_row and mover_reference_is_too_stale(reference_row[1], cutoff, window_hours):
+            reference_row = None
+        if reference_row is None:
+            reference_row = post_cutoff_by_player.get(player_id) or latest_row
         reference_spot, reference_at, reference_latest_week = reference_row
         player = players_by_id[player_id]
         current_context = current_contexts.get(player_id)
