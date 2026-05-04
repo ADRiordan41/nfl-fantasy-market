@@ -1236,6 +1236,18 @@ class DynamicPricingTests(unittest.TestCase):
                 created_at=now - timedelta(hours=1),
             )
         )
+        self.db.add(
+            PricePoint(
+                player_id=int(inactive.id),
+                source="TRADE_SHORT",
+                fundamental_price=380.0,
+                spot_price=380.0,
+                total_shares=-1.0,
+                points_to_date=0.0,
+                latest_week=0,
+                created_at=now,
+            )
+        )
         self.db.commit()
 
         for game_number in range(1, 6):

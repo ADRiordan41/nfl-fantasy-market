@@ -2334,9 +2334,14 @@ def current_price_context_by_player(
 def latest_price_point_by_player(
     db: Session,
     player_ids: list[int],
+    *,
+    exclude_trade_points: bool = False,
 ) -> dict[int, PricePoint]:
     if not player_ids:
         return {}
+    point_filter = [PricePoint.player_id.in_(player_ids)]
+    if exclude_trade_points:
+        point_filter.append(~PricePoint.source.in_(["TRADE_BUY", "TRADE_SELL", "TRADE_SHORT", "TRADE_COVER"]))
     ranked = (
         select(
             PricePoint.id.label("id"),
@@ -2348,7 +2353,7 @@ def latest_price_point_by_player(
             )
             .label("rn"),
         )
-        .where(PricePoint.player_id.in_(player_ids))
+        .where(*point_filter)
         .subquery()
     )
     rows = db.execute(
@@ -2370,7 +2375,11 @@ def cap_no_direct_mlb_contexts_to_latest_history(
         if is_mlb_no_direct_stats_context(player, contexts.get(int(player.id)))
         and current_market_bias(player) <= Decimal("0.000001")
     ]
-    latest_points = latest_price_point_by_player(db, [int(player.id) for player in candidate_players])
+    latest_points = latest_price_point_by_player(
+        db,
+        [int(player.id) for player in candidate_players],
+        exclude_trade_points=True,
+    )
     for player in candidate_players:
         player_id = int(player.id)
         context = contexts.get(player_id)
